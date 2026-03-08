@@ -1,6 +1,6 @@
 import { ChatPage, EndpointCategory, WKApp, Menus } from '@octo/base';
 import { ContactsList } from '@octo/contacts';
-import BotStore from '@octo/base/src/Pages/BotStore';
+import { BotStore } from '@octo/base';
 import React from 'react';
 import { MessageSquare, Users, Bot } from 'lucide-react';
 import './index.css';

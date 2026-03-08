@@ -5,7 +5,7 @@ import { Component } from "react";
 import MainVM, { VersionInfo } from "./vm";
 import "./tab_normal_screen.css";
 import { Badge, Modal, Toast, Progress, Button, Tooltip } from "@douyinfe/semi-ui";
-import { Space, SpaceService } from "@octo/base/src/Service/SpaceService";
+import { Space, SpaceService } from "@octo/base";
 
 export interface TabNormalScreenProps {
   vm: MainVM;

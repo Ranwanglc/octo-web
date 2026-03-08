@@ -1,8 +1,8 @@
 import React, { Component } from "react";
 import { WKApp } from "@octo/base";
-import { SpaceService } from "@octo/base/src/Service/SpaceService";
+import { SpaceService } from "@octo/base";
 import { Input, Button, Toast, Spin } from "@douyinfe/semi-ui";
-import SpaceCreate from "@octo/base/src/Components/SpaceCreate";
+import { SpaceCreate } from "@octo/base";
 
 interface SpaceGateState {
     loading: boolean;
