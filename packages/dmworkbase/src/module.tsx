@@ -954,10 +954,33 @@ export default class BaseModule implements IModule {
       (context: RouteContext<UserInfoRouteData>) => {
         const data = context.routeData();
         const channelInfo = data.channelInfo;
+        const fromSubscriberOfUser = data.fromSubscriberOfUser;
         const relation = channelInfo?.orgData?.follow;
         const status = channelInfo?.orgData.status;
 
         if (data.isSelf) {
+          return;
+        }
+
+        // YUJ-146 / GH#1090：同 Space 用户不显示「解除好友关系」和「拉黑」
+        // 按钮。复用 userinfo.source 里的 resolveExternalForViewer，只有
+        // 相对当前查看 Space 为外部（跨 Space）时才渲染这些按钮。
+        const { isExternal } = resolveExternalForViewer({
+          homeSpaceId: (channelInfo?.orgData?.home_space_id ??
+            fromSubscriberOfUser?.orgData?.home_space_id) as string | undefined,
+          homeSpaceName: (channelInfo?.orgData?.home_space_name ??
+            fromSubscriberOfUser?.orgData?.home_space_name) as
+            | string
+            | undefined,
+          isExternalLegacy: (channelInfo?.orgData?.is_external ??
+            fromSubscriberOfUser?.orgData?.is_external) as number | undefined,
+          sourceSpaceNameLegacy: (channelInfo?.orgData?.source_space_name ??
+            fromSubscriberOfUser?.orgData?.source_space_name) as
+            | string
+            | undefined,
+        });
+        if (!isExternal) {
+          // 同 Space（含 Bot）：完全不渲染，避免误删好友 / 拉黑同 Space 成员
           return;
         }
 
