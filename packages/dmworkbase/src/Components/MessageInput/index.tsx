@@ -261,6 +261,11 @@ function parseMentionMarkers(
     }
 
     lastIndex = match.index + match[0].length;
+    if (isAll || member) {
+      if (lastIndex < text.length && /\s/.test(text[lastIndex])) {
+        lastIndex++;
+      }
+    }
   }
 
   if (lastIndex < text.length) {
@@ -351,6 +356,24 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
       return name ? `在 ${name} 中回复...  ${altKey}+↵ 创建任务` : `输入消息...  ${altKey}+↵ 创建任务`;
     }
   }, [props.context]);
+
+  const memberInfos = useMemo<MemberInfo[]>(() => {
+    const infos: MemberInfo[] = props.members
+      ? props.members.map((s) => ({
+          uid: s.uid,
+          name: s.remark || s.name || s.uid,
+        }))
+      : [];
+    if (props.members) {
+      for (const s of props.members) {
+        if (s.name && s.remark && s.remark !== s.name) {
+          infos.push({ uid: s.uid, name: s.name });
+        }
+      }
+    }
+    return infos;
+  }, [props.members]);
+
   const localMembersRef = useRef(props.members);
   const sendRef = useRef<(() => void) | null>(null);
   const mentionActiveRef = useRef(false);
@@ -1091,20 +1114,6 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
                 savedSelectionRange?: { from: number; to: number }
               ) => {
                 if (!editor) return;
-
-                const memberInfos: MemberInfo[] = props.members
-                  ? props.members.map((s) => ({
-                      uid: s.uid,
-                      name: s.remark || s.name || s.uid,
-                    }))
-                  : [];
-                if (props.members) {
-                  for (const s of props.members) {
-                    if (s.name && s.remark && s.remark !== s.name) {
-                      memberInfos.push({ uid: s.uid, name: s.name });
-                    }
-                  }
-                }
 
                 // Use dynamic regex built from member names to detect mentions
                 const hasMention =
