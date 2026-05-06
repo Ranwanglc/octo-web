@@ -123,19 +123,27 @@ export default function AppBotPage() {
     if (!WKSDK.shared().conversationManager.findConversation(channel)) {
       WKSDK.shared().conversationManager.createEmptyConversation(channel)
     }
-    // Write bot info into channelManager — we already have it from /app_bot/available.
-    // fetchChannelInfo will 400 for bot UIDs (not in user table) so won't overwrite.
-    const info = new ChannelInfo()
-    info.channel = channel
-    info.title = bot.display_name
-    info.logo = bot.avatar || ""
-    info.orgData = { displayName: bot.display_name, robot: 1, name: bot.display_name }
-    WKSDK.shared().channelManager.setChannleInfoForCache(info)
+
+    // Build ChannelInfo from bot data we already have
+    const writeChannelInfo = () => {
+      const info = new ChannelInfo()
+      info.channel = channel
+      info.title = bot.display_name
+      info.logo = bot.avatar || ""
+      info.orgData = { displayName: bot.display_name, robot: 1, name: bot.display_name }
+      WKSDK.shared().channelManager.setChannleInfoForCache(info)
+    }
+
+    // Write immediately so first render has data
+    writeChannelInfo()
 
     // Push chat content to routeRight
     WKApp.routeRight.replaceToRoot(
       <ChatContentPage key={channel.getChannelKey()} channel={channel} />
     )
+
+    // Re-assert after failed fetchChannelInfo (400) may have cleared cache
+    setTimeout(writeChannelInfo, 500)
   }
 
   const renderItem = (bot: AppBotInfo) => {
