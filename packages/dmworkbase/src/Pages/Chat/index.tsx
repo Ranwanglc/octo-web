@@ -690,6 +690,7 @@ export class ChatContentPage extends Component<
                 this.setState({
                   previewFile: null,
                   activePreviewMessageId: null,
+                  showThreadPanel: false, // 重置状态，移除 wk-chat-threadpanel-open 类
                 })
               }
               filePreview={previewFile}
@@ -697,6 +698,7 @@ export class ChatContentPage extends Component<
                 this.setState({
                   previewFile: null,
                   activePreviewMessageId: null,
+                  showThreadPanel: false, // 重置状态，移除 wk-chat-threadpanel-open 类
                 })
               }
               onReplyFile={(info) => {
