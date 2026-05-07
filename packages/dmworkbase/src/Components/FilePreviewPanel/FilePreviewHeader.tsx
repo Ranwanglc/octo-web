@@ -9,6 +9,7 @@ import {
 } from "./icons";
 import { getFileIcon as getFileIconUrl } from "../MessageInput/AttachmentNode";
 import { FilePreviewInfo } from "./types";
+import { isImageType } from "./config";
 import "./FilePreviewHeader.css";
 
 /** 对话内文件项 */
@@ -86,14 +87,6 @@ export interface FilePreviewHeaderProps {
   onLoadMoreFiles?: () => void;
   /** 当前文件列表页码（用于判断是否显示"没有更多了"） */
   currentFilesPage?: number;
-}
-
-/** 判断是否为图片类型（同时支持 category 和扩展名判断） */
-function isImageType(category?: string, extension?: string): boolean {
-  if (category === "image") return true;
-  if (!extension) return false;
-  const ext = extension.toLowerCase();
-  return ["png", "jpg", "jpeg", "gif", "bmp", "webp", "svg"].includes(ext);
 }
 
 /** Hover 下拉列表项组件 */
@@ -351,7 +344,6 @@ const FilePreviewHeader: React.FC<FilePreviewHeaderProps> = ({
             </span>
             {hasFiles && (
               <IconDropdown
-                size={12}
                 className={`wk-file-preview-header__dropdown-caret ${
                   isFilePanelOpen
                     ? "wk-file-preview-header__dropdown-caret--open"

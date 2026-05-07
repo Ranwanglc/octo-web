@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { X, FolderOpen } from "lucide-react";
 import { ConversationFile } from "./FilePreviewHeader";
-import { formatFileSize } from "./config";
+import { formatFileSize, isImageType } from "./config";
 import { getFileIcon as getFileIconUrl } from "../MessageInput/AttachmentNode";
 import "./FileListPanel.css";
 
@@ -24,14 +24,6 @@ export interface FileListPanelProps {
   currentPage?: number;
   /** 是否正在初始加载 */
   initialLoading?: boolean;
-}
-
-/** 判断是否为图片类型（同时支持 category 和扩展名判断） */
-function isImageType(category?: string, extension?: string): boolean {
-  if (category === "image") return true;
-  if (!extension) return false;
-  const ext = extension.toLowerCase();
-  return ["png", "jpg", "jpeg", "gif", "bmp", "webp", "svg"].includes(ext);
 }
 
 /** 根据扩展名获取文件图标 */

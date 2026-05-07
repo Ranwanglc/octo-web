@@ -86,17 +86,18 @@ const PdfRenderer: React.FC<PdfRendererProps> = ({ file, onError }) => {
   // 缩放变化回调
   const handleZoom = useCallback((e: ZoomEvent) => {
     setCurrentScale(e.scale);
-    // 如果是数值缩放，更新 zoomMode
+    // 尝试匹配数值缩放选项（跳过特殊模式如 PageWidth/PageFit/ActualSize）
     const scaleStr = e.scale.toFixed(2);
-    const matchedOption = ZOOM_OPTIONS.find(
-      (opt) => parseFloat(opt.value) === parseFloat(scaleStr)
-    );
+    const matchedOption = ZOOM_OPTIONS.find((opt) => {
+      const optVal = parseFloat(opt.value);
+      // 跳过特殊模式（parseFloat 返回 NaN），保留当前 zoomMode
+      if (isNaN(optVal)) return false;
+      return Math.abs(optVal - parseFloat(scaleStr)) < 0.005;
+    });
     if (matchedOption) {
       setCurrentZoomMode(matchedOption.value);
-    } else {
-      // 不是预设值，清除特殊模式
-      setCurrentZoomMode("");
     }
+    // 如果没匹配到数值选项，不清除 zoomMode（可能是特殊模式触发的缩放）
   }, []);
 
   // 使用 useRef 确保插件实例在组件生命周期内稳定
