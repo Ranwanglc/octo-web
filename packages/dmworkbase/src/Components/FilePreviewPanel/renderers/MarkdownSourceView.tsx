@@ -15,10 +15,10 @@ export interface MarkdownSourceViewProps {
  * Markdown 源码视图组件
  *
  * 功能：
- * 1. 分级渲染：
- *    - ≤ 30KB: SyntaxHighlighter 语法高亮
- *    - 30KB ~ 500KB: 纯文本渲染（无高亮）
- *    - > 500KB: 由外层处理（显示 FileTooLarge）
+ * 1. 分级渲染（阈值见 config.ts 中的 FILE_SIZE_THRESHOLD）：
+ *    - ≤ HIGHLIGHT: SyntaxHighlighter 语法高亮
+ *    - HIGHLIGHT ~ PLAIN_TEXT: 纯文本渲染（无高亮）
+ *    - > PLAIN_TEXT: 由外层处理（显示 FileTooLarge）
  * 2. 显示行号（仅高亮模式）
  * 3. 等宽字体展示
  */
@@ -43,7 +43,7 @@ const MarkdownSourceView: React.FC<MarkdownSourceViewProps> = ({
     );
   }
 
-  // 纯文本模式（30KB ~ 500KB）
+  // 纯文本模式（HIGHLIGHT ~ PLAIN_TEXT 阈值范围）
   if (renderMode === "plain") {
     return (
       <div className="wk-markdown-source-view">
@@ -57,7 +57,7 @@ const MarkdownSourceView: React.FC<MarkdownSourceViewProps> = ({
     );
   }
 
-  // 高亮模式（≤ 30KB）
+  // 高亮模式（≤ HIGHLIGHT 阈值）
   return (
     <div className="wk-markdown-source-view wk-code-highlight-container">
       <SyntaxHighlighter

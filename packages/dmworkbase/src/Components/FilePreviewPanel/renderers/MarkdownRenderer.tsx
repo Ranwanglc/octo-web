@@ -368,7 +368,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
             <MarkdownContent content={content} enableMath />
           </div>
         ) : sourceRenderMode === "too-large" ? (
-          /* 源码超过 500KB，不预览 */
+          /* 源码超过 PLAIN_TEXT 阈值，不预览 */
           <FileTooLarge
             fileName={file.name}
             fileSize={contentSize}

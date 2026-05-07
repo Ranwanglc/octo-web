@@ -186,7 +186,7 @@ const HtmlRenderer: React.FC<HtmlRendererProps> = ({
 
   // 源码模式
   if (viewMode === "source") {
-    // 源码超过 2MB，不预览
+    // 源码超过 PLAIN_TEXT 阈值，不预览
     if (sourceRenderMode === "too-large") {
       return (
         <FileTooLarge
