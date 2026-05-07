@@ -66,16 +66,15 @@ export function formatFileSize(bytes?: number): string {
 
 /**
  * 判断文件渲染模式
- * - highlight: 语法高亮渲染（< 100KB）
- * - plain: 纯文本渲染（100KB ~ 1MB）
- * - too-large: 文件过大，不渲染（> 20MB）
+ * - highlight: 语法高亮渲染（≤ 200KB）
+ * - plain: 纯文本渲染（200KB ~ 2MB）
+ * - too-large: 文件过大，不渲染（> 2MB）
  */
 export type RenderMode = "highlight" | "plain" | "too-large";
 
 export function getRenderMode(size: number): RenderMode {
   if (size <= FILE_SIZE_THRESHOLD.HIGHLIGHT) return "highlight";
-  // PLAIN_TEXT (1MB) < MAX_PREVIEW (20MB)，所以只需检查 MAX_PREVIEW
-  if (size <= FILE_SIZE_THRESHOLD.MAX_PREVIEW) return "plain";
+  if (size <= FILE_SIZE_THRESHOLD.PLAIN_TEXT) return "plain";
   return "too-large";
 }
 

@@ -4,6 +4,7 @@ import React, {
   useEffect,
   useCallback,
   useLayoutEffect,
+  useMemo,
 } from "react";
 import SyntaxHighlighter from "react-syntax-highlighter";
 import { BaseRendererProps } from "../types";
@@ -138,6 +139,18 @@ const HtmlRenderer: React.FC<HtmlRendererProps> = ({
     return () => window.removeEventListener("message", handleMessage);
   }, [viewMode, content, handleViewModeChange, onError]);
 
+  // 计算内容大小（用于源码模式的分级渲染）
+  const contentSize = useMemo(() => {
+    if (file.size) return file.size;
+    return content ? new Blob([content]).size : 0;
+  }, [file.size, content]);
+
+  // 源码模式的渲染模式（highlight / plain / too-large）
+  const sourceRenderMode = useMemo(
+    () => getRenderMode(contentSize),
+    [contentSize]
+  );
+
   // 使用 useEffect 通知错误，避免在渲染阶段调用外部回调
   useEffect(() => {
     if (error) {
@@ -173,12 +186,8 @@ const HtmlRenderer: React.FC<HtmlRendererProps> = ({
 
   // 源码模式
   if (viewMode === "source") {
-    // 根据内容大小决定渲染模式
-    const contentSize = new Blob([content]).size;
-    const renderMode = getRenderMode(contentSize);
-
-    // 源码超过 500KB，不预览
-    if (renderMode === "too-large") {
+    // 源码超过 2MB，不预览
+    if (sourceRenderMode === "too-large") {
       return (
         <FileTooLarge
           fileName={file.name}
@@ -206,7 +215,7 @@ const HtmlRenderer: React.FC<HtmlRendererProps> = ({
           </div>
         )}
         <div className="wk-file-preview-html-renderer__source-container wk-code-highlight-container">
-          {renderMode === "highlight" ? (
+          {sourceRenderMode === "highlight" ? (
             <SyntaxHighlighter
               language="html"
               useInlineStyles={false}
