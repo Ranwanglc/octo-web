@@ -269,7 +269,7 @@
 .wk-chat-content-chat {
   width: 100%;
   height: 100%;
-  transition: width 150ms ease-in-out 0s;
+  /* 不使用宽度过渡，避免关闭侧边面板时出现空白 */
 }
 
 .wk-chat-content-chat-selection {

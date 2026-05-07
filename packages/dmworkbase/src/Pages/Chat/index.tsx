@@ -137,6 +137,7 @@ export class ChatContentPage extends Component<
     this.setState({
       previewFile: file,
       showThreadPanel: true, // 确保面板打开
+      showChannelSetting: false, // 关闭设置面板，避免布局冲突
       activePreviewMessageId: file.messageId || null, // 保存激活的消息 ID
     });
   };
@@ -185,7 +186,11 @@ export class ChatContentPage extends Component<
 
     // 注册任务列表面板切换事件监听
     this._onToggleTodoPanel = (data) => {
-      if (data.channelId !== channel.channelID || data.channelType !== channel.channelType) return;
+      if (
+        data.channelId !== channel.channelID ||
+        data.channelType !== channel.channelType
+      )
+        return;
       this.setState((prevState) => {
         const opening = !prevState.showTodoPanel;
         return {
@@ -193,7 +198,9 @@ export class ChatContentPage extends Component<
           showThreadPanel: opening ? false : prevState.showThreadPanel,
           activeThread: opening ? null : prevState.activeThread,
           previewFile: opening ? null : prevState.previewFile,
-          activePreviewMessageId: opening ? null : prevState.activePreviewMessageId,
+          activePreviewMessageId: opening
+            ? null
+            : prevState.activePreviewMessageId,
         };
       });
     };
@@ -313,7 +320,10 @@ export class ChatContentPage extends Component<
     thread: Thread | null;
   }) => void;
   private _onCloseThreadPanel?: () => void;
-  private _onToggleTodoPanel?: (data: { channelId: string; channelType: number }) => void;
+  private _onToggleTodoPanel?: (data: {
+    channelId: string;
+    channelType: number;
+  }) => void;
 
   componentWillUnmount() {
     WKApp.mittBus.off("wk:file-preview", this._onFilePreview);
@@ -351,7 +361,9 @@ export class ChatContentPage extends Component<
         className={classNames(
           "wk-chat-content-right",
           showChannelSetting ? "wk-chat-channelsetting-open" : "",
-          showThreadPanel || previewFile || showTodoPanel ? "wk-chat-threadpanel-open" : ""
+          showThreadPanel || previewFile || showTodoPanel
+            ? "wk-chat-threadpanel-open"
+            : ""
         )}
       >
         <div
@@ -678,6 +690,7 @@ export class ChatContentPage extends Component<
                 this.setState({
                   previewFile: null,
                   activePreviewMessageId: null,
+                  showThreadPanel: false, // 重置状态，移除 wk-chat-threadpanel-open 类
                 })
               }
               filePreview={previewFile}
@@ -685,6 +698,7 @@ export class ChatContentPage extends Component<
                 this.setState({
                   previewFile: null,
                   activePreviewMessageId: null,
+                  showThreadPanel: false, // 重置状态，移除 wk-chat-threadpanel-open 类
                 })
               }
               onReplyFile={(info) => {
@@ -704,7 +718,9 @@ export class ChatContentPage extends Component<
         {/* 任务列表面板（与子区互斥，复用 ThreadPanel 容器样式） */}
         {showTodoPanel && (
           <div className="wk-thread-panel">
-            {WKApp.endpoints.chatTodoPanel(channel, () => this.setState({ showTodoPanel: false }))}
+            {WKApp.endpoints.chatTodoPanel(channel, () =>
+              this.setState({ showTodoPanel: false })
+            )}
           </div>
         )}
       </div>

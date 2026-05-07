@@ -95,3 +95,26 @@ export function shouldFetchContent(fileSize: number): boolean {
 export function isFileTooLarge(fileSize: number): boolean {
   return fileSize > FILE_SIZE_THRESHOLD.MAX_PREVIEW;
 }
+
+/** 图片扩展名列表 */
+const IMAGE_EXTENSIONS = [
+  "png",
+  "jpg",
+  "jpeg",
+  "gif",
+  "bmp",
+  "webp",
+  "svg",
+] as const;
+
+/**
+ * 判断是否为图片类型（同时支持 category 和扩展名判断）
+ * @param category - 文件分类（如 "image"）
+ * @param extension - 文件扩展名
+ */
+export function isImageType(category?: string, extension?: string): boolean {
+  if (category === "image") return true;
+  if (!extension) return false;
+  const ext = extension.toLowerCase();
+  return IMAGE_EXTENSIONS.includes(ext as (typeof IMAGE_EXTENSIONS)[number]);
+}
