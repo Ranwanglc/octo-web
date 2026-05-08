@@ -5,6 +5,7 @@ import { MessageWrap } from '../../Service/Model'
 import { MessageContentTypeConst } from '../../Service/Const'
 import { MessageRowUIProps } from './types'
 import { resolveExternalForViewer } from '../../Utils/externalViewer'
+import { subscriberDisplayName } from '../../Utils/displayName'
 import moment from 'moment'
 
 export interface MessageRowSelectionState {
@@ -25,10 +26,30 @@ export interface MessageRowInteractionState {
 
 /**
  * 从 channelInfo 取优先级最高的展示名
- * 优先级：备注名(displayName) > title > uid
+ * 优先级：备注名(displayName) > title > 空
+ * 注意：channelInfo 未缓存时返回空串，避免把 32 位 fromUID 当名字暴露在 UI。
+ * fetchChannelInfo 回包后 listener 会触发重渲染补上真名。
  */
 function getSenderName(channelInfo: ChannelInfo | undefined, fromUID: string): string {
-  return channelInfo?.orgData?.displayName || channelInfo?.title || fromUID
+  return channelInfo?.orgData?.displayName || channelInfo?.title || ''
+}
+
+/**
+ * 群消息场景下优先从群成员列表取名字（群内昵称 remark > 全局 name）。
+ * 进群时群成员会批量同步到 SDK 的 subscribeCacheMap，命中率远高于
+ * 单查 Person ChannelInfo（单查还可能因权限失败污染缓存）。
+ *
+ * 返回空串表示没命中，调用方应继续降级到 channelInfo。
+ */
+function getGroupMemberName(message: MessageWrap): string {
+  if (message.channel?.channelType !== ChannelTypeGroup || !message.fromUID) return ''
+  try {
+    const subs = WKSDK.shared().channelManager.getSubscribes(message.channel) as any[] | null | undefined
+    const member = subs?.find((s) => s && s.uid === message.fromUID)
+    return subscriberDisplayName(member)
+  } catch {
+    return ''
+  }
 }
 
 /**
@@ -105,7 +126,7 @@ export function getMessageRow(
     showCheckbox: selection?.showCheckbox ?? false,
     showAvatar: !isContinue,
     avatarUrl: WKApp.shared.avatarUser(message.fromUID),
-    senderName: getSenderName(channelInfo, message.fromUID),
+    senderName: getGroupMemberName(message) || getSenderName(channelInfo, message.fromUID),
     isBot: channelInfo?.orgData?.robot === 1,
     timestamp,
     timeOnly,
@@ -127,7 +148,8 @@ export function getMessageRow(
  * 修复「发送者名称显示为 uid」问题：
  * - channelInfo 未缓存时，触发 fetchChannelInfo 异步拉取
  * - 注册 channelInfoListener，拉到结果后重新渲染（对齐 Base/index.tsx 的做法）
- * - senderName 优先取 displayName（备注名），其次 title，最后降级为 uid
+ * - senderName 优先取 displayName（备注名），其次 title，拿不到时返回空串
+ *   （避免把 32 位 fromUID 当名字泄漏到 UI，等 listener 回包后重渲染显示真名）
  *
  * @param message - 业务消息对象
  * @returns MessageRow 组件的 Props
@@ -161,10 +183,21 @@ export function useMessageRow(
     }
     WKSDK.shared().channelManager.addListener(listener)
 
+    // 群成员到达 / 更新时触发重渲染：群消息发送者名字主路径读群成员列表，
+    // 成员列表是异步同步的，消息可能先于成员列表到达，需要通知一次。
+    const msgChannel = message.channel
+    const subListener = (ch: Channel) => {
+      if (msgChannel?.isEqual(ch)) {
+        forceUpdate()
+      }
+    }
+    WKSDK.shared().channelManager.addSubscriberChangeListener(subListener)
+
     return () => {
       WKSDK.shared().channelManager.removeListener(listener)
+      WKSDK.shared().channelManager.removeSubscriberChangeListener(subListener)
     }
-  }, [message.fromUID, forceUpdate])
+  }, [message.fromUID, message.channel, forceUpdate])
 
   return getMessageRow(message, selection, interaction)
 }

@@ -83,10 +83,14 @@ export default class DataSourceModule implements IModule {
             try {
                 resp = await WKApp.apiClient.get(`channels/${realUID}/${channel.channelType}`);
             } catch (err) {
-                // channel 不存在（400/404），返回空 ChannelInfo，不重试
+                // channel 不存在（400/404）或无权限访问：返回空 ChannelInfo，不重试。
+                // title 不能用 channel.channelID（32 位 hex uid）兜底，否则渲染层会把
+                // uid 当名字展示给用户；而上游 SDK 一旦缓存成功就不会再 fetch，导致
+                // "一直显示 uid 直到刷新" 的 bug。群消息场景渲染层会优先从群成员列表
+                // 取名字，这里留空不影响正常展示。
                 console.warn(`channel info not found: ${channel.channelID}/${channel.channelType}`);
                 channelInfo.channel = channel;
-                channelInfo.title = channel.channelID;
+                channelInfo.title = "";
                 channelInfo.orgData = {};
                 return channelInfo;
             }
