@@ -7,6 +7,11 @@
   overflow: hidden;
 }
 
+/* 关闭按钮右侧间距 */
+.claw-info-modal .semi-modal-header-close {
+  right: 25px !important;
+}
+
 .claw-info-container {
   display: flex;
   flex-direction: column;
