@@ -43,7 +43,9 @@ export function getMergeforwardMessageUI(
     }
   }
   const previewMsgs = msgs.slice(0, 4).map((m: any) => {
-    const senderName = uidToName[m.fromUID] || m.fromUID || ''
+    // 只在 uidToName 有映射时才拼 "名字：" 前缀；拿不到映射（例如权限/
+    // 可见性问题）时退回只显示摘要，避免把 32 位 fromUID 当名字暴露给用户。
+    const senderName = uidToName[m.fromUID] || ''
     const msgDigest: string = m.content?.conversationDigest ?? ''
     // 格式：「名字：内容」，与 Figma 设计稿一致
     const digest = senderName ? `${senderName}：${msgDigest}` : msgDigest

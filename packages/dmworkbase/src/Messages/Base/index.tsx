@@ -19,6 +19,7 @@ import {
 import { IConversationProvider } from "../../Service/DataSource/DataProvider";
 import WKApp from "../../App";
 import { resolveExternalForViewer } from "../../Utils/externalViewer";
+import { subscriberDisplayName } from "../../Utils/displayName";
 import { css } from "@emotion/react";
 // import ClockLoader from "react-spinners/ClockLoader";
 import Checkbox from "../../Components/Checkbox";
@@ -45,6 +46,7 @@ interface MessageBaseProps extends HTMLProps<any> {
 
 export default class MessageBase extends Component<MessageBaseProps, any> {
   channelInfoListener!: ChannelInfoListener;
+  subscriberChangeListener!: (channel: Channel) => void;
   conversationProvider: IConversationProvider;
 
   constructor(props: any) {
@@ -63,10 +65,25 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
       }
     };
     WKSDK.shared().channelManager.addListener(this.channelInfoListener);
+
+    // 群成员到达 / 更新时触发重渲染：群消息发送者名字优先从群成员列表取，
+    // 成员列表是异步同步的，消息可能先于成员列表到达，需要通知一次。
+    this.subscriberChangeListener = (channel: Channel) => {
+      const { message } = self.props;
+      if (message.channel.isEqual(channel)) {
+        self.setState({});
+      }
+    };
+    WKSDK.shared().channelManager.addSubscriberChangeListener(
+      this.subscriberChangeListener
+    );
   }
 
   componentWillUnmount() {
     WKSDK.shared().channelManager.removeListener(this.channelInfoListener);
+    WKSDK.shared().channelManager.removeSubscriberChangeListener(
+      this.subscriberChangeListener
+    );
   }
 
   forceStandalone() {
@@ -266,10 +283,29 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
     );
     const avatarChannel =
       channelInfo?.channel || new Channel(message.fromUID, ChannelTypePerson);
+    // 群消息的发送者名字优先从群成员列表取（群内昵称 remark > 全局 name），
+    // 群成员列表进群时就批量加载好了，命中率远高于单查 Person ChannelInfo。
+    // 对成员列表未命中的场景（超级群分页外、时序窗口内、私聊）再降级到
+    // Person ChannelInfo；都拿不到则留空，避免把 32 位 UID 暴露到 UI。
+    let groupMemberName = "";
+    if (message.channel.channelType === ChannelTypeGroup && message.fromUID) {
+      try {
+        const subs = WKSDK.shared().channelManager.getSubscribes(
+          message.channel
+        ) as any[] | null | undefined;
+        const member = subs?.find((s) => s && s.uid === message.fromUID);
+        groupMemberName = subscriberDisplayName(member);
+      } catch {
+        // channelManager 未初始化 / 缓存未加载：静默降级
+      }
+    }
+    // channelInfo 未命中时不要把 fromUID（32 位 hex）当兜底名字显示给用户，
+    // 留空等待 fetchChannelInfo 回包后由 channelInfoListener 触发重渲染。
     const displayName =
+      groupMemberName ||
       channelInfo?.orgData?.displayName ||
       channelInfo?.title ||
-      message.fromUID;
+      "";
     if (!channelInfo && message.fromUID && message.fromUID !== "") {
       WKSDK.shared().channelManager.fetchChannelInfo(
         new Channel(message.fromUID, ChannelTypePerson)

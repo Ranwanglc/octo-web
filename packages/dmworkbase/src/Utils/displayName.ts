@@ -48,3 +48,29 @@ export function isRealnameVerified(user: DisplayNameUser | null | undefined): bo
     if (!user) return false;
     return user.realname_verified === true || user.realname_verified === 1;
 }
+
+/**
+ * 从群成员（Subscriber）对象里提取展示名。
+ *
+ * Subscriber 的 `name` / `remark` 是平铺字段，`real_name` / `realname_verified`
+ * 在 orgData 里（后端 enrich）。本函数把两边的字段合并后交给 displayName
+ * 统一按 remark → real_name(verified) → name 的优先级返回。
+ *
+ * 用于群消息发送者名字的主路径（比 Person ChannelInfo 命中率高得多，
+ * 特别是仅在群里出现、没开过 1v1 的用户）。
+ */
+export interface SubscriberLike {
+    name?: string | null;
+    remark?: string | null;
+    orgData?: { real_name?: string | null; realname_verified?: boolean | number | null } | null;
+}
+
+export function subscriberDisplayName(sub: SubscriberLike | null | undefined): string {
+    if (!sub) return "";
+    return displayName({
+        name: sub.name,
+        remark: sub.remark,
+        real_name: sub.orgData?.real_name,
+        realname_verified: sub.orgData?.realname_verified,
+    });
+}
