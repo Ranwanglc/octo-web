@@ -1,4 +1,5 @@
 import APIClient from './APIClient';
+import FileHelper from '../Utils/filehelper';
 
 /**
  * AgentCardService
@@ -145,7 +146,7 @@ class AgentCardService {
     const data = response.data;
     return {
       name: data.file_name,
-      size: this.formatFileSize(data.file_size),
+      size: FileHelper.formatFileSize(data.file_size),
       mtime: this.formatTime(data.last_synced_at),
       content: data.content,
     };
@@ -180,7 +181,7 @@ class AgentCardService {
         files: identityFiles.map((f) => ({
           name: f.file_name,
           path: f.file_name,
-          size: this.formatFileSize(f.file_size),
+          size: FileHelper.formatFileSize(f.file_size),
         })),
       });
     }
@@ -191,7 +192,7 @@ class AgentCardService {
         files: toolsFiles.map((f) => ({
           name: f.file_name,
           path: f.file_name,
-          size: this.formatFileSize(f.file_size),
+          size: FileHelper.formatFileSize(f.file_size),
         })),
       });
     }
@@ -202,7 +203,7 @@ class AgentCardService {
         files: otherFiles.map((f) => ({
           name: f.file_name,
           path: f.file_name,
-          size: this.formatFileSize(f.file_size),
+          size: FileHelper.formatFileSize(f.file_size),
         })),
       });
     }
@@ -214,27 +215,12 @@ class AgentCardService {
         files: agentCard.memory_files.map((f) => ({
           name: f.file_name,
           path: f.file_name,
-          size: this.formatFileSize(f.file_size),
+          size: FileHelper.formatFileSize(f.file_size),
         })),
       });
     }
 
     return groups;
-  }
-
-  /**
-   * 格式化文件大小
-   * @param bytes 字节数
-   * @returns 格式化后的字符串（如 "412B" / "1.4KB"）
-   */
-  formatFileSize(bytes: number): string {
-    if (bytes < 1024) {
-      return `${bytes}B`;
-    } else if (bytes < 1024 * 1024) {
-      return `${(bytes / 1024).toFixed(1)}KB`;
-    } else {
-      return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
-    }
   }
 
   /**

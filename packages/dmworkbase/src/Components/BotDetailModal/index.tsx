@@ -85,19 +85,25 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
     }
 
     loadReportStatus = async () => {
-        const { uid } = this.props;
-        if (!uid) return;
+        const requestedUid = this.props.uid;
+        if (!requestedUid) return;
+
+        const isStale = () => this.props.uid !== requestedUid;
 
         this.setState({ reportStatusLoading: true });
         try {
-            const result = await WKApp.apiClient.get(`agent-cards/${uid}/report-status`);
+            const result = await WKApp.apiClient.get(`agent-cards/${requestedUid}/report-status`);
+            if (isStale()) return; // 如果已切换到其他 bot，忽略旧请求
             this.setState({ reported: result.data?.reported || false });
         } catch (error) {
+            if (isStale()) return;
             console.error("[BotDetailModal] loadReportStatus failed:", error);
             // 网络错误，默认为未上报
             this.setState({ reported: false });
         } finally {
-            this.setState({ reportStatusLoading: false });
+            if (!isStale()) {
+                this.setState({ reportStatusLoading: false });
+            }
         }
     };
 

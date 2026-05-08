@@ -4,6 +4,7 @@ import WKModal from "../WKModal";
 import ClawSessionItem from "../ClawSessionItem";
 import ClawOverviewTab from "../ClawOverviewTab/ClawOverviewTab";
 import ClawCoreFilesTab from "../ClawCoreFilesTab/ClawCoreFilesTab";
+import AgentCardService from "../../Service/AgentCardService";
 import "./ClawInfoModal.css";
 
 export interface ClawInfoModalProps {
@@ -90,9 +91,33 @@ export default function ClawInfoModal({ botId, botName, visible, onClose }: Claw
   const [activeTab, setActiveTab] = useState<"overview" | "session" | "files">("overview");
 
   useEffect(() => {
+    let cancelled = false;
+    
+    const load = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        // 使用 AgentCardService 统一走 axios + proxy
+        const result = await AgentCardService.getAgentCard(botId);
+        if (cancelled) return; // 如果已取消，忽略结果
+        setData(result);
+      } catch (err: any) {
+        if (cancelled) return;
+        setError(err.message || "加载失败");
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+    
     if (visible && botId) {
-      loadAgentCard();
+      load();
     }
+    
+    return () => {
+      cancelled = true;
+    };
   }, [visible, botId]);
 
   // 弹窗关闭时重置 Tab 到默认（概览）
@@ -102,20 +127,7 @@ export default function ClawInfoModal({ botId, botName, visible, onClose }: Claw
     }
   }, [visible]);
 
-  const loadAgentCard = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      // 使用 AgentCardService 统一走 axios + proxy
-      const AgentCardService = (await import('../../Service/AgentCardService')).default;
-      const result = await AgentCardService.getAgentCard(botId);
-      setData(result);
-    } catch (err: any) {
-      setError(err.message || "加载失败");
-    } finally {
-      setLoading(false);
-    }
-  };
+
 
   const mapToSessionData = (s: AgentCardData["sessions"][0]): SessionData => {
     // 渠道名称映射（中文）
@@ -278,8 +290,11 @@ export default function ClawInfoModal({ botId, botName, visible, onClose }: Claw
         </div>
 
         {/* Tabs */}
-        <div className="claw-info-tabs">
+        <div className="claw-info-tabs" role="tablist">
           <button
+            role="tab"
+            aria-selected={activeTab === "overview"}
+            aria-controls="panel-overview"
             className={`claw-info-tab ${activeTab === "overview" ? "active" : ""}`}
             onClick={() => setActiveTab("overview")}
             data-testid="tab-overview"
@@ -287,6 +302,9 @@ export default function ClawInfoModal({ botId, botName, visible, onClose }: Claw
             概览
           </button>
           <button
+            role="tab"
+            aria-selected={activeTab === "session"}
+            aria-controls="panel-session"
             className={`claw-info-tab ${activeTab === "session" ? "active" : ""}`}
             onClick={() => setActiveTab("session")}
             data-testid="tab-session"
@@ -294,6 +312,9 @@ export default function ClawInfoModal({ botId, botName, visible, onClose }: Claw
             Session 信息
           </button>
           <button
+            role="tab"
+            aria-selected={activeTab === "files"}
+            aria-controls="panel-files"
             className={`claw-info-tab ${activeTab === "files" ? "active" : ""}`}
             onClick={() => setActiveTab("files")}
             data-testid="tab-files"
@@ -304,9 +325,14 @@ export default function ClawInfoModal({ botId, botName, visible, onClose }: Claw
 
         {/* Tab Content */}
         <div className="claw-info-content">
-          {activeTab === "session" && renderSessionTab()}
+          {activeTab === "session" && (
+            <div id="panel-session" role="tabpanel" aria-labelledby="tab-session">
+              {renderSessionTab()}
+            </div>
+          )}
           {activeTab === "overview" && data?.runtime_info && (
-            <ClawOverviewTab
+            <div id="panel-overview" role="tabpanel" aria-labelledby="tab-overview">
+              <ClawOverviewTab
               runtimeInfo={{
                 os_version: data.runtime_info.os_version || "—",
                 arch: data.runtime_info.arch || "—",
@@ -330,9 +356,12 @@ export default function ClawInfoModal({ botId, botName, visible, onClose }: Claw
               }}
               loading={loading}
             />
+            </div>
           )}
           {activeTab === "files" && (
-            <ClawCoreFilesTab botId={botId} height="100%" />
+            <div id="panel-files" role="tabpanel" aria-labelledby="tab-files">
+              <ClawCoreFilesTab botId={botId} height="100%" />
+            </div>
           )}
         </div>
       </div>

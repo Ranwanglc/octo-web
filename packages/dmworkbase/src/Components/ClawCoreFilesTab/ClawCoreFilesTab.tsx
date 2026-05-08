@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import FileViewer from '../FileViewer/FileViewer';
 import '../FileViewer/FileViewer.css';
 import type { FileGroup, FileContent } from '../FileViewer/FileViewer';
@@ -28,12 +28,7 @@ export default function ClawCoreFilesTab({ botId, height = '100%' }: ClawCoreFil
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadFileGroups();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [botId]);
-
-  const loadFileGroups = async () => {
+  const loadFileGroups = useCallback(async () => {
     setLoading(true);
     setError(null);
 
@@ -47,7 +42,11 @@ export default function ClawCoreFilesTab({ botId, height = '100%' }: ClawCoreFil
     } finally {
       setLoading(false);
     }
-  };
+  }, [botId]);
+
+  useEffect(() => {
+    loadFileGroups();
+  }, [loadFileGroups]);
 
   const handleFetchFile = async (path: string): Promise<FileContent> => {
     try {

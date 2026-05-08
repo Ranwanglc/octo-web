@@ -67,8 +67,39 @@ export function useAgentCard(
 
   // 初始加载
   useEffect(() => {
-    void fetchData();
-  }, [fetchData]);
+    let cancelled = false;
+
+    const load = async () => {
+      if (!botId || !enabled) {
+        return;
+      }
+
+      setLoading(true);
+      setError(null);
+
+      try {
+        const result = await getAgentCard(botId);
+        if (cancelled) return; // 如果已取消，忽略结果
+        setData(result);
+        setError(null);
+      } catch (err) {
+        if (cancelled) return;
+        const message = err instanceof Error ? err.message : 'Failed to fetch agent card';
+        setError(message);
+        setData(null);
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    void load();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [botId, enabled]);
 
   return {
     data,

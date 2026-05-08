@@ -4,7 +4,7 @@
  * 用于获取 Agent Card 文件内容
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { getAgentCardFile } from '../api/agentCardApi';
 import type { FileContentData } from '../api/types';
 
@@ -38,6 +38,14 @@ export function useAgentCardFile(botId: string | null): UseAgentCardFileResult {
   const [data, setData] = useState<FileContentData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const cancelledRef = useRef(false);
+
+  // 组件卸载时标记为已取消
+  useEffect(() => {
+    return () => {
+      cancelledRef.current = true;
+    };
+  }, []);
 
   const fetchFile = useCallback(
     async (fileName: string) => {
@@ -46,19 +54,24 @@ export function useAgentCardFile(botId: string | null): UseAgentCardFileResult {
         return;
       }
 
+      cancelledRef.current = false; // 重置取消标记
       setLoading(true);
       setError(null);
 
       try {
         const result = await getAgentCardFile(botId, fileName);
+        if (cancelledRef.current) return; // 如果已取消，忽略结果
         setData(result);
         setError(null);
       } catch (err) {
+        if (cancelledRef.current) return;
         const message = err instanceof Error ? err.message : 'Failed to fetch file content';
         setError(message);
         setData(null);
       } finally {
-        setLoading(false);
+        if (!cancelledRef.current) {
+          setLoading(false);
+        }
       }
     },
     [botId],
