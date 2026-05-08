@@ -319,6 +319,7 @@ export class Conversation
     const done = () => {
       if (settled) return;
       settled = true;
+      pendingAcks = []; // 释放暂存引用
       queueMicrotask(() => {
         WKSDK.shared().taskManager.removeListener(taskListener);
         WKSDK.shared().chatManager.removeMessageStatusListener(ackListener);
@@ -420,6 +421,7 @@ export class Conversation
     const done = () => {
       if (settled) return;
       settled = true;
+      pendingAcks = []; // 释放暂存引用
       queueMicrotask(() => {
         WKSDK.shared().chatManager.removeMessageStatusListener(statusListener);
       });
