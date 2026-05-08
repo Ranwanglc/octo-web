@@ -129,6 +129,7 @@
 .claw-session-toolbar {
   display: flex;
   align-items: center;
+  justify-content: flex-end; /* 统计信息右对齐 */
   margin-bottom: 0;
 }
 
