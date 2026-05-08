@@ -31,7 +31,8 @@ interface BotDetailModalState {
     editingDescription: boolean;
     descriptionDraft: string;
     savingDescription: boolean;
-    octopushStatus: "reported" | "managed_unreported" | "unmanaged" | null;
+    // Mock 显示：后端接口未 ready，暂时固定为 "managed_unreported"
+    octopushStatus: "reported" | "managed_unreported" | "unmanaged";
 }
 
 export default class BotDetailModal extends Component<BotDetailModalProps, BotDetailModalState> {
@@ -54,7 +55,8 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
         editingDescription: false,
         descriptionDraft: "",
         savingDescription: false,
-        octopushStatus: null,
+        // Mock 显示：后端接口未 ready，暂时固定为 "managed_unreported"
+        octopushStatus: "managed_unreported",
     };
 
     componentDidMount() {
@@ -98,7 +100,8 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
             editingDescription: false,
             descriptionDraft: "",
             savingDescription: false,
-            octopushStatus: null,
+            // Mock 显示：后端接口未 ready，暂时固定为 "managed_unreported"
+            octopushStatus: "managed_unreported",
         });
 
         const isStale = () => this.props.uid !== requestedUid;
@@ -106,8 +109,6 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
         try {
             // 用 user detail API 获取完整信息（包含 follow）
             const data = await WKApp.apiClient.get(`users/${requestedUid}`);
-            console.log('[BotDetailModal] API 完整响应:', JSON.stringify(data, null, 2));
-            console.log('[BotDetailModal] octopush_status 字段:', data.octopush_status);
             if (isStale()) return;
             this.setState({
                 loading: false,
@@ -119,7 +120,9 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
                 botCommands: data.bot_commands || "",
                 isFriend: data.follow === 1,
                 editingDescription: false,
-                octopushStatus: data.octopush_status || null,
+                // Mock 显示：后端接口未 ready，暂时固定为 "managed_unreported"
+                // TODO: 后端接口 ready 后，改为 data.octopush_status || "unmanaged"
+                octopushStatus: "managed_unreported",
             });
         } catch {
             // fallback to channel info
@@ -127,8 +130,6 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
                 const channelInfo = await WKSDK.shared().channelManager.fetchChannelInfo(
                     new Channel(requestedUid, ChannelTypePerson)
                 );
-                console.log('[BotDetailModal] Fallback channelInfo:', JSON.stringify(channelInfo?.orgData, null, 2));
-                console.log('[BotDetailModal] Fallback octopush_status:', channelInfo?.orgData?.octopush_status);
                 if (isStale()) return;
                 this.setState({
                     loading: false,
@@ -140,7 +141,9 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
                     botCommands: channelInfo?.orgData?.bot_commands || "",
                     isFriend: channelInfo?.orgData?.follow === 1,
                     editingDescription: false,
-                    octopushStatus: channelInfo?.orgData?.octopush_status || null,
+                    // Mock 显示：后端接口未 ready，暂时固定为 "managed_unreported"
+                    // TODO: 后端接口 ready 后，改为 channelInfo?.orgData?.octopush_status || "unmanaged"
+                    octopushStatus: "managed_unreported",
                 });
             } catch {
                 if (isStale()) return;
@@ -156,7 +159,8 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
                     botCommands: "",
                     isFriend: false,
                     editingDescription: false,
-                    octopushStatus: null,
+                    // Mock 显示：后端接口未 ready，暂时固定为 "managed_unreported"
+                    octopushStatus: "managed_unreported",
                 });
             }
         }
@@ -370,7 +374,7 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
                                 {name.replace(/\*\*/g, '')} <AiBadge />
                             </div>
                             <div className="wk-bot-detail-id">@{username}</div>
-                            {isOwner && octopushStatus && (
+                            {isOwner && (
                                 <div
                                     className={`wk-bot-detail-octopush-chip wk-bot-detail-octopush-chip--${octopushStatus}`}
                                 >
@@ -453,21 +457,13 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
                                 ))}
                             </div>
                         )}
-                        {isOwner && octopushStatus && (
+                        {isOwner && (
                             <Button
                                 block
-                                disabled={octopushStatus !== "reported"}
                                 onClick={this.handleViewClawInfo}
-                                className={`wk-bot-detail-claw-btn${octopushStatus !== "reported" ? " wk-bot-detail-claw-btn--disabled" : ""}`}
+                                className="wk-bot-detail-claw-btn"
                                 style={{ marginTop: 16 }}
-                                aria-label={octopushStatus === "reported" ? "查看龙虾信息" : undefined}
-                                title={
-                                    octopushStatus === "managed_unreported"
-                                        ? "请先在 OctoPush 中上报机器信息，才可查看龙虾信息"
-                                        : octopushStatus === "unmanaged"
-                                        ? "请在 OctoPush 中配置连接，由 OctoPush 管理该龙虾后再查看"
-                                        : undefined
-                                }
+                                aria-label="查看龙虾信息"
                             >
                                 🦞 查看龙虾信息
                             </Button>
@@ -478,7 +474,7 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
                                 type="primary"
                                 block
                                 onClick={this.handleChat}
-                                style={{ marginTop: isOwner && octopushStatus ? 10 : 16 }}
+                                style={{ marginTop: isOwner ? 10 : 16 }}
                             >
                                 发送消息
                             </Button>
