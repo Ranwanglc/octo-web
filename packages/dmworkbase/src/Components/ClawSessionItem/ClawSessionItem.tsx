@@ -10,8 +10,10 @@ export interface ClawSessionItemProps {
     status: "running" | "done" | "failed" | "killed" | "timeout";
     /** 渠道名称（如 Octo、Discord、飞书） */
     channel: string;
-    /** 对话方（如"罗敬为 · 皮皮虾(私聊)"） */
-    party: string;
+    /** 对话方展示名称（如"团长"） */
+    partyName: string;
+    /** 对话方 ID（如"user:379800680b7a48fa8955e8d17f73c39c"，可选） */
+    partyId?: string;
     /** Bot 显示名（如"皮皮虾"） */
     botName: string;
     /** Bot ID（如"pipixia_bot"） */
@@ -44,7 +46,8 @@ export default function ClawSessionItem({ session }: ClawSessionItemProps) {
     key,
     status,
     channel,
-    party,
+    partyName,
+    partyId,
     botName,
     botId,
     model,
@@ -106,7 +109,12 @@ export default function ClawSessionItem({ session }: ClawSessionItemProps) {
 
         {/* 对话方 */}
         <span className="wk-session-party" data-testid="claw-session-party-head">
-          {party}
+          {partyName}
+          {partyId && (
+            <span className="wk-session-party-id">
+              ({partyId})
+            </span>
+          )}
         </span>
 
         {/* 展开/收起箭头 */}

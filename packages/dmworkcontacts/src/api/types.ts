@@ -79,6 +79,8 @@ export interface SessionInfo {
   status: SessionStatus;
   /** 对话方名称 */
   peer_name: string;
+  /** 对话方展示名称（含渠道类型/成员数等修饰信息） */
+  peer_display_name: string;
   /** 对话类型 */
   peer_type: PeerType;
   /** 群成员数量（仅 group 类型有值） */

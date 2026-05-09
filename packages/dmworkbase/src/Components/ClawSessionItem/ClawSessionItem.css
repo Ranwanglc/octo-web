@@ -206,6 +206,16 @@
   white-space: nowrap;
 }
 
+.wk-session-party-id {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  background: rgba(0, 0, 0, 0.04);
+  padding: 1px 5px;
+  border-radius: 3px;
+  color: rgba(0, 0, 0, 0.45);
+  margin-left: 2px;
+}
+
 /* AC-7: 展开/收起箭头 */
 .wk-session-chevron {
   margin-left: auto;

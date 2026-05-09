@@ -8,7 +8,8 @@ describe("ClawSessionItem", () => {
     key: "octo:c_pipi_lux_01",
     status: "done" as const,
     channel: "Octo",
-    party: "罗敬为 · 皮皮虾(私聊)",
+    partyName: "团长",
+    partyId: "user:379800680b7a48fa8955e8d17f73c39c",
     botName: "皮皮虾",
     botId: "pipixia_bot",
     model: "mlamp/claude-opus-4-7",
@@ -23,9 +24,9 @@ describe("ClawSessionItem", () => {
       render(<ClawSessionItem session={mockSession} />);
 
       // 验证对话方
-      expect(screen.getByTestId("claw-session-party")).toHaveTextContent(
-        "罗敬为 · 皮皮虾(私聊)"
-      );
+      const partyElement = screen.getByTestId("claw-session-party-head");
+      expect(partyElement).toHaveTextContent("团长");
+      expect(partyElement).toHaveTextContent("user:379800680b7a48fa8955e8d17f73c39c");
 
       // 验证模型
       expect(screen.getByTestId("claw-session-model")).toHaveTextContent(
@@ -254,6 +255,15 @@ describe("ClawSessionItem", () => {
   });
 
   describe("边界情况", () => {
+    it("没有 partyId 时只显示 partyName", () => {
+      const sessionWithoutId = { ...mockSession, partyId: undefined };
+      render(<ClawSessionItem session={sessionWithoutId} />);
+
+      const partyElement = screen.getByTestId("claw-session-party-head");
+      expect(partyElement).toHaveTextContent("团长");
+      expect(partyElement.textContent).not.toContain("user:");
+    });
+
     it("上下文占用为 0 时应该正确显示", () => {
       const zeroSession = { ...mockSession, ctxUsed: 0 };
       render(<ClawSessionItem session={zeroSession} />);
