@@ -5,7 +5,7 @@ import ClawSessionItem from "./ClawSessionItem";
  * ClawSessionItem - Session 展示卡片
  *
  * 用于展示会话信息，包含对话方、模型、上下文使用情况等。
- * 支持折叠/展开，RUNNING 状态有强视觉标记。
+ * 支持折叠/展开，支持 5 种状态：running（绿）/ done（灰）/ failed|killed|timeout（红）。
  */
 const meta: Meta<typeof ClawSessionItem> = {
   title: "Components/ClawSessionItem",
@@ -26,16 +26,17 @@ export default meta;
 type Story = StoryObj<typeof ClawSessionItem>;
 
 /**
- * 默认状态（活跃，非 RUNNING）
+ * 默认状态（DONE）
  */
 export const Default: Story = {
   args: {
     session: {
       key: "octo:c_pipi_lux_01",
-      status: "active",
-      running: false,
+      status: "done",
       channel: "Octo",
       party: "罗敬为 · 皮皮虾(私聊)",
+      botName: "皮皮虾",
+      botId: "pipixia_bot",
       model: "mlamp/claude-opus-4-7",
       ctxUsed: 48200,
       ctxMax: 1000000,
@@ -52,10 +53,11 @@ export const Running: Story = {
   args: {
     session: {
       key: "localhost:cli_term_01",
-      status: "active",
-      running: true,
+      status: "running",
       channel: "Localhost",
       party: "终端 · openclaw chat",
+      botName: "皮皮虾",
+      botId: "pipixia_bot",
       model: "mlamp/claude-opus-4-7",
       ctxUsed: 128400,
       ctxMax: 1000000,
@@ -72,10 +74,11 @@ export const HighContext: Story = {
   args: {
     session: {
       key: "discord:1470015610489536542",
-      status: "active",
-      running: true,
+      status: "running",
       channel: "Discord",
       party: "#square · LUO",
+      botName: "皮皮虾",
+      botId: "pipixia_bot",
       model: "mlamp/claude-opus-4-7",
       ctxUsed: 850000,
       ctxMax: 1000000,
@@ -86,21 +89,64 @@ export const HighContext: Story = {
 };
 
 /**
- * 空闲状态（idle）
+ * FAILED 状态（红色边框 + 红色徽章）
  */
-export const Idle: Story = {
+export const Failed: Story = {
   args: {
     session: {
-      key: "octo:g_botfather",
-      status: "idle",
-      running: false,
+      key: "octo:c_task_01",
+      status: "failed",
       channel: "Octo",
-      party: "BotFather · 帮助频道",
+      party: "任务执行器 · 数据导入",
+      botName: "皮皮虾",
+      botId: "pipixia_bot",
       model: "mlamp/claude-opus-4-7",
-      ctxUsed: 4200,
-      ctxMax: 1000000,
-      sessionId: "sess_octo_bf_33aa2",
-      lastMsg: "/start",
+      ctxUsed: 12000,
+      ctxMax: 200000,
+      sessionId: "sess_octo_task_f1a7",
+      lastMsg: "执行数据导入任务",
+    },
+  },
+};
+
+/**
+ * KILLED 状态（红色边框 + 红色徽章）
+ */
+export const Killed: Story = {
+  args: {
+    session: {
+      key: "localhost:bg_job_02",
+      status: "killed",
+      channel: "Localhost",
+      party: "后台任务 · 文件处理",
+      botName: "皮皮虾",
+      botId: "pipixia_bot",
+      model: "mlamp/claude-sonnet-4",
+      ctxUsed: 8500,
+      ctxMax: 200000,
+      sessionId: "sess_local_job_k2b9",
+      lastMsg: "处理大文件批量转换",
+    },
+  },
+};
+
+/**
+ * TIMEOUT 状态（红色边框 + 红色徽章）
+ */
+export const Timeout: Story = {
+  args: {
+    session: {
+      key: "discord:1470015610489536999",
+      status: "timeout",
+      channel: "Discord",
+      party: "#backend · 数据同步",
+      botName: "皮皮虾",
+      botId: "pipixia_bot",
+      model: "mlamp/claude-opus-4-7",
+      ctxUsed: 45000,
+      ctxMax: 200000,
+      sessionId: "sess_disc_sync_t3c8",
+      lastMsg: "同步远程数据库",
     },
   },
 };
@@ -112,10 +158,11 @@ export const Feishu: Story = {
   args: {
     session: {
       key: "feishu:oc_x4a91",
-      status: "idle",
-      running: false,
+      status: "done",
       channel: "飞书",
       party: "明略 AI 小组",
+      botName: "皮皮虾",
+      botId: "pipixia_bot",
       model: "mlamp/claude-opus-4-7",
       ctxUsed: 8200,
       ctxMax: 200000,
@@ -132,10 +179,11 @@ export const Slack: Story = {
   args: {
     session: {
       key: "slack:C0912",
-      status: "idle",
-      running: false,
+      status: "done",
       channel: "Slack",
       party: "#dev-backend",
+      botName: "皮皮虾",
+      botId: "pipixia_bot",
       model: "mlamp/claude-sonnet-4",
       ctxUsed: 12000,
       ctxMax: 200000,
@@ -152,10 +200,11 @@ export const WebUI: Story = {
   args: {
     session: {
       key: "webui:console",
-      status: "idle",
-      running: false,
+      status: "done",
       channel: "Web UI",
       party: "本地管理员",
+      botName: "皮皮虾",
+      botId: "pipixia_bot",
       model: "mlamp/claude-sonnet-4",
       ctxUsed: 1200,
       ctxMax: 200000,
@@ -166,7 +215,7 @@ export const WebUI: Story = {
 };
 
 /**
- * 多卡片列表展示（模拟真实使用场景）
+ * 多卡片列表展示（模拟真实使用场景 - 5 种状态）
  */
 export const MultipleCards: Story = {
   render: () => (
@@ -174,10 +223,11 @@ export const MultipleCards: Story = {
       <ClawSessionItem
         session={{
           key: "octo:c_pipi_lux_01",
-          status: "active",
-          running: true,
+          status: "running",
           channel: "Octo",
           party: "罗敬为 · 皮皮虾(私聊)",
+          botName: "皮皮虾",
+          botId: "pipixia_bot",
           model: "mlamp/claude-opus-4-7",
           ctxUsed: 148200,
           ctxMax: 1000000,
@@ -188,10 +238,11 @@ export const MultipleCards: Story = {
       <ClawSessionItem
         session={{
           key: "discord:1470015610489536542",
-          status: "active",
-          running: true,
+          status: "running",
           channel: "Discord",
           party: "#square · LUO",
+          botName: "皮皮虾",
+          botId: "pipixia_bot",
           model: "mlamp/claude-opus-4-7",
           ctxUsed: 850000,
           ctxMax: 1000000,
@@ -202,10 +253,11 @@ export const MultipleCards: Story = {
       <ClawSessionItem
         session={{
           key: "octo:g_botfather",
-          status: "idle",
-          running: false,
+          status: "done",
           channel: "Octo",
           party: "BotFather · 帮助频道",
+          botName: "皮皮虾",
+          botId: "pipixia_bot",
           model: "mlamp/claude-opus-4-7",
           ctxUsed: 4200,
           ctxMax: 1000000,
@@ -215,16 +267,32 @@ export const MultipleCards: Story = {
       />
       <ClawSessionItem
         session={{
-          key: "localhost:cli_term_01",
-          status: "active",
-          running: true,
+          key: "localhost:task_fail",
+          status: "failed",
           channel: "Localhost",
-          party: "终端 · openclaw chat",
+          party: "批处理任务 · 数据导入",
+          botName: "皮皮虾",
+          botId: "pipixia_bot",
           model: "mlamp/claude-opus-4-7",
           ctxUsed: 32400,
-          ctxMax: 1000000,
-          sessionId: "sess_local_cli_2a7",
-          lastMsg: "帮我检查下本地 git 仓库的未提交文件",
+          ctxMax: 200000,
+          sessionId: "sess_local_task_f7a2",
+          lastMsg: "导入 CSV 文件到数据库",
+        }}
+      />
+      <ClawSessionItem
+        session={{
+          key: "discord:timeout_01",
+          status: "timeout",
+          channel: "Discord",
+          party: "#jobs · 定时同步",
+          botName: "皮皮虾",
+          botId: "pipixia_bot",
+          model: "mlamp/claude-sonnet-4",
+          ctxUsed: 18000,
+          ctxMax: 200000,
+          sessionId: "sess_disc_timeout_t9c3",
+          lastMsg: "同步远程 API 数据",
         }}
       />
     </div>

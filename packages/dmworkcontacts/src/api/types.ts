@@ -4,7 +4,7 @@
  */
 
 /** Session 状态 */
-export type SessionStatus = 'running' | 'idle' | 'stopped';
+export type SessionStatus = 'running' | 'done' | 'failed' | 'killed' | 'timeout';
 
 /** 对话类型 */
 export type PeerType = 'private' | 'group';
