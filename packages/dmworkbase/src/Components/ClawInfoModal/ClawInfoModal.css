@@ -120,9 +120,14 @@
   min-height: 0; /* 允许 flex 子元素收缩 */
 }
 
-/* 核心文件 Tab 特殊处理：防止双层滚动 */
+/* 核心文件 Tab 特殊处理：保留 padding，通过内层容器计算高度 */
 .claw-info-content:has(.claw-core-files-tab) {
-  overflow: hidden; /* 让 FileViewer 内部处理滚动 */
+  overflow: hidden; /* 防止双层滚动 */
+}
+
+/* 核心文件 Tab 的 panel 容器需要 100% 高度传递 */
+.claw-info-content #panel-files {
+  height: 100%;
 }
 
 /* Session Tab */
