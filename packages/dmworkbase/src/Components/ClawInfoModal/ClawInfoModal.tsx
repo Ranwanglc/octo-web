@@ -318,7 +318,7 @@ export default function ClawInfoModal({ botId, botName, visible, onClose }: Claw
           )}
           {activeTab === "files" && (
             <div id="panel-files" role="tabpanel" aria-labelledby="tab-files">
-              <ClawCoreFilesTab botId={botId} height="100%" />
+              <ClawCoreFilesTab botId={botId} agentCardData={data} height="100%" />
             </div>
           )}
         </div>
