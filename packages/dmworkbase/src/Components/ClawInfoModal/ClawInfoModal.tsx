@@ -4,7 +4,7 @@ import WKModal from "../WKModal";
 import ClawSessionItem from "../ClawSessionItem";
 import ClawOverviewTab from "../ClawOverviewTab/ClawOverviewTab";
 import ClawCoreFilesTab from "../ClawCoreFilesTab/ClawCoreFilesTab";
-import AgentCardService from "../../Service/AgentCardService";
+import AgentCardService, { type AgentCardResponse } from "../../Service/AgentCardService";
 import "./ClawInfoModal.css";
 
 export interface ClawInfoModalProps {
@@ -33,48 +33,6 @@ export interface SessionData {
   lastMsg: string;
 }
 
-export interface AgentCardData {
-  bot_id: string;
-  session_total: number;
-  session_running_count: number;
-  sessions: Array<{
-    session_id: string;
-    session_key: string;
-    channel: string;
-    status: string;
-    peer_name: string;
-    peer_type: string;
-    group_member_count: number | null;
-    model: string;
-    context_used: number;
-    context_total: number;
-    context_percent: number;
-    last_user_message: string;
-    last_active_at: string;
-  }>;
-  runtime_info: {
-    gateway_name: string;
-    claw_id: string;
-    process_status: string;
-    gateway_status?: string;
-    os_version?: string;
-    arch?: string;
-    disk_space_gb?: number;
-    memory_gb?: number;
-    app_data_dir?: string;
-    claw_version?: string;
-    admin_url?: string;
-    team_name?: string;
-    gateway_total_agents?: number;
-    gateway_alive_agents?: number;
-    nodejs_version?: string;
-    network_latency_ms?: number;
-    last_heartbeat_at?: string;
-    memory_retention_count?: number;
-    memory_retention_note?: string;
-  };
-}
-
 /**
  * ClawInfoModal - 龙虾详情弹窗
  *
@@ -86,7 +44,7 @@ export interface AgentCardData {
  */
 export default function ClawInfoModal({ botId, botName, visible, onClose }: ClawInfoModalProps) {
   const [loading, setLoading] = useState(true);
-  const [data, setData] = useState<AgentCardData | null>(null);
+  const [data, setData] = useState<AgentCardResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"overview" | "session" | "files">("overview");
 
@@ -129,7 +87,7 @@ export default function ClawInfoModal({ botId, botName, visible, onClose }: Claw
 
 
 
-  const mapToSessionData = (s: AgentCardData["sessions"][0]): SessionData => {
+  const mapToSessionData = (s: AgentCardResponse["sessions"][0]): SessionData => {
     // 渠道名称映射（中文）
     const channelMap: Record<string, string> = {
       dmwork: "dmwork",
@@ -330,32 +288,42 @@ export default function ClawInfoModal({ botId, botName, visible, onClose }: Claw
               {renderSessionTab()}
             </div>
           )}
-          {activeTab === "overview" && data?.runtime_info && (
+          {activeTab === "overview" && (
             <div id="panel-overview" role="tabpanel" aria-labelledby="tab-overview">
-              <ClawOverviewTab
-              runtimeInfo={{
-                os_version: data.runtime_info.os_version || "—",
-                arch: data.runtime_info.arch || "—",
-                disk_space_gb: data.runtime_info.disk_space_gb || 0,
-                memory_gb: data.runtime_info.memory_gb || 0,
-                app_data_dir: data.runtime_info.app_data_dir || "—",
-                claw_version: data.runtime_info.claw_version || "—",
-                admin_url: data.runtime_info.admin_url || "—",
-                team_name: data.runtime_info.team_name || "—",
-                process_status: data.runtime_info.process_status,
-                gateway_status: data.runtime_info.gateway_status || "unknown",
-                gateway_name: data.runtime_info.gateway_name,
-                claw_id: data.runtime_info.claw_id,
-                gateway_total_agents: data.runtime_info.gateway_total_agents || 0,
-                gateway_alive_agents: data.runtime_info.gateway_alive_agents || 0,
-                nodejs_version: data.runtime_info.nodejs_version || "—",
-                network_latency_ms: data.runtime_info.network_latency_ms || 0,
-                last_heartbeat_at: data.runtime_info.last_heartbeat_at || "—",
-                memory_retention_count: data.runtime_info.memory_retention_count || 0,
-                memory_retention_note: data.runtime_info.memory_retention_note || "—",
-              }}
-              loading={loading}
-            />
+              {loading ? (
+                <div className="claw-info-loading">
+                  <Spin size="large" />
+                </div>
+              ) : data?.runtime_info ? (
+                <ClawOverviewTab
+                  runtimeInfo={{
+                    os_version: data.runtime_info.os_version,
+                    arch: data.runtime_info.arch,
+                    disk_space_gb: data.runtime_info.disk_space_gb,
+                    memory_gb: data.runtime_info.memory_gb,
+                    app_data_dir: data.runtime_info.app_data_dir,
+                    claw_version: data.runtime_info.claw_version,
+                    admin_url: data.runtime_info.admin_url,
+                    team_name: data.runtime_info.team_name,
+                    process_status: data.runtime_info.process_status,
+                    gateway_status: data.runtime_info.gateway_status,
+                    gateway_name: data.runtime_info.gateway_name,
+                    claw_id: data.runtime_info.claw_id,
+                    gateway_total_agents: data.runtime_info.gateway_total_agents,
+                    gateway_alive_agents: data.runtime_info.gateway_alive_agents,
+                    nodejs_version: data.runtime_info.nodejs_version,
+                    network_latency_ms: data.runtime_info.network_latency_ms,
+                    last_heartbeat_at: data.runtime_info.last_heartbeat_at,
+                    memory_retention_count: data.runtime_info.memory_retention_count,
+                    memory_retention_note: data.runtime_info.memory_retention_note,
+                  }}
+                  loading={false}
+                />
+              ) : (
+                <div className="claw-info-error">
+                  <Empty description="加载失败" />
+                </div>
+              )}
             </div>
           )}
           {activeTab === "files" && (
