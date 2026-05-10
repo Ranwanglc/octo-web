@@ -84,17 +84,29 @@ function buildParams(obj?: Record<string, unknown>): Record<string, string> {
 
 /**
  * Unwrap axios response — return response.data directly.
+ * Passes AbortSignal through to axios so callers can cancel in-flight requests.
+ * On cancel, rethrows as { name: 'AbortError' } (not wrapped via extractErrorMessage)
+ * so consumers can distinguish cancellation from real errors.
  */
 async function get<T>(
   path: string,
   params?: Record<string, unknown>,
+  signal?: AbortSignal,
 ): Promise<T> {
   try {
-    const resp = await matterAxios.get(`${BASE}${path}`, {
+    const config: { params: Record<string, string>; signal?: AbortSignal } = {
       params: buildParams(params),
-    });
+    };
+    // 只在有 signal 时加到 config, 避免影响既有调用点的参数形状 (测试快照 + 可读性)
+    if (signal) config.signal = signal;
+    const resp = await matterAxios.get(`${BASE}${path}`, config);
     return resp.data;
   } catch (err: unknown) {
+    if (axios.isCancel(err)) {
+      const abortErr = new Error("aborted");
+      abortErr.name = "AbortError";
+      throw abortErr;
+    }
     throw new Error(extractErrorMessage(err));
   }
 }
@@ -130,10 +142,12 @@ async function del<T>(path: string): Promise<T> {
 
 export async function listMatters(
   params?: MatterListParams,
+  signal?: AbortSignal,
 ): Promise<PaginatedList<Matter>> {
   return get<PaginatedList<Matter>>(
     "/matters",
     params as unknown as Record<string, unknown>,
+    signal,
   );
 }
 
@@ -217,9 +231,10 @@ export async function listTimeline(
   matterId: string,
   params?: ListCommentsParams,
 ): Promise<PaginatedList<TimelineEntry>> {
-  return get<PaginatedList<TimelineEntry>>(`/matters/${matterId}/timeline`, {
-    params: params as any,
-  });
+  return get<PaginatedList<TimelineEntry>>(
+    `/matters/${matterId}/timeline`,
+    params as unknown as Record<string, unknown>,
+  );
 }
 
 export async function addTimelineEntry(

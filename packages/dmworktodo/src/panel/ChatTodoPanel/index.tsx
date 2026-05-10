@@ -39,7 +39,8 @@ export default function ChatMatterPanel({
   const { matters, loading, reload } = useMatterList({
     initialFilters: {
       source_channel_id: channelId,
-      source_channel_type: channelType,
+      // 固定传 2 (群组), 跟后端约定: 本面板场景下只关心群组 channel
+      source_channel_type: 2,
     },
     pageSize: 100,
   });
