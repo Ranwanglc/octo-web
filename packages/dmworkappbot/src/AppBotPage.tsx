@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react"
 import { Channel, ChannelTypePerson, ChannelInfo, WKSDK } from "wukongimjssdk"
 import { WKApp, Conversation, SpaceService } from "@octo/base"
+import WKAvatar from "@octo/base/src/Components/WKAvatar"
 import "./AppBotPage.css"
 
 interface AppBotInfo {
@@ -13,22 +14,6 @@ interface AppBotInfo {
 }
 
 type LoadState = "loading" | "ready" | "error"
-
-// Default bot avatar as SVG data URI — used as fallback when the
-// /users/{uid}/avatar endpoint has not had an avatar uploaded yet
-// (the endpoint returns a generated default, but we keep this for
-// offline/error scenarios).
-const BOT_DEFAULT_AVATAR_DATA_URI = "data:image/svg+xml," + encodeURIComponent(
-  '<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 80 80">'
-  + '<rect width="80" height="80" rx="16" fill="#667eea"/>'
-  + '<rect x="14" y="26" width="52" height="40" rx="10" stroke="white" stroke-width="3" fill="rgba(255,255,255,0.2)"/>'
-  + '<circle cx="30" cy="46" r="5" fill="white"/>'
-  + '<circle cx="50" cy="46" r="5" fill="white"/>'
-  + '<path d="M32 56c2 4 5 6 8 6s6-2 8-6" stroke="white" stroke-width="3" stroke-linecap="round" fill="none"/>'
-  + '<line x1="40" y1="12" x2="40" y2="26" stroke="white" stroke-width="3" stroke-linecap="round"/>'
-  + '<circle cx="40" cy="10" r="5" fill="white"/>'
-  + '</svg>'
-)
 
 /** Lightweight error toast — self-removing DOM element, no external dependency. */
 function showErrorToast(message: string) {
@@ -61,11 +46,11 @@ function showErrorToast(message: string) {
 
 /** Bot chat header — renders directly from bot data, bypasses SDK channelInfo */
 function BotChatHeader({ bot }: { bot: AppBotInfo }) {
-  const avatarSrc = WKApp.shared.avatarUser(bot.uid)
+  const channel = new Channel(bot.uid, ChannelTypePerson)
   return (
     <div className="appbot-chat-header">
       <div className="appbot-chat-header-avatar">
-        <img src={avatarSrc} alt={bot.display_name} onError={(e) => { (e.target as HTMLImageElement).src = BOT_DEFAULT_AVATAR_DATA_URI }} />
+        <WKAvatar channel={channel} style={{ width: "100%", height: "100%" }} />
       </div>
       <div className="appbot-chat-header-name">{bot.display_name}</div>
     </div>
@@ -160,8 +145,8 @@ export default function AppBotPage() {
       const info = new ChannelInfo()
       info.channel = channel
       info.title = bot.display_name
-      // Use relative path for ChannelInfo.logo — avatarChannel() / getImageURL()
-      // will prepend the API base URL. Writing a full URL here causes double-prefix.
+      // Use relative path to match channelInfo convention — avatarChannel()
+      // calls getImageURL() which prepends the API base URL for relative paths.
       info.logo = `users/${bot.uid}/avatar`
       info.orgData = { displayName: bot.display_name, robot: 1, name: bot.display_name }
       WKSDK.shared().channelManager.setChannleInfoForCache(info)
@@ -196,7 +181,7 @@ export default function AppBotPage() {
         onClick={() => handleSelect(bot)}
       >
         <div className="appbot-list-avatar">
-          <img src={WKApp.shared.avatarUser(bot.uid)} alt={bot.display_name} onError={(e) => { (e.target as HTMLImageElement).src = BOT_DEFAULT_AVATAR_DATA_URI }} />
+          <WKAvatar channel={new Channel(bot.uid, ChannelTypePerson)} style={{ width: "100%", height: "100%", borderRadius: "12px" }} />
         </div>
         <div className="appbot-list-info">
           <div className="appbot-list-name">{bot.display_name}</div>
