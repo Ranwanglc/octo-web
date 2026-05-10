@@ -593,7 +593,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 <div className="summary-detail-section-header">
                     <span>👤 我的总结</span>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        {detail && detail.permissions?.can_edit && !this.state.isEditing && (
+                        {detail && detail.status === TaskStatus.COMPLETED && detail.permissions?.can_edit && !this.state.isEditing && (
                             <Button
                                 size="small"
                                 theme="borderless"

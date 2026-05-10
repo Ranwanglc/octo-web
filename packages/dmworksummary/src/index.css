@@ -289,12 +289,8 @@
 
 /* ========== Detail Page ========== */
 .summary-detail-header {
-    position: sticky;
-    top: 0;
-    z-index: 1;
     background: transparent;
     border-bottom: 1px solid var(--semi-color-border);
-    box-shadow: none;
 }
 
 .summary-detail-header-inner {
@@ -794,7 +790,6 @@
 
 .summary-content-markdown blockquote {
     border-left: 4px solid var(--semi-color-primary);
-    padding-left: 14px;
     color: var(--semi-color-text-1);
     margin: 14px 0;
     background: var(--semi-color-fill-0);
