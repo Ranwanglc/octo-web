@@ -14,9 +14,10 @@ interface AppBotInfo {
 
 type LoadState = "loading" | "ready" | "error"
 
-// Default bot avatar as SVG data URI — used when bot.avatar is empty.
-// This ensures avatarChannel() uses this instead of falling back to
-// /users/{uid}/avatar (which returns 404 for bot UIDs).
+// Default bot avatar as SVG data URI — used as fallback when the
+// /users/{uid}/avatar endpoint has not had an avatar uploaded yet
+// (the endpoint returns a generated default, but we keep this for
+// offline/error scenarios).
 const BOT_DEFAULT_AVATAR_DATA_URI = "data:image/svg+xml," + encodeURIComponent(
   '<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 80 80">'
   + '<rect width="80" height="80" rx="16" fill="#667eea"/>'
@@ -100,16 +101,18 @@ function showErrorToast(message: string) {
   }, 3000)
 }
 
+/** Build avatar URL for a bot UID via the /users/{uid}/avatar endpoint */
+function botAvatarUrl(uid: string): string {
+  const baseURL = WKApp.apiClient.config.apiURL
+  return `${baseURL}users/${uid}/avatar?v=${Date.now()}`
+}
+
 /** Bot chat header — renders directly from bot data, bypasses SDK channelInfo */
 function BotChatHeader({ bot }: { bot: AppBotInfo }) {
-  const showImg = isSafeImageUrl(bot.avatar)
   return (
     <div className="appbot-chat-header">
-      <div
-        className="appbot-chat-header-avatar"
-        style={!showImg ? { background: pickGradient(bot.uid || bot.id) } : undefined}
-      >
-        {showImg ? <img src={bot.avatar} alt={bot.display_name} /> : <BotIconFallback />}
+      <div className="appbot-chat-header-avatar">
+        <img src={botAvatarUrl(bot.uid)} alt={bot.display_name} />
       </div>
       <div className="appbot-chat-header-name">{bot.display_name}</div>
     </div>
@@ -204,9 +207,9 @@ export default function AppBotPage() {
       const info = new ChannelInfo()
       info.channel = channel
       info.title = bot.display_name
-      // When bot has no avatar, use a data URI so avatarChannel() uses it
-      // instead of falling back to /users/{uid}/avatar (which 404s for bots)
-      info.logo = bot.avatar || BOT_DEFAULT_AVATAR_DATA_URI
+      // Use the /users/{uid}/avatar endpoint — App Bot has a user record,
+      // so this returns the uploaded avatar or a generated default.
+      info.logo = botAvatarUrl(bot.uid)
       info.orgData = { displayName: bot.display_name, robot: 1, name: bot.display_name }
       WKSDK.shared().channelManager.setChannleInfoForCache(info)
 
@@ -233,18 +236,14 @@ export default function AppBotPage() {
 
   const renderItem = (bot: AppBotInfo) => {
     const isActive = selectedUid === bot.uid
-    const showImg = isSafeImageUrl(bot.avatar)
     return (
       <div
         key={bot.id}
         className={`appbot-list-item ${isActive ? "appbot-list-item-active" : ""}`}
         onClick={() => handleSelect(bot)}
       >
-        <div
-          className="appbot-list-avatar"
-          style={!showImg ? { background: pickGradient(bot.uid || bot.id) } : undefined}
-        >
-          {showImg ? <img src={bot.avatar} alt={bot.display_name} /> : <BotIconFallback />}
+        <div className="appbot-list-avatar">
+          <img src={botAvatarUrl(bot.uid)} alt={bot.display_name} />
         </div>
         <div className="appbot-list-info">
           <div className="appbot-list-name">{bot.display_name}</div>
