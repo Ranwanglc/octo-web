@@ -697,13 +697,6 @@ export default class ConversationList extends Component<
 
   filterConversation(conv: ConversationWrap): boolean {
     const filter = this.props.filter ?? "all";
-
-    // App Bot (bot_type="app_bot" from conversation sync) has a dedicated
-    // AppBotPage entry; hide from all conversation list tabs.
-    if (conv.extra?.botType === "app_bot") {
-      return false;
-    }
-
     if (filter === "all") return true;
     const channelInfo = conv.channelInfo;
     // 群组和子区频道都归类到 group 过滤器

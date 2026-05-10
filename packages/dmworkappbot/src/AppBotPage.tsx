@@ -59,18 +59,13 @@ function showErrorToast(message: string) {
   }, 3000)
 }
 
-/** Build avatar URL for a bot UID via the /users/{uid}/avatar endpoint */
-function botAvatarUrl(uid: string): string {
-  const baseURL = WKApp.apiClient.config.apiURL
-  return `${baseURL}users/${uid}/avatar?v=${Date.now()}`
-}
-
 /** Bot chat header — renders directly from bot data, bypasses SDK channelInfo */
 function BotChatHeader({ bot }: { bot: AppBotInfo }) {
+  const avatarSrc = WKApp.shared.avatarUser(bot.uid)
   return (
     <div className="appbot-chat-header">
       <div className="appbot-chat-header-avatar">
-        <img src={botAvatarUrl(bot.uid)} alt={bot.display_name} onError={(e) => { (e.target as HTMLImageElement).src = BOT_DEFAULT_AVATAR_DATA_URI }} />
+        <img src={avatarSrc} alt={bot.display_name} onError={(e) => { (e.target as HTMLImageElement).src = BOT_DEFAULT_AVATAR_DATA_URI }} />
       </div>
       <div className="appbot-chat-header-name">{bot.display_name}</div>
     </div>
@@ -165,9 +160,9 @@ export default function AppBotPage() {
       const info = new ChannelInfo()
       info.channel = channel
       info.title = bot.display_name
-      // Use the /users/{uid}/avatar endpoint — App Bot has a user record,
-      // so this returns the uploaded avatar or a generated default.
-      info.logo = botAvatarUrl(bot.uid)
+      // Use relative path for ChannelInfo.logo — avatarChannel() / getImageURL()
+      // will prepend the API base URL. Writing a full URL here causes double-prefix.
+      info.logo = `users/${bot.uid}/avatar`
       info.orgData = { displayName: bot.display_name, robot: 1, name: bot.display_name }
       WKSDK.shared().channelManager.setChannleInfoForCache(info)
 
@@ -201,7 +196,7 @@ export default function AppBotPage() {
         onClick={() => handleSelect(bot)}
       >
         <div className="appbot-list-avatar">
-          <img src={botAvatarUrl(bot.uid)} alt={bot.display_name} onError={(e) => { (e.target as HTMLImageElement).src = BOT_DEFAULT_AVATAR_DATA_URI }} />
+          <img src={WKApp.shared.avatarUser(bot.uid)} alt={bot.display_name} onError={(e) => { (e.target as HTMLImageElement).src = BOT_DEFAULT_AVATAR_DATA_URI }} />
         </div>
         <div className="appbot-list-info">
           <div className="appbot-list-name">{bot.display_name}</div>
