@@ -39,7 +39,7 @@ import {
   useMembersFromChannels,
   ChannelRef,
 } from "../../hooks/useMembersFromChannels";
-import { useUserName } from "../../hooks/useUserName";
+import { useUserName, useUserNames } from "../../hooks/useUserName";
 import "./index.css";
 
 export interface MatterDetailPanelProps {
@@ -458,6 +458,31 @@ export default function MatterDetailPanel({
     return list;
   }, [matter?.assignees, ownerCandidateMembers]);
 
+  // 候选池里已有 name 的 uid 直接用, 只对 assignees 里缺名的 uid 调 useUserNames
+  // 避免把整个候选池 (可能数百人) 全量传给 fetchChannelInfo
+  const candidateNameMap = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const c of ownerCandidates) {
+      if (c.name) m.set(c.uid, c.name);
+    }
+    return m;
+  }, [ownerCandidates]);
+
+  const assigneeUidsNeedingName = useMemo(
+    () =>
+      (matter?.assignees || [])
+        .map((a) => a.user_id)
+        .filter((uid) => !candidateNameMap.has(uid)),
+    [matter?.assignees, candidateNameMap],
+  );
+  const assigneeNameMap = useUserNames(assigneeUidsNeedingName);
+
+  const resolveOwnerName = useCallback(
+    (uid: string) =>
+      candidateNameMap.get(uid) || assigneeNameMap.get(uid) || "",
+    [candidateNameMap, assigneeNameMap],
+  );
+
   // ── LinkChannelsModal: loadChannels / onLinkChannel callbacks ──
   const loadChannelsForModal = useCallback(async (): Promise<ChannelOption[]> => {
     const groups = await WKApp.dataSource.channelDataSource.groupSaveList();
@@ -704,6 +729,7 @@ export default function MatterDetailPanel({
                 candidates={ownerCandidates}
                 onToggle={handleToggleAssignee}
                 renderAvatar={renderAvatar}
+                resolveUserName={resolveOwnerName}
               />
               <span className="wk-mp-people__role">负责人</span>
             </div>

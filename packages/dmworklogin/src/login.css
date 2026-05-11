@@ -711,6 +711,11 @@
 
 /* ---- Download button ---- */
 .wk-login-content-download {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
     text-align: center;
     margin-top: 32px;
     padding-top: 20px;

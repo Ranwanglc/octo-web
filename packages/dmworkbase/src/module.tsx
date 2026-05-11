@@ -467,10 +467,23 @@ export default class BaseModule implements IModule {
           WKApp.loginInfo.name = channelInfo.title;
           WKApp.loginInfo.shortNo = channelInfo.orgData.short_no;
           WKApp.loginInfo.sex = channelInfo.orgData.sex;
+          // YUJ-412: 此前（YUJ-404 R9）在这里把 self Person channelInfo 的
+          // realname_verified 回写到 loginInfo，并配合下方 addOnLogin 主动
+          // fetch self channel 触发 listener。im-test 实测发现 **self 不在
+          // friend/sync & conversation/sync 的 payload 里**，fetchChannelInfo
+          // 单独请求也不会补 realname_verified 字段到 self channelInfo，这
+          // 条 listener 实际上永不命中。实名状态现由 YUJ-413 后端在登录
+          // payload 直发 + loginSuccess() 映射，listener 死代码已移除，
+          // 避免「字段声明存在 ≠ 有人赋值」的认知陷阱再次复发。
           WKApp.loginInfo.save();
         }
       }
     });
+
+    // YUJ-412: 移除 YUJ-404 R9 引入的 `addOnLogin` self channelInfo fetch。
+    // 该 fetch 的唯一用途是触发上面 listener 把 realname_verified 回写到
+    // loginInfo，但 self channelInfo 实际不下发 realname_verified（见上方
+    // 注释），fetch 纯粹是死代码 + 每次登录多一次无用的网络请求。
 
     // 全局订阅 taskManager：上传失败时把 sendQueue 里对应消息标为 Fail 并触发 UI 刷新
     // 放在 module.init() 里保证只注册一次，避免多 ConversationVM 实例重复处理

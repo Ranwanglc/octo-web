@@ -20,6 +20,7 @@ import { IConversationProvider } from "../../Service/DataSource/DataProvider";
 import WKApp from "../../App";
 import { resolveExternalForViewer } from "../../Utils/externalViewer";
 import { subscriberDisplayName } from "../../Utils/displayName";
+import { shouldShowRealnameBadge } from "../../Utils/realnameBadge";
 import { css } from "@emotion/react";
 // import ClockLoader from "react-spinners/ClockLoader";
 import Checkbox from "../../Components/Checkbox";
@@ -27,6 +28,7 @@ import classNames from "classnames";
 import { Popconfirm } from "@douyinfe/semi-ui";
 import WKAvatar from "../../Components/WKAvatar";
 import AiBadge from "../../Components/AiBadge";
+import RealnameVerifiedBadge from "../../Components/RealnameVerifiedBadge";
 import { getTitleColor } from "./head";
 import moment from "moment";
 import ThreadIndicator, {
@@ -55,12 +57,48 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
   }
   componentDidMount() {
     const self = this;
+
+    // YUJ-404 Round 6 (Jerry R5 Warning)：收窄 conversation channelInfo fetch/listen
+    // 到仅 Person 1v1。timing race 只发生在 self-sent Person 1v1 + 首帧缓存未到的
+    // bot DM 场景，群消息不需要拉 group channelInfo 来判 self fallback。
+    // YUJ-404 Round 9 (Jerry R8 🔴 Warning)：在 1v1 场景中 message.channel 和
+    // sender Person Channel 是同一个（fromUID 即对端）。render 路径另有一处
+    // 会 fetch sender channelInfo（本文件 line ~341），不 dedupe 的话 legacy 媒体/
+    // 文件消息历史首屏会双倍 fetch。这里用 fromUID 做 dedupe：
+    // 对方发来的 1v1 消息，msgChannel.channelID === fromUID → 不重复 fetch。
+    const msgChannel = this.props.message.channel;
+    const msgFromUID = this.props.message.fromUID;
+    if (
+      msgChannel &&
+      msgChannel.channelType === ChannelTypePerson &&
+      !(msgFromUID && msgChannel.channelID === msgFromUID)
+    ) {
+      const convCached = WKSDK.shared().channelManager.getChannelInfo(
+        msgChannel
+      );
+      if (!convCached) {
+        WKSDK.shared().channelManager.fetchChannelInfo(msgChannel);
+      }
+    }
+
     this.channelInfoListener = (channelInfo: ChannelInfo) => {
       if (!channelInfo) {
         return;
       }
       const { message } = self.props;
+      // 发送者 channelInfo（Person）到达 → rerender（姓名 / 徽章 / is-bot 判定）
       if (message.fromUID === channelInfo.channel.channelID) {
+        self.setState({});
+        return;
+      }
+      // YUJ-404 Round 5：会话对端 channelInfo 到达 → rerender，让徽章走真实
+      // isBotConversation 判定（替换首帧保守兜底）。
+      const convChannel = message.channel;
+      if (
+        convChannel &&
+        channelInfo.channel.channelID === convChannel.channelID &&
+        channelInfo.channel.channelType === convChannel.channelType
+      ) {
         self.setState({});
       }
     };
@@ -288,6 +326,9 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
     // 对成员列表未命中的场景（超级群分页外、时序窗口内、私聊）再降级到
     // Person ChannelInfo；都拿不到则留空，避免把 32 位 UID 暴露到 UI。
     let groupMemberName = "";
+    // YUJ-379 / Epic #1169: 实名徽章的判断也优先读群成员 orgData，回退
+    // Person ChannelInfo.orgData（私聊或群成员列表未命中场景）。
+    let groupMember: any = undefined;
     if (message.channel.channelType === ChannelTypeGroup && message.fromUID) {
       try {
         const subs = WKSDK.shared().channelManager.getSubscribes(
@@ -295,17 +336,34 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
         ) as any[] | null | undefined;
         const member = subs?.find((s) => s && s.uid === message.fromUID);
         groupMemberName = subscriberDisplayName(member);
+        groupMember = member;
       } catch {
         // channelManager 未初始化 / 缓存未加载：静默降级
       }
     }
     // channelInfo 未命中时不要把 fromUID（32 位 hex）当兜底名字显示给用户，
     // 留空等待 fetchChannelInfo 回包后由 channelInfoListener 触发重渲染。
-    const displayName =
-      groupMemberName ||
-      channelInfo?.orgData?.displayName ||
-      channelInfo?.title ||
-      "";
+    //
+    // YUJ-412 (legacy dir 例外，同 YUJ-404 Round 4 的豁免理由：本文件在
+    // `AGENTS.config.json:legacy_dirs` 但仍在生产渲染 Voice / Gif / Location /
+    // File / Video 等类型的气泡，需要和 bridge 路径保持同一视觉)：
+    //   自己发送的消息，groupMember 通常不含 self、channelInfo.orgData 也
+    //   不带 real_name（self Person channelInfo 不下发这个字段），导致 self
+    //   气泡永远显示 username 而非 "余嘉伟"。接入 YUJ-413 登录 payload 后，
+    //   权威 real_name 在 `WKApp.loginInfo` 上，self 分支走 selfDisplayName()
+    //   即可拿到。规则改动请同步 bridge/message/useMessageRow.ts。
+    const isOwnMessageName =
+      message.fromUID && message.fromUID === WKApp.loginInfo.uid;
+    const displayName = isOwnMessageName
+      ? WKApp.loginInfo.selfDisplayName() ||
+        groupMemberName ||
+        channelInfo?.orgData?.displayName ||
+        channelInfo?.title ||
+        ""
+      : groupMemberName ||
+        channelInfo?.orgData?.displayName ||
+        channelInfo?.title ||
+        "";
     if (!channelInfo && message.fromUID && message.fromUID !== "") {
       WKSDK.shared().channelManager.fetchChannelInfo(
         new Channel(message.fromUID, ChannelTypePerson)
@@ -351,6 +409,43 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
     const extResolved = hasMsgLevelExt ? msgRes : orgRes;
     const showExtOrigin = !isAi && extResolved.isExternal;
     const extSourceSpaceName = extResolved.sourceSpaceName;
+
+    // YUJ-379 / Epic dmwork-web#1169: 聊天气泡作者名旁的实名徽章。
+    //
+    // YUJ-404 Round 4 (legacy dir 例外，见 PR description "Legacy Dir Exception
+    // Declaration" 段)：本目录 `Messages/` 已被 AGENTS.config.json 标为
+    // legacy_dirs，但 MessageBase 仍在生产渲染 Voice / Gif / Location / File /
+    // Video 等类型（尚未迁到新 MessageRow），产品需求要求所有消息类型气泡都显示
+    // 徽章，因此这里必须和 bridge 路径走 **同一套** 判定规则。
+    //
+    // 共享 helper `shouldShowRealnameBadge` 的优先级：isAi → isBotConversation →
+    // isBotSender → groupMember orgData → channelInfo orgData → self-fallback。
+    // 判定维度对齐 `src/bridge/message/useMessageRow.ts`，任何规则改动请同步两处。
+    const conversationChannelInfo = message.channel
+      ? WKSDK.shared().channelManager.getChannelInfo(message.channel)
+      : undefined;
+    const isOwnMessage = message.fromUID === WKApp.loginInfo.uid;
+    // YUJ-404 Round 5 (legacy dir 例外)：和 bridge 路径 useMessageRow.ts 对齐。
+    // Person 1v1 + self-sent + 对端 channelInfo 首帧未缓存时采取保守策略：
+    // 把 isBotConversation 先当 true 压制 self-fallback，防止 self-sent bot
+    // DM 首帧误显 ✓。listener 会在 channelInfo 到达后 rerender 切回真实判定。
+    const isPersonConversation =
+      message.channel?.channelType === ChannelTypePerson;
+    const conversationChannelInfoMissing =
+      isPersonConversation && !conversationChannelInfo;
+    const isBotConversation =
+      conversationChannelInfo?.orgData?.robot === 1 ||
+      (conversationChannelInfoMissing && isOwnMessage);
+    const isBotSender = channelInfo?.orgData?.robot === 1;
+    const showRealnameBadge = shouldShowRealnameBadge({
+      isAi,
+      isBotConversation,
+      isBotSender,
+      isOwnMessage,
+      groupMemberOrgData: groupMember?.orgData,
+      channelInfoOrgData: channelInfo?.orgData,
+      loginRealnameVerified: WKApp.loginInfo.realnameVerified,
+    });
 
     return (
       <div
@@ -432,6 +527,12 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
                   >
                     {displayName}
                   </span>
+                  {/* YUJ-379 / Epic dmwork-web#1169: 实名徽章紧贴作者名右侧，
+                      只 variant="icon" 迷你形态，已实名用户才渲染，未实名
+                      一律不加任何负担标识。解除 YUJ-359 硬约束后的 Phase A。*/}
+                  {showRealnameBadge && (
+                    <RealnameVerifiedBadge variant="icon" />
+                  )}
                   {/* YUJ-66: 外部群成员「@SpaceName」后缀（企微风格）。
                       按当前查看 Space 相对渲染，观察者 home_space 与成员
                       home_space 不同时显示；优先 msg-level，回落 orgData。*/}

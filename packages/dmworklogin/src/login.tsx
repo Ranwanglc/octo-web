@@ -9,6 +9,7 @@ import classNames from "classnames";
 import { PasswordStrengthIndicator } from "./PasswordStrengthIndicator";
 import { validatePassword } from "./passwordStrength";
 import { getSSOProviders } from "./oidc";
+import { IOSDownloadButton } from "./IOSDownloadButton";
 
 const ENTERPRISE_SSO_ENABLED =
     import.meta.env.VITE_ENABLE_ENTERPRISE_SSO === 'true'
@@ -84,6 +85,9 @@ const AndroidDownloadButton: React.FC = () => {
         </a>
     )
 }
+
+// TestFlight 是公开固定 URL，不需要走 updater 接口
+// 实现见 ./IOSDownloadButton.tsx（抽成独立模块便于单测）
 
 // Known safe error messages from the server that can be shown to users
 const KNOWN_ERROR_MESSAGES: Record<string, string> = {
@@ -384,6 +388,7 @@ class Login extends Component<any, LoginState> {
                                     </div>
                                     <div className="wk-login-content-download">
                                         <AndroidDownloadButton />
+                                        <IOSDownloadButton />
                                     </div>
                                 </div>
                             ) : (
@@ -419,6 +424,7 @@ class Login extends Component<any, LoginState> {
                                     </div>
                                     <div className="wk-login-content-download">
                                         <AndroidDownloadButton />
+                                        <IOSDownloadButton />
                                     </div>
                                 </div>
                             )}
