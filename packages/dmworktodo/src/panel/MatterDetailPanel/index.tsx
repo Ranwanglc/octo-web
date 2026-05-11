@@ -236,8 +236,22 @@ export default function MatterDetailPanel({
   // 成功变更 matter 后统一调用: 本地 state 刷新 + 广播事件让左侧列表 reload。
   // MatterDetailPanel 挂在 routeRight, 左侧 sidebar 列表挂在 routeLeft,
   // 两个 React 子树不共享 state, 必须靠 mittBus 事件解耦通知。
+  //
+  // 合并策略: 后端 PUT /matters/:id 返回的 updated 可能不包含关联数据
+  // (channels / assignees 等), 直接覆盖会导致这些 UI 闪空。保守合并:
+  // updated 字段优先; updated 缺失时保留 prev, 避免丢失。
   const applyMatterUpdate = useCallback((updated: MatterDetail) => {
-    setMatter(updated);
+    setMatter((prev) => {
+      if (!prev) return updated;
+      return {
+        ...prev,
+        ...updated,
+        // 关联数据优先取 updated 里的 (如果有), 否则保留 prev
+        channels: updated.channels ?? prev.channels,
+        assignees: updated.assignees ?? prev.assignees,
+        participants: updated.participants ?? prev.participants,
+      };
+    });
     WKApp.mittBus.emit("wk:matter-updated", { matterId: updated.id });
   }, []);
 
@@ -2028,6 +2042,7 @@ function EditableDeadline({
         disabledDate={(date) => !!date && date < new Date(new Date().setHours(0, 0, 0, 0))}
         density="compact"
         position="bottomLeft"
+        autoSwitchDate={false}
         triggerRender={() => (
           <span className="wk-mp-header__ddl-trigger">
             <svg
