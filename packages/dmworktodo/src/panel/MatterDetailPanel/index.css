@@ -531,6 +531,15 @@ textarea.wk-mp-goal__text--editing {
   user-select: none;
   cursor: help;
   letter-spacing: 0.05em;
+  transition: filter 0.3s ease, opacity 0.3s ease;
+}
+
+/* 正常态 (已加入群): 无模糊, 渐入清晰 */
+.wk-mp-channels__card-name--clear {
+  display: inline-block;
+  filter: blur(0);
+  opacity: 1;
+  transition: filter 0.3s ease, opacity 0.3s ease;
 }
 
 /* 未加入群的 "不在群" 小徽章 (对齐原型 v19 ChannelDigestItem 右侧标签): 
