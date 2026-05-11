@@ -1,5 +1,5 @@
 /**
- * YUJ-138 — 消息搜索结果条目的发送者「@SpaceName」后缀视觉 story。
+ * 消息搜索结果条目的发送者「@SpaceName」后缀视觉 story。
  *
  * 覆盖四种场景：
  *   - 外部群消息（跨 Space 发送者）：发送者名字后渲染 @{sourceSpaceName}
@@ -17,7 +17,7 @@ const meta: Meta<typeof ItemMessage> = {
     docs: {
       description: {
         component:
-          'YUJ-138: 搜索结果消息条目，跨 Space 外部消息在发送者名字后展示来源 Space。',
+          '搜索结果消息条目，跨 Space 外部消息在发送者名字后展示来源 Space。',
       },
     },
   },

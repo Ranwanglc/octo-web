@@ -130,7 +130,7 @@
 }
 
 /**
- * YUJ-98 R7: 发送者名后 @SpaceName 后缀样式，对齐新组件 .wk-msg-head-space
+ * 发送者名后 @SpaceName 后缀样式，对齐新组件 .wk-msg-head-space
  * （紫色 #722ED1，EP5 三端统一方案）。新旧两套 header 组件视觉保持一致，
  * 避免 Web / iOS / Android 端出现同源数据不同视觉。
  */

@@ -1,5 +1,5 @@
 /**
- * YUJ-112 / dmwork-web#1068 Round 2 — toast copy de-duplication.
+ * dmwork-web#1068 Round 2 — toast copy de-duplication.
  *
  * Jerry-Xin non-blocking: when entityName === spaceName (pure Space join, no
  * separate group name), the toast would otherwise show
@@ -39,7 +39,7 @@ function renderedText(content: any): string {
     return walk(content);
 }
 
-describe('showJoinSuccessToast — copy de-duplication (YUJ-112)', () => {
+describe('showJoinSuccessToast — copy de-duplication', () => {
     beforeEach(() => { recorded.length = 0; });
 
     it('same-space + sameName: single simplified line, no duplicate Space name', () => {

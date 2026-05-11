@@ -4,7 +4,7 @@ import { act, render } from '@testing-library/react';
 
 /**
  * Integration tests for the production routing + stale-guard used by
- * WKBase.showUserInfo (YUJ-195, GH Mininglamp-OSS/octo-web#1112, PR#1113).
+ * WKBase.showUserInfo (GH Mininglamp-OSS/octo-web#1112, PR#1113).
  *
  * The previous revision of this file only exercised a hand-copied helper — the
  * real dispatcher could regress silently. This revision imports the actual
@@ -152,7 +152,7 @@ async function flushMicrotasks() {
     await Promise.resolve();
 }
 
-describe('WKBase.showUserInfo production helper: routing + stale-guard (YUJ-195, GH#1112)', () => {
+describe('WKBase.showUserInfo production helper: routing + stale-guard (GH#1112)', () => {
     beforeEach(() => {
         resetChannelState();
     });
@@ -279,12 +279,12 @@ describe('WKBase.showUserInfo production helper: routing + stale-guard (YUJ-195,
 });
 
 // ---------------------------------------------------------------------------
-// YUJ-207 / round-4 blocker: external-viewer gate for bot routing.
+// round-4 blocker: external-viewer gate for bot routing.
 //
 // When UserInfoVM.isExternalToViewer would return true for a bot (cross-space
 // external group click), the router MUST demote isBot=false so the caller
 // keeps using the UserInfo path — UserInfo.getBottomPanel then renders the
-// existing YUJ-67 "仅可在群内交流" hint. Without this demotion, a bot in an
+// existing "仅可在群内交流" hint. Without this demotion, a bot in an
 // external group would open BotDetailModal (which decides 发送消息 / 添加好友
 // from follow state alone) and bypass the UI guard.
 //
@@ -378,7 +378,7 @@ function mountGatedHost(gate: ExternalViewerGate) {
     return { ...utils, host };
 }
 
-describe('UserInfoRouter external-viewer gate: bot in external group demoted to UserInfo (YUJ-207)', () => {
+describe('UserInfoRouter external-viewer gate: bot in external group demoted to UserInfo', () => {
     beforeEach(() => {
         resetChannelState();
     });
@@ -402,7 +402,7 @@ describe('UserInfoRouter external-viewer gate: bot in external group demoted to 
         act(() => { host.show('external_bot', groupChannel); });
 
         // Must route to UserInfo (where getBottomPanel shows the external hint),
-        // NOT to BotDetailModal (which would bypass YUJ-67).
+        // NOT to BotDetailModal (which would bypass the external hint).
         expect(queryByTestId('user-info-stub')).not.toBeNull();
         expect(queryByTestId('user-info-stub')!.getAttribute('data-uid')).toBe('external_bot');
         expect(queryByTestId('bot-detail-stub')).toBeNull();

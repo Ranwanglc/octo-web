@@ -22,7 +22,7 @@ interface InviteLandingState {
     error?: string;
     joining: boolean;
     /**
-     * YUJ-372 Phase 2 / dmworkim#1319: 后端 4 个入群入口
+     * dmworkim#1319: 后端 4 个入群入口
      * (authorize / detail / scanjoin / handleJoinGroup) 在调用者
      * `GetUserDefaultSpaceID(uid) == ""` 时返回
      * `{status: "need_space", msg: "请先加入一个 Space 后再入群"}`。
@@ -70,7 +70,7 @@ export default class InviteLanding extends Component<InviteLandingProps, InviteL
         try {
             const resp = await fetch(`${WKApp.apiClient.config.apiURL}space/invite/${this.props.inviteCode}`);
             const body = await resp.json().catch(() => ({} as any));
-            // YUJ-372 Phase 2 / dmworkim#1319: detail 入口可能返回 need_space
+            // dmworkim#1319: detail 入口可能返回 need_space
             // 状态（后端契约：{status: "need_space", msg: "..."}）。识别到时
             // 持久化邀请码并切到 need_space 分支，避免渲染入群/入 Space 按钮。
             if (this.isNeedSpaceResponse(resp.status, body)) {
@@ -88,7 +88,7 @@ export default class InviteLanding extends Component<InviteLandingProps, InviteL
     }
 
     /**
-     * YUJ-372 Phase 2 / dmworkim#1319: 识别后端 need_space 契约。
+     * dmworkim#1319: 识别后端 need_space 契约。
      * 后端四个入群入口 (authorize / detail / scanjoin / handleJoinGroup) 在
      * 调用者无默认 Space 时返回 {status: "need_space", msg: "..."}。该契约
      * 同时被本组件用于防御性兼容 Space 邀请路径（当后端同步扩展时无需改前端）。
@@ -119,7 +119,7 @@ export default class InviteLanding extends Component<InviteLandingProps, InviteL
      * Session expired / 未授权判断：
      * - 后端返回 401 / 403
      * - 或错误 msg 提示 token / 登录失效
-     * YUJ-99 / dmwork-web#1047: 已登录但 token 过期的用户需要被明确引导重新登录，
+     * dmwork-web#1047: 已登录但 token 过期的用户需要被明确引导重新登录，
      * 而不是卡在「加入」按钮点击失败的状态。
      */
     private isUnauthorizedError(status: number, msg: string): boolean {
@@ -200,7 +200,7 @@ export default class InviteLanding extends Component<InviteLandingProps, InviteL
                 this.redirectToLoginWithPendingInvite("请先登录后再加入");
                 return;
             }
-            // YUJ-106 / dmwork-web#1065: 在调用 /space/join 前先记住用户「当前 Space」。
+            // dmwork-web#1065: 在调用 /space/join 前先记住用户「当前 Space」。
             // 多 Space 用户在非归属 Space 点邀请链接时，不应自动切换 currentSpaceId —
             // 必须由用户显式点 toast 里的「切换过去」才切。这里在改动前快照下来。
             const prevCurrentSpaceId = localStorage.getItem("currentSpaceId") || "";
@@ -211,7 +211,7 @@ export default class InviteLanding extends Component<InviteLandingProps, InviteL
                 body: JSON.stringify({ invite_code: this.props.inviteCode }),
             });
             const result = await resp.json().catch(() => ({} as any));
-            // YUJ-372 Phase 2 / dmworkim#1319: authorize / scanjoin 亦可能
+            // dmworkim#1319: authorize / scanjoin 亦可能
             // 同步返回 need_space。与 detail 分支走同一 enterNeedSpace()，
             // 保证 CTA + pendingInviteCode 自动重试语义一致。
             if (this.isNeedSpaceResponse(resp.status, result)) {
@@ -236,7 +236,7 @@ export default class InviteLanding extends Component<InviteLandingProps, InviteL
 
             const joinedSpaceId = result?.space_id || this.state.info?.space_id || "";
             const joinedSpaceName = this.state.info?.space_name || "";
-            // YUJ-106 / YUJ-112: 统一经 computeAndSaveJoinSuccess 计算 crossSpace 并
+            // 统一经 computeAndSaveJoinSuccess 计算 crossSpace 并
             // 写 sessionStorage notice。Layout.onLogin 的 pendingInviteCode 分支也走
             // 同一 helper，保证两条路径的 toast 行为一致。
             const notice = computeAndSaveJoinSuccess(
@@ -289,7 +289,7 @@ export default class InviteLanding extends Component<InviteLandingProps, InviteL
     }
 
     /**
-     * YUJ-372 Phase 2 / dmworkim#1319: 「去输入邀请码」CTA 点击。
+     * dmworkim#1319: 「去输入邀请码」CTA 点击。
      *
      * 触发 `WKApp.endpoints.onNeedJoinSpace()` 会让 Layout 弹出 JoinSpacePage
      * 全屏覆盖（见 `apps/web/src/Layout/index.tsx`）。JoinSpacePage 成功加入
@@ -320,7 +320,7 @@ export default class InviteLanding extends Component<InviteLandingProps, InviteL
             return <div className="invite-landing"><Spin size="large" /></div>;
         }
 
-        // YUJ-372 Phase 2 / dmworkim#1319: need_space 分支
+        // dmworkim#1319: need_space 分支
         //
         // 后端 4 个入群入口 (authorize / detail / scanjoin / handleJoinGroup)
         // 在调用者无默认 Space 时返回 {status: "need_space"}。此处是该契约在
@@ -392,7 +392,7 @@ export default class InviteLanding extends Component<InviteLandingProps, InviteL
                         </Button>
                     ) : (
                         <>
-                            {/* YUJ-99 / dmwork-web#1047: 未登录态必须展示明显的「登录后加入」CTA，
+                            {/* dmwork-web#1047: 未登录态必须展示明显的「登录后加入」CTA，
                                 避免用户只看到空白或 App 下载按钮而无处下一步。 */}
                             <div className="invite-landing-hint">
                                 登录或注册后即可加入该团队

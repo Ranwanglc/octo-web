@@ -58,10 +58,10 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
   componentDidMount() {
     const self = this;
 
-    // YUJ-404 Round 6 (Jerry R5 Warning)：收窄 conversation channelInfo fetch/listen
+    // 收窄 conversation channelInfo fetch/listen
     // 到仅 Person 1v1。timing race 只发生在 self-sent Person 1v1 + 首帧缓存未到的
     // bot DM 场景，群消息不需要拉 group channelInfo 来判 self fallback。
-    // YUJ-404 Round 9 (Jerry R8 🔴 Warning)：在 1v1 场景中 message.channel 和
+    // 在 1v1 场景中 message.channel 和
     // sender Person Channel 是同一个（fromUID 即对端）。render 路径另有一处
     // 会 fetch sender channelInfo（本文件 line ~341），不 dedupe 的话 legacy 媒体/
     // 文件消息历史首屏会双倍 fetch。这里用 fromUID 做 dedupe：
@@ -91,7 +91,7 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
         self.setState({});
         return;
       }
-      // YUJ-404 Round 5：会话对端 channelInfo 到达 → rerender，让徽章走真实
+      // 会话对端 channelInfo 到达 → rerender，让徽章走真实
       // isBotConversation 判定（替换首帧保守兜底）。
       const convChannel = message.channel;
       if (
@@ -326,7 +326,7 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
     // 对成员列表未命中的场景（超级群分页外、时序窗口内、私聊）再降级到
     // Person ChannelInfo；都拿不到则留空，避免把 32 位 UID 暴露到 UI。
     let groupMemberName = "";
-    // YUJ-379 / Epic #1169: 实名徽章的判断也优先读群成员 orgData，回退
+    // Epic #1169: 实名徽章的判断也优先读群成员 orgData，回退
     // Person ChannelInfo.orgData（私聊或群成员列表未命中场景）。
     let groupMember: any = undefined;
     if (message.channel.channelType === ChannelTypeGroup && message.fromUID) {
@@ -344,12 +344,12 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
     // channelInfo 未命中时不要把 fromUID（32 位 hex）当兜底名字显示给用户，
     // 留空等待 fetchChannelInfo 回包后由 channelInfoListener 触发重渲染。
     //
-    // YUJ-412 (legacy dir 例外，同 YUJ-404 Round 4 的豁免理由：本文件在
+    // Legacy dir 例外：本文件在
     // `AGENTS.config.json:legacy_dirs` 但仍在生产渲染 Voice / Gif / Location /
-    // File / Video 等类型的气泡，需要和 bridge 路径保持同一视觉)：
+    // File / Video 等类型的气泡，需要和 bridge 路径保持同一视觉：
     //   自己发送的消息，groupMember 通常不含 self、channelInfo.orgData 也
     //   不带 real_name（self Person channelInfo 不下发这个字段），导致 self
-    //   气泡永远显示 username 而非 "余嘉伟"。接入 YUJ-413 登录 payload 后，
+    //   气泡永远显示 username 而非 "余嘉伟"。接入登录 payload 后，
     //   权威 real_name 在 `WKApp.loginInfo` 上，self 分支走 selfDisplayName()
     //   即可拿到。规则改动请同步 bridge/message/useMessageRow.ts。
     const isOwnMessageName =
@@ -375,7 +375,7 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
     const showAvatar = this.needAvatar();
     const timeStr = moment(message.timestamp * 1000).format("HH:mm");
 
-    // 外部群成员来源标记（YUJ-53 / YUJ-64）：按当前查看 Space 相对渲染。
+    // 外部群成员来源标记：按当前查看 Space 相对渲染。
     // 优先读 msg-level 新字段 from_home_space_id / from_home_space_name；
     // 缺失时回落到旧 msg-level (from_is_external/from_source_space_name)，
     // 再回落到 channelInfo.orgData。系统消息 / 机器人 / AI 不展示。
@@ -410,9 +410,9 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
     const showExtOrigin = !isAi && extResolved.isExternal;
     const extSourceSpaceName = extResolved.sourceSpaceName;
 
-    // YUJ-379 / Epic dmwork-web#1169: 聊天气泡作者名旁的实名徽章。
+    // Epic dmwork-web#1169: 聊天气泡作者名旁的实名徽章。
     //
-    // YUJ-404 Round 4 (legacy dir 例外，见 PR description "Legacy Dir Exception
+    // Legacy dir 例外（见 PR description "Legacy Dir Exception
     // Declaration" 段)：本目录 `Messages/` 已被 AGENTS.config.json 标为
     // legacy_dirs，但 MessageBase 仍在生产渲染 Voice / Gif / Location / File /
     // Video 等类型（尚未迁到新 MessageRow），产品需求要求所有消息类型气泡都显示
@@ -425,7 +425,7 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
       ? WKSDK.shared().channelManager.getChannelInfo(message.channel)
       : undefined;
     const isOwnMessage = message.fromUID === WKApp.loginInfo.uid;
-    // YUJ-404 Round 5 (legacy dir 例外)：和 bridge 路径 useMessageRow.ts 对齐。
+    // Legacy dir 例外：和 bridge 路径 useMessageRow.ts 对齐。
     // Person 1v1 + self-sent + 对端 channelInfo 首帧未缓存时采取保守策略：
     // 把 isBotConversation 先当 true 压制 self-fallback，防止 self-sent bot
     // DM 首帧误显 ✓。listener 会在 channelInfo 到达后 rerender 切回真实判定。
@@ -527,13 +527,13 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
                   >
                     {displayName}
                   </span>
-                  {/* YUJ-379 / Epic dmwork-web#1169: 实名徽章紧贴作者名右侧，
+                  {/* Epic dmwork-web#1169: 实名徽章紧贴作者名右侧，
                       只 variant="icon" 迷你形态，已实名用户才渲染，未实名
-                      一律不加任何负担标识。解除 YUJ-359 硬约束后的 Phase A。*/}
+                      一律不加任何负担标识。Phase A。*/}
                   {showRealnameBadge && (
                     <RealnameVerifiedBadge variant="icon" />
                   )}
-                  {/* YUJ-66: 外部群成员「@SpaceName」后缀（企微风格）。
+                  {/* 外部群成员「@SpaceName」后缀（企微风格）。
                       按当前查看 Space 相对渲染，观察者 home_space 与成员
                       home_space 不同时显示；优先 msg-level，回落 orgData。*/}
                   {showExtOrigin && extSourceSpaceName && (

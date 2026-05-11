@@ -61,7 +61,7 @@ export default class TabAll extends Component<TabAllProps> {
     }
 
     /**
-     * YUJ-138: 计算一条搜索到的消息中「发送者相对当前查看 Space」的来源
+     * 计算一条搜索到的消息中「发送者相对当前查看 Space」的来源
      * Space 名称。优先读 msg-level 新字段（from_home_space_id / name），
      * 缺失时回落到 msg-level 旧字段（from_is_external / from_source_space_name），
      * 再缺失时从已缓存的发送者 channelInfo.orgData 补齐，最终由
@@ -146,7 +146,7 @@ export default class TabAll extends Component<TabAllProps> {
                                     // 不在 render 中产生副作用
                                 }
 
-                                // YUJ-138: 跨 Space 搜索消息时在发送者名字后展示来源 Space
+                                // 跨 Space 搜索消息时在发送者名字后展示来源 Space
                                 const senderSourceSpaceName =
                                     this.resolveMessageSenderSourceSpaceName(item)
 

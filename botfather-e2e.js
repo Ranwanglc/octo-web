@@ -6,7 +6,11 @@ const { chromium } = require('@playwright/test');
   
   const BASE = 'http://localhost:82';
   const USER = 'test_user_a';
-  const PASS = 'testpass123';
+  const PASS = process.env.BOTFATHER_PASS;
+  if (!PASS) {
+    console.error('BOTFATHER_PASS environment variable is required');
+    process.exit(1);
+  }
   
   console.log('=== 1. 登录 ===');
   await page.goto(BASE);

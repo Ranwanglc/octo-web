@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { shouldShowRealnameBadge } from "../realnameBadge";
 
 /**
- * YUJ-408 (Round 3 of YUJ-404) — shared realname-badge helper 单测。
+ * Shared realname-badge helper 单测。
  *
  * ## 背景（Jerry R2 🔴 Critical）
  *
@@ -22,7 +22,7 @@ import { shouldShowRealnameBadge } from "../realnameBadge";
  */
 describe("shouldShowRealnameBadge", () => {
     // ---------------------------------------------------------------------
-    // bot 会话维度（YUJ-408 R3 Critical）
+    // bot 会话维度（R3 Critical）
     // ---------------------------------------------------------------------
 
     it("🔑 R3 Critical: isBotConversation=true + self-sent → false（自己发给 bot 的消息不显示徽章）", () => {
@@ -229,7 +229,7 @@ describe("shouldShowRealnameBadge", () => {
         ).toBe(true);
     });
 
-    // 兼容后端序列化偏差（YUJ-387 E1）
+    // 兼容后端序列化偏差（E1）
     it("兼容 realname_verified = 1 (number)", () => {
         expect(
             shouldShowRealnameBadge({

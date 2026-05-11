@@ -1,7 +1,7 @@
 /**
  * Unit tests for WKAvatar auto-refresh when channel avatar tag changes.
  *
- * Fixes YUJ-169 / dmwork-web#1097: after uploading a new bot avatar in
+ * Fixes dmwork-web#1097: after uploading a new bot avatar in
  * BotDetailModal the modal preview and external WKAvatar instances (bot
  * lists, user info cards) must refresh in place without a full-page reload.
  *

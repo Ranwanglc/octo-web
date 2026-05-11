@@ -183,7 +183,7 @@
   text-align: center;
 }
 
-/* YUJ-138: 分派候选的「@SpaceName」后缀（企微风格）。
+/* 分派候选的「@SpaceName」后缀（企微风格）。
    与 .wk-subscrierlist-item-space / .mention-list-item-space 等视觉保持一致。
    只有候选相对当前查看 Space 判定为外部（sourceSpaceName 非空）时由上层渲染。 */
 .wk-assignee-search__space {

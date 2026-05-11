@@ -9,7 +9,7 @@ export interface ReplyBlockProps {
   /**
    * 被引用消息发送者的来源 Space 名称（相对当前查看 Space 解析后）。
    * 非空时，在昵称后以 `@{sourceSpaceName}` 形式内联展示，匹配消息头
-   * 「@SpaceName」后缀（企微风格，YUJ-66 / dmwork-web#1069）。
+   * 「@SpaceName」后缀（企微风格，dmwork-web#1069）。
    * 调用方负责调用 `resolveExternalForViewer`，避免把 WKApp 副作用引入纯 UI 组件。
    */
   sourceSpaceName?: string

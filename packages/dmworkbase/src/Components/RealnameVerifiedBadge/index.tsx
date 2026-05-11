@@ -10,8 +10,8 @@ interface RealnameVerifiedBadgeProps {
 /**
  * RealnameVerifiedBadge — OCTO 实名认证标识
  *
- * dmwork-web YUJ-359 / GH #1121 原硬约束「聊天气泡 / 群成员列表不使用此 badge」
- * 已于 2026-05-10 由 Yu 决策解除（YUJ-379 / Epic dmwork-web#1169）。现实中实名
+ * dmwork-web GH #1121 原硬约束「聊天气泡 / 群成员列表不使用此 badge」
+ * 已于 2026-05-10 由 Yu 决策解除（Epic dmwork-web#1169）。现实中实名
  * 比例约 20%，徽章已从「噪音」变成「稀缺的差异化信号」，对外部群混合身份
  * 场景尤其有价值。
  *

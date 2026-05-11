@@ -624,7 +624,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
               ];
 
             const items = localMembersRef.current.map((member) => {
-              // YUJ-66: @选人弹窗按当前查看 Space 相对显示「@SpaceName」。
+              // @选人弹窗按当前查看 Space 相对显示「@SpaceName」。
               // 同 Space / 自己 / legacy 非外部 → 不显示 sourceSpaceName。
               const ext = resolveExternalForViewer({
                 homeSpaceId: member.orgData?.home_space_id,

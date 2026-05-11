@@ -7,20 +7,20 @@ describe('parseOidcProviders', () => {
   it('parses a well-formed provider entry into camelCase', () => {
     const result = parseOidcProviders([
       {
-        id: 'aegis',
-        name: 'Aegis',
-        authorize_path: '/v1/auth/oidc/aegis/authorize',
-        account_url: 'https://aegis.example.com/account',
-        reset_password_url: 'https://aegis.example.com/reset',
+        id: 'acme-sso',
+        name: 'Acme SSO',
+        authorize_path: '/v1/auth/oidc/acme-sso/authorize',
+        account_url: 'https://idp.example.com/account',
+        reset_password_url: 'https://idp.example.com/reset',
       },
     ])
     expect(result).toEqual([
       {
-        id: 'aegis',
-        name: 'Aegis',
-        authorizePath: '/v1/auth/oidc/aegis/authorize',
-        accountUrl: 'https://aegis.example.com/account',
-        resetPasswordUrl: 'https://aegis.example.com/reset',
+        id: 'acme-sso',
+        name: 'Acme SSO',
+        authorizePath: '/v1/auth/oidc/acme-sso/authorize',
+        accountUrl: 'https://idp.example.com/account',
+        resetPasswordUrl: 'https://idp.example.com/reset',
       },
     ])
   })
@@ -29,14 +29,14 @@ describe('parseOidcProviders', () => {
     expect(parseOidcProviders(null)).toEqual([])
     expect(parseOidcProviders(undefined)).toEqual([])
     expect(parseOidcProviders('nope')).toEqual([])
-    expect(parseOidcProviders({ id: 'aegis' })).toEqual([])
+    expect(parseOidcProviders({ id: 'acme-sso' })).toEqual([])
   })
 
   it('skips entries missing required fields instead of throwing', () => {
     const result = parseOidcProviders([
-      { id: 'aegis', name: 'Aegis' }, // 缺 authorize_path
-      { name: 'Aegis', authorize_path: '/x' }, // 缺 id
-      { id: 'aegis', authorize_path: '/x' }, // 缺 name
+      { id: 'acme-sso', name: 'Acme SSO' }, // 缺 authorize_path
+      { name: 'Acme SSO', authorize_path: '/x' }, // 缺 id
+      { id: 'acme-sso', authorize_path: '/x' }, // 缺 name
       null,
       'string',
       {
@@ -63,7 +63,7 @@ describe('parseOidcProviders', () => {
     ]
     for (const path of malicious) {
       const result = parseOidcProviders([
-        { id: 'aegis', name: 'Aegis', authorize_path: path },
+        { id: 'acme-sso', name: 'Acme SSO', authorize_path: path },
       ])
       expect(result).toEqual([])
     }

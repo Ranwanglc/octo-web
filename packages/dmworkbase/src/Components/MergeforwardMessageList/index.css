@@ -79,7 +79,7 @@
   color: rgba(28, 28, 35, 0.4);
 }
 
-/* 外部来源行（YUJ-51）：-4px 抵消父容器 gap:4，避免与 name 行间距过大 */
+/* 外部来源行：-4px 抵消父容器 gap:4，避免与 name 行间距过大 */
 .wk-mergeforwardmessagelist-content-msg-info-origin {
   margin-top: -2px;
 }

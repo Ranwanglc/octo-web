@@ -317,7 +317,7 @@ export const SearchTreeViewA: Story = {
   },
 }
 
-// ─── 外部群 Tag (YUJ-139) ──────────────────────────────────────
+// ─── 外部群 Tag ──────────────────────────────────────
 
 /** 外部群 Tag：外部群 item 显示紫色「外部」标签，内部群不显示 */
 const mockExternalItems: ForwardItem[] = [

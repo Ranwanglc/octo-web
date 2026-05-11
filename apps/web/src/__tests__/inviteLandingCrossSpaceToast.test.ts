@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 /**
- * YUJ-106 / dmwork-web#1065 — 邀请加入后 toast 提示归属 Space + 一键切换。
+ * dmwork-web#1065 — 邀请加入后 toast 提示归属 Space + 一键切换。
  *
  * 这组 grep 断言锁定 InviteLanding、MainPage、helper、toast 组件的关键行为：
  * 1. InviteLanding 在 /space/join 前快照 prevCurrentSpaceId
@@ -11,7 +11,7 @@ import * as path from 'path';
  * 4. 把 notice 写入 sessionStorage，MainPage 挂载时消费
  * 5. 切换按钮调用 handleSpaceSelected 显式切
  */
-describe('InviteLanding + MainPage — YUJ-106 / dmwork-web#1065 cross-space toast', () => {
+describe('InviteLanding + MainPage — dmwork-web#1065 cross-space toast', () => {
     let inviteLanding: string;
     let mainPage: string;
     let helper: string;
@@ -41,7 +41,7 @@ describe('InviteLanding + MainPage — YUJ-106 / dmwork-web#1065 cross-space toa
     });
 
     it('InviteLanding derives crossSpace via computeAndSaveJoinSuccess helper', () => {
-        // YUJ-112 / dmwork-web#1068 Round 2: the crossSpace calculation now lives
+        // dmwork-web#1068 Round 2: the crossSpace calculation now lives
         // in the shared helper so Layout.onLogin can reuse the same logic.
         expect(inviteLanding).toMatch(/computeAndSaveJoinSuccess/);
         expect(inviteLanding).toMatch(/crossSpace/);

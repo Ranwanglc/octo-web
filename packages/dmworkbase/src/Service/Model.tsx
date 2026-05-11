@@ -233,7 +233,7 @@ export class MessageWrap {
         return this.message.fromUID
     }
 
-    // 外部群消息来源标记（YUJ-50 / YUJ-53）：
+    // 外部群消息来源标记：
     // 由 Convert.toMessage 从 /message/channel/sync 响应 msg-level 字段
     // from_is_external (0|1) / from_source_space_name (string) 透传过来。
     // 消费方优先读这组 msg-level 字段；缺失时再回落到 channelInfo.orgData.is_external。
@@ -245,7 +245,7 @@ export class MessageWrap {
         return typeof v === "string" && v.length > 0 ? v : undefined
     }
 
-    // YUJ-64 / YUJ-63：消息发送者真实归属 Space（相对当前查看 Space 做外部判定）。
+    // 消息发送者真实归属 Space（相对当前查看 Space 做外部判定）。
     // 由 Convert.toMessage 从 /message/channel/sync 的 msg-level 字段
     // from_home_space_id / from_home_space_name 透传。消费方优先读此组字段，
     // 缺失时才回落到旧的 fromIsExternal + fromSourceSpaceName。

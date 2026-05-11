@@ -1,5 +1,5 @@
 /**
- * YUJ-67 (dmwork-web #1016) — 外部群成员 UserInfo 底部按钮隐藏逻辑单测。
+ * dmwork-web #1016 — 外部群成员 UserInfo 底部按钮隐藏逻辑单测。
  *
  * 覆盖 UserInfoVM.isExternalToViewer() 相对当前查看 Space 的判定：
  *   - 跨 space 外部 → hide 发送消息 / 添加好友，显示"仅可在群内交流"
@@ -59,7 +59,7 @@ function shouldHideSendButton(opts: Parameters<typeof isExternalToViewer>[0]): b
   return isExternalToViewer(opts);
 }
 
-describe('YUJ-67 UserInfoVM.isExternalToViewer', () => {
+describe('UserInfoVM.isExternalToViewer', () => {
   describe('新字段 home_space_id 优先', () => {
     it('跨 space（home != viewer）→ 隐藏发送消息', () => {
       expect(

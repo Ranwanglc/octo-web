@@ -1,30 +1,30 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
 /**
- * YUJ-387 P1-1 — bridge 层实名徽章分支判定单测。
+ * bridge 层实名徽章分支判定单测。
  *
  * 背景：
- *   YUJ-379 PR#1170 在 bridge/message/useMessageRow.ts 的 getMessageRow 里
+ *   PR#1170 在 bridge/message/useMessageRow.ts 的 getMessageRow 里
  *   引入了「实名徽章」判断分支：
  *     1. 群成员 orgData.realname_verified → isRealnameVerified=true
  *     2. 群成员 orgData 缺失 → 回落 Person channelInfo.orgData
  *     3. bot 发送者（channelInfo.orgData.robot=1）→ 无论 realname_verified
  *        如何，一律压制为 false
  *
- *   ReviewBot YUJ-383 指出：UI 集成测试（MessageRow.test.tsx）只覆盖
- *   props 透传，拦不住 bridge 层的跨层 regression（比如有人「顺手」把
- *   fallback 顺序反过来，或把 bot 压制忘了）。这个文件就是在 bridge 层
- *   把 3 条分支钉死，任何回归直接红。
+ *   UI 集成测试（MessageRow.test.tsx）只覆盖 props 透传，拦不住 bridge
+ *   层的跨层 regression（比如有人「顺手」把 fallback 顺序反过来，或把
+ *   bot 压制忘了）。这个文件就是在 bridge 层把 3 条分支钉死，任何回归
+ *   直接红。
  */
 
 const mockState = vi.hoisted(() => ({
     subscribesByChannel: new Map<string, any[]>(),
     channelInfoByUID: new Map<string, any>(),
     currentSpaceId: "",
-    // YUJ-404: self-viewer fallback 需要访问 WKApp.loginInfo.{uid,realnameVerified}
+    // self-viewer fallback 需要访问 WKApp.loginInfo.{uid,realnameVerified}
     loginInfoUid: "",
     loginInfoRealnameVerified: undefined as boolean | undefined,
-    // YUJ-412: self displayName 走 loginInfo.selfDisplayName() / .realName / .name
+    // self displayName 走 loginInfo.selfDisplayName() / .realName / .name
     loginInfoName: "",
     loginInfoRealName: undefined as string | undefined,
 }))
@@ -50,7 +50,7 @@ vi.mock("../../../App", () => ({
             get realName() {
                 return mockState.loginInfoRealName
             },
-            // YUJ-412: mirror LoginInfo.selfDisplayName() runtime shape.
+            // mirror LoginInfo.selfDisplayName() runtime shape.
             selfDisplayName() {
                 if (
                     mockState.loginInfoRealnameVerified === true &&
@@ -109,7 +109,7 @@ function makeGroupMessage(opts: {
 }
 
 /**
- * YUJ-408 R3: 1v1 Person 会话消息工厂。
+ * 1v1 Person 会话消息工厂。
  *
  * message.channel 的 channelID 是对话 **对端** 的 UID：
  *   - 我给 bot 发消息 → fromUID=自己, conversationPeerUID=botUID
@@ -138,14 +138,14 @@ function makePersonMessage(opts: {
     }
 }
 
-describe("getMessageRow — realname badge branch logic (YUJ-387 P1-1 / YUJ-379)", () => {
+describe("getMessageRow — realname badge branch logic", () => {
     beforeEach(() => {
         mockState.subscribesByChannel.clear()
         mockState.channelInfoByUID.clear()
         mockState.currentSpaceId = ""
         mockState.loginInfoUid = ""
         mockState.loginInfoRealnameVerified = undefined
-        // YUJ-412: reset self displayName mock state between tests.
+        // reset self displayName mock state between tests.
         mockState.loginInfoName = ""
         mockState.loginInfoRealName = undefined
     })
@@ -235,7 +235,7 @@ describe("getMessageRow — realname badge branch logic (YUJ-387 P1-1 / YUJ-379)
     })
 
     // ---------------------------------------------------------------------
-    // YUJ-404: 自己看自己的消息也显示实名徽章
+    // 自己看自己的消息也显示实名徽章
     //
     // 背景：客户端群成员订阅列表通常不缓存 "自己" 的条目（WKSDK 优化，self
     // 走 WKApp.loginInfo 路径），且群 channelInfo orgData 不带 realname_verified
@@ -243,7 +243,7 @@ describe("getMessageRow — realname badge branch logic (YUJ-387 P1-1 / YUJ-379)
     // 读 WKApp.loginInfo.realnameVerified。
     // ---------------------------------------------------------------------
 
-    it("branch 5 (YUJ-404): own message + WKApp.loginInfo.realnameVerified=true → isRealnameVerified=true", () => {
+    it("branch 5: own message + WKApp.loginInfo.realnameVerified=true → isRealnameVerified=true", () => {
         // 关键场景：自己发的消息，群成员缓存和 channelInfo 都拿不到 self 的
         // orgData（真实线上情形），仅靠 WKApp.loginInfo 断定。
         mockState.loginInfoUid = "u_self"
@@ -257,7 +257,7 @@ describe("getMessageRow — realname badge branch logic (YUJ-387 P1-1 / YUJ-379)
         expect(row.isRealnameVerified).toBe(true)
     })
 
-    it("branch 5 negative (YUJ-404): own message + realnameVerified=false → isRealnameVerified=false", () => {
+    it("branch 5 negative: own message + realnameVerified=false → isRealnameVerified=false", () => {
         mockState.loginInfoUid = "u_self"
         mockState.loginInfoRealnameVerified = false
         mockState.subscribesByChannel.set("g_self2", [])
@@ -267,7 +267,7 @@ describe("getMessageRow — realname badge branch logic (YUJ-387 P1-1 / YUJ-379)
         expect(row.isRealnameVerified).toBe(false)
     })
 
-    it("branch 5 tri-state guard (YUJ-404): own message + realnameVerified=undefined → false（严格 === true 判断）", () => {
+    it("branch 5 tri-state guard: own message + realnameVerified=undefined → false（严格 === true 判断）", () => {
         // Phase A 血泪教训：realnameVerified 是 boolean | undefined，
         // 若 fallback 用 truthy 判断，undefined 仍会被意外放行。这里钉死
         // undefined 必须判 false。
@@ -280,7 +280,7 @@ describe("getMessageRow — realname badge branch logic (YUJ-387 P1-1 / YUJ-379)
         expect(row.isRealnameVerified).toBe(false)
     })
 
-    it("branch 5 precedence (YUJ-404): own message + realnameVerified=true BUT groupMember.orgData.realname_verified=false → 仍 true (self-fallback 兜底)", () => {
+    it("branch 5 precedence: own message + realnameVerified=true BUT groupMember.orgData.realname_verified=false → 仍 true (self-fallback 兜底)", () => {
         // 防御：即使 groupMember 不知为何把自己带进列表了且 false（理论不该出现，
         // 但兜底防止 SDK 行为变更），self-fallback 通过 OR 连接仍能让整体为 true，
         // 保证 self-viewer 体验不回归。
@@ -299,7 +299,7 @@ describe("getMessageRow — realname badge branch logic (YUJ-387 P1-1 / YUJ-379)
         expect(row.isRealnameVerified).toBe(true)
     })
 
-    it("branch 5 bot guard (YUJ-404): own message + realnameVerified=true BUT sender is bot → false（!isBotSender 优先级不变）", () => {
+    it("branch 5 bot guard: own message + realnameVerified=true BUT sender is bot → false（!isBotSender 优先级不变）", () => {
         // 硬约束：bot 发送者优先级不变。即便 fromUID===self 且 loginInfo 实名，
         // bot 依然不渲染徽章。!isBotSender 外层短路。
         mockState.loginInfoUid = "u_selfbot"
@@ -316,7 +316,7 @@ describe("getMessageRow — realname badge branch logic (YUJ-387 P1-1 / YUJ-379)
         expect(row.isRealnameVerified).toBe(false)
     })
 
-    it("branch 5 scope guard (YUJ-404): other-viewer path 不受影响 —— fromUID !== self + loginInfo.realnameVerified=true → 走原有 branch 1/2/4", () => {
+    it("branch 5 scope guard: other-viewer path 不受影响 —— fromUID !== self + loginInfo.realnameVerified=true → 走原有 branch 1/2/4", () => {
         // 硬约束：只影响 self-viewer path。别人发的消息仍需靠 groupMember/
         // channelInfo 的 realname_verified，不能被 viewer 自己的实名状态污染。
         mockState.loginInfoUid = "u_me"
@@ -336,7 +336,7 @@ describe("getMessageRow — realname badge branch logic (YUJ-387 P1-1 / YUJ-379)
     })
 
     // ---------------------------------------------------------------------
-    // YUJ-408 R3 (Jerry R2 🔴 Critical): "是不是 bot 会话" 必须按
+    // R3 (Jerry R2 Critical): "是不是 bot 会话" 必须按
     // `message.channel` 判，而不是按 `message.fromUID` 查 Person channelInfo 判。
     //
     // R1/R2 的 bug：自己在 bot 1v1 里发消息时
@@ -350,7 +350,7 @@ describe("getMessageRow — realname badge branch logic (YUJ-387 P1-1 / YUJ-379)
     // 短路。
     // ---------------------------------------------------------------------
 
-    it("🔑 R3 Critical regression (YUJ-408): 自己在 bot 1v1 里发消息 → isBotConversation=true → 不显示徽章 (防 Jerry R2 回归)", () => {
+    it("🔑 R3 Critical regression: 自己在 bot 1v1 里发消息 → isBotConversation=true → 不显示徽章 (防 Jerry R2 回归)", () => {
         // 建模真实场景：
         //   - fromUID = self，message.channel.channelID = botUID
         //   - channelInfoByUID[self] 未设置（SDK 对 self 不缓存 Person channelInfo）
@@ -376,7 +376,7 @@ describe("getMessageRow — realname badge branch logic (YUJ-387 P1-1 / YUJ-379)
         expect(row.isRealnameVerified).toBe(false)
     })
 
-    it("R3 (YUJ-408): bot 在 1v1 里给我发消息 → isBotConversation=true → 不显示徽章", () => {
+    it("R3: bot 在 1v1 里给我发消息 → isBotConversation=true → 不显示徽章", () => {
         // fromUID=botUID、channel=Person(botUID)：从发送者查到的 channelInfo
         // 也是 bot 的 Person，所以 isBotSender 也 true。双保险，但 helper 里
         // isBotConversation 先短路。
@@ -397,9 +397,9 @@ describe("getMessageRow — realname badge branch logic (YUJ-387 P1-1 / YUJ-379)
         expect(row.isRealnameVerified).toBe(false)
     })
 
-    it("R3 (YUJ-408): 普通 Person 1v1（对端非 bot）+ 自己发送 + realnameVerified=true → self-fallback 仍命中 → true", () => {
+    it("R3: 普通 Person 1v1（对端非 bot）+ 自己发送 + realnameVerified=true → self-fallback 仍命中 → true", () => {
         // 对端是普通人的 1v1 会话：isBotConversation=false，self-fallback 应该
-        // 照常生效，保证 YUJ-404 的产品诉求「Web 上自己看自己的 ✓」不回归。
+        // 照常生效，保证产品诉求「Web 上自己看自己的 ✓」不回归。
         mockState.loginInfoUid = "u_self"
         mockState.loginInfoRealnameVerified = true
         mockState.channelInfoByUID.set("u_friend", {
@@ -416,7 +416,7 @@ describe("getMessageRow — realname badge branch logic (YUJ-387 P1-1 / YUJ-379)
         expect(row.isRealnameVerified).toBe(true)
     })
 
-    it("R3 (YUJ-408): 普通群会话 + self + realnameVerified=true → self-fallback 仍命中 → true", () => {
+    it("R3: 普通群会话 + self + realnameVerified=true → self-fallback 仍命中 → true", () => {
         // 普通群：group channelInfo 未缓存（robot undefined） → isBotConversation=false。
         // self-fallback 正常生效。回归保护。
         mockState.loginInfoUid = "u_self"
@@ -429,7 +429,7 @@ describe("getMessageRow — realname badge branch logic (YUJ-387 P1-1 / YUJ-379)
     })
 
     // ---------------------------------------------------------------------
-    // YUJ-410 R4 (Jerry R3 🔵 Non-blocking): conversation channelInfo timing race.
+    // R4 (Jerry R3 Non-blocking): conversation channelInfo timing race.
     //
     // 场景：message.channel 对应的 Person channelInfo 首帧未缓存。R3 的
     // useMessageRow 只监听 fromUID 的 channelInfo 到达；如果 fromUID=self
@@ -447,7 +447,7 @@ describe("getMessageRow — realname badge branch logic (YUJ-387 P1-1 / YUJ-379)
     // timing 状态下的行为，防止保守策略被误删或被过度放宽。
     // ---------------------------------------------------------------------
 
-    it("🔴 R4 timing race (YUJ-410): conversation channelInfo 首帧未缓存 + self-sent Person 1v1 → 保守压制 → 徽章不显示", () => {
+    it("🔴 R4 timing race: conversation channelInfo 首帧未缓存 + self-sent Person 1v1 → 保守压制 → 徽章不显示", () => {
         // 建模真实 race：
         //   - fromUID = self（SDK 不缓存 self 的 Person channelInfo）
         //   - message.channel = Person(u_bot) 但 channelInfoByUID 里没 u_bot
@@ -467,7 +467,7 @@ describe("getMessageRow — realname badge branch logic (YUJ-387 P1-1 / YUJ-379)
         expect(row.isRealnameVerified).toBe(false)
     })
 
-    it("R4 timing race (YUJ-410): conversation channelInfo 后到达（非 bot）→ rerender 后 self-fallback 正确放行 → true", () => {
+    it("R4 timing race: conversation channelInfo 后到达（非 bot）→ rerender 后 self-fallback 正确放行 → true", () => {
         // fetchChannelInfo 回包后的状态：u_friend 的 channelInfo 已进缓存且
         // robot!=1。此时 conservativeMissing=false，isBotConversation=false
         // （robot 不等于 1），self-fallback 命中 → true。
@@ -491,7 +491,7 @@ describe("getMessageRow — realname badge branch logic (YUJ-387 P1-1 / YUJ-379)
         expect(row.isRealnameVerified).toBe(true)
     })
 
-    it("R4 scope guard (YUJ-410): conversation channelInfo 缺失 + other-sent Person 1v1 → 保守策略不触发（只影响 self-sent path）", () => {
+    it("R4 scope guard: conversation channelInfo 缺失 + other-sent Person 1v1 → 保守策略不触发（只影响 self-sent path）", () => {
         // 对方发给我的消息（fromUID=friend，peer=friend）。即便 conversationChannelInfo
         // 缺失，保守策略不应该触发 —— self-fallback 本来也不会走（isOwnMessage=false）。
         // 但发送者 Person channelInfo 若已 verified 仍需正常亮徽章。

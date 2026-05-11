@@ -12,7 +12,7 @@ vi.mock("../../App", () => ({
 import { resolveExternalForViewer } from "../externalViewer"
 import WKApp from "../../App"
 
-describe("resolveExternalForViewer (YUJ-64)", () => {
+describe("resolveExternalForViewer", () => {
     beforeEach(() => {
         ;(WKApp as any).shared.currentSpaceId = ""
     })

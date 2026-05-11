@@ -1,6 +1,7 @@
+# Replace your-registry.example.com/octoweb with your own container registry path
 build:
-	docker build -t tangsengdaodaoweb .
+	docker build -t octoweb .
 deploy:
-	docker build -t tangsengdaodaoweb  .
-	docker tag tangsengdaodaoweb registry.cn-shanghai.aliyuncs.com/wukongim/tangsengdaodaoweb:latest
-	docker push registry.cn-shanghai.aliyuncs.com/wukongim/tangsengdaodaoweb:latest
+	docker build -t octoweb  .
+	docker tag octoweb your-registry.example.com/octoweb:latest
+	docker push your-registry.example.com/octoweb:latest

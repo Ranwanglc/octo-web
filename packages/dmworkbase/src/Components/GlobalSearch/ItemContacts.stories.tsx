@@ -1,5 +1,5 @@
 /**
- * YUJ-138 — 联系人搜索结果条目的「@SpaceName」后缀视觉 story。
+ * 联系人搜索结果条目的「@SpaceName」后缀视觉 story。
  *
  * 覆盖四种场景：
  *   - 跨 Space 外部成员：姓名后渲染 @{sourceSpaceName}
@@ -19,7 +19,7 @@ const meta: Meta<typeof ItemContacts> = {
     docs: {
       description: {
         component:
-          'YUJ-138: 搜索结果联系人条目，跨 Space 时在姓名后展示来源 Space，避免误选外部成员。',
+          '搜索结果联系人条目，跨 Space 时在姓名后展示来源 Space，避免误选外部成员。',
       },
     },
   },

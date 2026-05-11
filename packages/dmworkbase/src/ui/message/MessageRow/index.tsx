@@ -37,19 +37,19 @@ export interface MessageRowProps {
   isEdit?: boolean
 
   /**
-   * 相对当前查看 Space，发送者是否来自外部 Space（YUJ-98 R7）。
+   * 相对当前查看 Space，发送者是否来自外部 Space。
    * bridge 层计算；为 true 且 `sourceSpaceName` 非空时，在发送者名称后
    * 渲染 `@{sourceSpaceName}` 后缀，与新组件 `wk-msg-head-space` 行为一致。
    */
   isExternal?: boolean
 
   /**
-   * 外部来源 Space 名称（相对当前查看 Space 解析后）（YUJ-98 R7）。
+   * 外部来源 Space 名称（相对当前查看 Space 解析后）。
    */
   sourceSpaceName?: string
 
   /**
-   * 发送者是否已完成 OCTO 实名认证（YUJ-379 / Epic dmwork-web#1169 Phase A）。
+   * 发送者是否已完成 OCTO 实名认证（Epic dmwork-web#1169 Phase A）。
    * 为 true 时在发送者名右侧紧贴渲染 `<RealnameVerifiedBadge variant="icon" />`
    * 迷你蓝色 ✓ 圆点。未实名一律不渲染（不加灰色 badge / 警告标）。
    */
@@ -184,13 +184,13 @@ export default function MessageRow({
               style={{ cursor: onSenderNameClick ? 'pointer' : undefined }}
               onClick={onSenderNameClick}
             >{senderName}</span>
-            {/* YUJ-379 / Epic dmwork-web#1169 Phase A: 实名徽章紧贴作者名右侧，
-                只 variant="icon" 迷你形态，已实名才渲染；解除 YUJ-359 硬约束。*/}
+            {/* Epic dmwork-web#1169 Phase A: 实名徽章紧贴作者名右侧，
+                只 variant="icon" 迷你形态，已实名才渲染。*/}
             {isRealnameVerified && (
               <RealnameVerifiedBadge variant="icon" />
             )}
             {/*
-              YUJ-98 R7: 发送者名后的 @SpaceName 后缀（企微风格）。
+              发送者名后的 @SpaceName 后缀（企微风格）。
               R1-R6 五轮都改了新组件 wk-msg-head，但真正上屏的是这个老组件
               wk-msg-row-header —— Yu 15:13 console 诊断定位到 fiber 数据对、
               但 DOM 里根本没有 @SpaceName span，即渲染组件缺实现。

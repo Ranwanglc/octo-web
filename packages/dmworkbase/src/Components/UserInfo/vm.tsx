@@ -142,7 +142,7 @@ export class UserInfoVM extends ProviderListener {
     ) {
       return this.fromSubscriberOfUser.remark;
     }
-    // YUJ-359 (GH #1121): 无本地备注时，如果对方已实名认证则优先展示真实姓名。
+    // GH #1121: 无本地备注时，如果对方已实名认证则优先展示真实姓名。
     // 未认证 / 字段缺失时走原逻辑（channelInfo.title）。
     const verifiedName = resolveDisplayName({
       real_name: this.channelInfo?.orgData?.real_name,
@@ -154,7 +154,7 @@ export class UserInfoVM extends ProviderListener {
   }
 
   /**
-   * YUJ-359 (GH #1121): 对方是否已完成 OCTO 实名认证。
+   * GH #1121: 对方是否已完成 OCTO 实名认证。
    * 仅用于个人资料页 ✓ 勾 + 「已实名」tag 展示，
    * 聊天气泡 / 群成员列表**不**消费此值（不在本任务范围）。
    */
@@ -208,10 +208,10 @@ export class UserInfoVM extends ProviderListener {
   }
 
   /**
-   * YUJ-67: 相对当前查看 Space 判断该用户是否为"外部"。
+   * 相对当前查看 Space 判断该用户是否为"外部"。
    *
    * 用途：UserInfo 底部是否隐藏"发送消息"按钮，作为跨 space DM 骚扰 Phase 1
-   * 前端入口收紧的唯一判定源。判定字段沿用 YUJ-64 的 resolveExternalForViewer，
+   * 前端入口收紧的唯一判定源。判定字段沿用 resolveExternalForViewer，
    * 数据源优先级：
    *   1. fromSubscriberOfUser.orgData：群成员 subscriber 的归属 space 字段，
    *      这是从群里点头像进来的主路径，精度最高；

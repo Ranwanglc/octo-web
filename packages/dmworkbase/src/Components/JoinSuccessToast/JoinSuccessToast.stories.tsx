@@ -6,7 +6,7 @@ import "../../theme/index.css";
 import "./index.css";
 
 /**
- * YUJ-106 / dmwork-web#1065 — Storybook for 加入成功 toast
+ * dmwork-web#1065 — Storybook for 加入成功 toast
  *
  * 场景：
  * - 同 Space / 单 Space：常规 toast

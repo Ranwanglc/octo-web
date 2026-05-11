@@ -54,12 +54,12 @@ export default class MessageHead extends Component<MessageHeadProps> {
         const channelInfo = WKSDK.shared().channelManager.getChannelInfo(new Channel(message.fromUID, ChannelTypePerson))
         const isGroupMsg = message.channel.channelType === ChannelTypeGroup
         const isBot = channelInfo?.orgData?.robot === 1
-        // 外部群成员来源标记（YUJ-53 / YUJ-64）：
+        // 外部群成员来源标记：
         // 消息级 home_space_id/home_space_name 与 is_external/source_space_name
         // 由 Convert.toMessage 从 /message/channel/sync 响应透传。优先新字段，
         // 缺失时回落到 channelInfo.orgData 上的对应字段（向后兼容）。
         const viewerSpaceId = WKApp.shared.currentSpaceId
-        // 1) msg-level：YUJ-64 新字段为主，YUJ-50 旧字段降级
+        // 1) msg-level：新字段为主，旧字段降级
         const msgRes = resolveExternalForViewer({
             homeSpaceId: message.fromHomeSpaceId,
             homeSpaceName: message.fromHomeSpaceName,
@@ -88,7 +88,7 @@ export default class MessageHead extends Component<MessageHeadProps> {
                 this.needTitle()?( <div className="textTitle" style={{color:getTitleColor(channelInfo?.orgData?.displayName)}}>
                 <div className="textTitle-name-row">
                     <span>{channelInfo?.orgData?.displayName}</span>
-                    {/* YUJ-66: 昵称后「@SpaceName」后缀（企微风格），按当前查看 Space 相对渲染 */}
+                    {/* 昵称后「@SpaceName」后缀（企微风格），按当前查看 Space 相对渲染 */}
                     {isExternalMember && sourceSpaceName && (
                         <span className="wk-msg-head-space" title={`@${sourceSpaceName}`}>
                             @{sourceSpaceName}

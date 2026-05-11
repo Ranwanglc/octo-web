@@ -1,7 +1,7 @@
-// YUJ-64: 外部成员/消息来源的"按当前 Space 视角渲染"公共判定逻辑。
+// 外部成员/消息来源的"按当前 Space 视角渲染"公共判定逻辑。
 //
 // 背景：
-//   后端 YUJ-63 为成员列表和 /message/channel/sync 新增了 home_space_id /
+//   后端为成员列表和 /message/channel/sync 新增了 home_space_id /
 //   home_space_name（消息侧为 from_home_space_id / from_home_space_name）字段，
 //   表示该用户真正的归属 Space。前端不再把 is_external 当作绝对值，而是按
 //   "归属 Space 与当前查看 Space 是否一致" 判断：
@@ -16,7 +16,7 @@
 import WKApp from "../App"
 
 export interface ExternalViewerInput {
-  /** 新字段：成员真实归属 Space ID（YUJ-63 后端扩展） */
+  /** 新字段：成员真实归属 Space ID（后端扩展） */
   homeSpaceId?: string | null
   /** 新字段：成员真实归属 Space 名称 */
   homeSpaceName?: string | null

@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 
 /**
- * YUJ-412: loginSuccess() 实名字段映射的单测。
+ * loginSuccess() 实名字段映射的单测。
  *
- * 背景：YUJ-404 R9 的事故复盘（Coda 教训 memory 627798ef）——
+ * 背景：R9 的事故复盘（Coda 教训 memory 627798ef）——
  * 字段声明存在 ≠ 有人赋值。本文件把 loginSuccess 对后端新字段
  * `realname_verified` / `real_name` / `realname_verified_at` 的映射规则
  * 钉死，防止再次出现"改了 save/load 但没改 loginSuccess"的断链。
@@ -71,7 +71,7 @@ function resetLoginInfo() {
   loginInfoStub.save.mockClear()
 }
 
-describe('loginSuccess — realname payload mapping (YUJ-412)', () => {
+describe('loginSuccess — realname payload mapping', () => {
   let vm: LoginVM
 
   beforeEach(() => {
@@ -101,7 +101,7 @@ describe('loginSuccess — realname payload mapping (YUJ-412)', () => {
         real_name: '余嘉伟',
         realname_verified_at: 1715000000,
       },
-      'aegis',
+      'acme-sso',
     )
     expect(loginInfoStub.realnameVerified).toBe(true)
     expect(loginInfoStub.realName).toBe('余嘉伟')
@@ -116,7 +116,7 @@ describe('loginSuccess — realname payload mapping (YUJ-412)', () => {
         name: 'bob',
         realname_verified: false,
       },
-      'aegis',
+      'acme-sso',
     )
     expect(loginInfoStub.realnameVerified).toBe(false)
     expect(loginInfoStub.realName).toBeUndefined()
@@ -126,13 +126,13 @@ describe('loginSuccess — realname payload mapping (YUJ-412)', () => {
   it('字符串 "1" / "true" → realnameVerified=true（兼容后端序列化偏差）', () => {
     vm.loginSuccess(
       { uid: 'u1', token: 't1', realname_verified: '1', real_name: 'Alice' },
-      'aegis',
+      'acme-sso',
     )
     expect(loginInfoStub.realnameVerified).toBe(true)
     resetLoginInfo()
     vm.loginSuccess(
       { uid: 'u1', token: 't1', realname_verified: 'true', real_name: 'Alice' },
-      'aegis',
+      'acme-sso',
     )
     expect(loginInfoStub.realnameVerified).toBe(true)
   })
@@ -140,13 +140,13 @@ describe('loginSuccess — realname payload mapping (YUJ-412)', () => {
   it('字符串 "0" / "false" → realnameVerified=false', () => {
     vm.loginSuccess(
       { uid: 'u1', token: 't1', realname_verified: '0' },
-      'aegis',
+      'acme-sso',
     )
     expect(loginInfoStub.realnameVerified).toBe(false)
     resetLoginInfo()
     vm.loginSuccess(
       { uid: 'u1', token: 't1', realname_verified: 'false' },
-      'aegis',
+      'acme-sso',
     )
     expect(loginInfoStub.realnameVerified).toBe(false)
   })
@@ -154,7 +154,7 @@ describe('loginSuccess — realname payload mapping (YUJ-412)', () => {
   it('未实名 + real_name 缺失 → realName=undefined', () => {
     vm.loginSuccess(
       { uid: 'u1', token: 't1', realname_verified: false, real_name: '' },
-      'aegis',
+      'acme-sso',
     )
     expect(loginInfoStub.realName).toBeUndefined()
   })
@@ -162,7 +162,7 @@ describe('loginSuccess — realname payload mapping (YUJ-412)', () => {
   it('已实名但 real_name 为空字符串（异常数据）→ realName=undefined 不污染 displayName', () => {
     vm.loginSuccess(
       { uid: 'u1', token: 't1', realname_verified: true, real_name: '' },
-      'aegis',
+      'acme-sso',
     )
     expect(loginInfoStub.realnameVerified).toBe(true)
     expect(loginInfoStub.realName).toBeUndefined()
@@ -177,7 +177,7 @@ describe('loginSuccess — realname payload mapping (YUJ-412)', () => {
         real_name: '余嘉伟',
         realname_verified_at: '1715000000',
       },
-      'aegis',
+      'acme-sso',
     )
     expect(loginInfoStub.realnameVerifiedAt).toBe(1715000000)
   })
@@ -191,7 +191,7 @@ describe('loginSuccess — realname payload mapping (YUJ-412)', () => {
         real_name: '余嘉伟',
         realname_verified_at: -1,
       },
-      'aegis',
+      'acme-sso',
     )
     expect(loginInfoStub.realnameVerifiedAt).toBeUndefined()
     resetLoginInfo()
@@ -203,7 +203,7 @@ describe('loginSuccess — realname payload mapping (YUJ-412)', () => {
         real_name: '余嘉伟',
         realname_verified_at: 'not-a-number',
       },
-      'aegis',
+      'acme-sso',
     )
     expect(loginInfoStub.realnameVerifiedAt).toBeUndefined()
   })
@@ -211,7 +211,7 @@ describe('loginSuccess — realname payload mapping (YUJ-412)', () => {
   it('未知的 realname_verified 值（null） → undefined（不坍塌成 false）', () => {
     vm.loginSuccess(
       { uid: 'u1', token: 't1', realname_verified: null },
-      'aegis',
+      'acme-sso',
     )
     expect(loginInfoStub.realnameVerified).toBeUndefined()
   })

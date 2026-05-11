@@ -3,9 +3,9 @@
  *
  * 当前使用者：
  *   - bridge 路径：`src/bridge/message/useMessageRow.ts`
- *   - legacy 路径（例外申明）：`src/Messages/Base/index.tsx`（YUJ-404 Round 4）
+ *   - legacy 路径（例外申明）：`src/Messages/Base/index.tsx`（Round 4）
  *
- * `src/Messages/Base/` 在 `AGENTS.config.json:legacy_dirs`。产品需求 YUJ-404
+ * `src/Messages/Base/` 在 `AGENTS.config.json:legacy_dirs`。产品需求
  * 要求所有消息类型都要显徽章，Voice / Gif / Location / File / Video 还走
  * MessageBase，为避免功能分裂，按单点例外让 MessageBase 调用本 helper
  * （大范围 Messages/Base 重构仍走 "迁到新 MessageRow" 独立工程，本 helper
@@ -14,7 +14,7 @@
  * ## 规则（按顺序，短路）
  *
  *   1. `isAi` → false（AI 消息一律不展示徽章）。
- *   2. `isBotConversation` → false（✅ YUJ-408 Round 3）。
+ *   2. `isBotConversation` → false（Round 3）。
  *      "当前会话是 bot 私聊" 应按 **会话 channel**（`message.channel`，即对方
  *      那一头，Person 1v1 时就是 bot 自己，群时是群）判断，而不是按 **发送者**
  *      的 Person channelInfo 判（R1/R2 的 `channelInfo?.orgData?.robot===1`

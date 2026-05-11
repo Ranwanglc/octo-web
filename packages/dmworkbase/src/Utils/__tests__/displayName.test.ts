@@ -6,7 +6,7 @@ import {
 } from "../displayName"
 
 /**
- * YUJ-387 E1 — `realname_verified` 字符串归一化测试。
+ * `realname_verified` 字符串归一化测试。
  *
  * 背景：
  *   后端不同节点 / 老接口把 `tinyint(1)` 投射成字符串 `"1"` 或 `"true"`，
@@ -15,7 +15,7 @@ import {
  *   displayName 都能识别 boolean / number / string 三种来源。
  */
 
-describe("isRealnameVerified — 字符串归一化 (YUJ-387 E1)", () => {
+describe("isRealnameVerified — 字符串归一化 (E1)", () => {
     it("识别 boolean true", () => {
         expect(isRealnameVerified({ realname_verified: true })).toBe(true)
     })
@@ -49,7 +49,7 @@ describe("isRealnameVerified — 字符串归一化 (YUJ-387 E1)", () => {
     })
 })
 
-describe("displayName — 字符串归一化后的 real_name 生效 (YUJ-387 E1)", () => {
+describe("displayName — 字符串归一化后的 real_name 生效 (E1)", () => {
     it("realname_verified=\"1\" + real_name → 返回 real_name", () => {
         const name = displayName({
             name: "nickname",
@@ -88,7 +88,7 @@ describe("displayName — 字符串归一化后的 real_name 生效 (YUJ-387 E1)
     })
 })
 
-describe("subscriberDisplayName — 字符串归一化透传 (YUJ-387 E1)", () => {
+describe("subscriberDisplayName — 字符串归一化透传 (E1)", () => {
     it("subscriber.orgData.realname_verified=\"1\" → 使用 real_name", () => {
         const sub = {
             name: "alice_nick",

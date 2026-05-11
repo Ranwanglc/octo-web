@@ -56,7 +56,7 @@ interface SearchResult {
   name: string;
   avatar: string;
   /**
-   * YUJ-138: 候选人相对当前查看 Space 的来源 Space 名称。非空时在姓名后
+   * 候选人相对当前查看 Space 的来源 Space 名称。非空时在姓名后
    * 追加「@{sourceSpaceName}」后缀，避免跨 Space 分派 Matter 时误选外部成员。
    */
   sourceSpaceName?: string;
@@ -75,7 +75,7 @@ function SearchResultItem({ result, onSelect }: { result: SearchResult; onSelect
         <img src={result.avatar} alt="" className="wk-assignee-search__avatar" />
       )}
       <span className="wk-assignee-search__name">{result.name}</span>
-      {/* YUJ-138: 外部候选的「@SpaceName」后缀，与 @Mention 候选、成员列表视觉一致 */}
+      {/* 外部候选的「@SpaceName」后缀，与 @Mention 候选、成员列表视觉一致 */}
       {result.sourceSpaceName && (
         <span
           className="wk-assignee-search__space"
@@ -102,7 +102,7 @@ export default function AssigneeEditor({ matterId, assignees, onChanged }: Assig
   const [adding, setAdding] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
 
-  // YUJ-138 follow-up: 订阅 channelInfo 更新。下方 useEffect 触发的
+  // 订阅 channelInfo 更新。下方 useEffect 触发的
   // fetchChannelInfo 是异步的，返回前 results 里的 sourceSpaceName 还是 ''；
   // 没有 listener 时 fetch 完成 UI 不会重算，外部后缀始终空 = silent failure。
   // 拿到任意 Person channelInfo 就 bump tick，让 useMemo 重跑命中本地缓存。
@@ -133,7 +133,7 @@ export default function AssigneeEditor({ matterId, assignees, onChanged }: Assig
   }, [showSearch]);
 
   // Filter contacts from local cache — no network request.
-  // YUJ-138 round 3 (CR lml2468 #1088:165-168): useMemo 必须保持纯计算，
+  // round 3 (CR lml2468 #1088:165-168): useMemo 必须保持纯计算，
   // fetchChannelInfo 副作用移到下面的 useEffect。cache miss 时本次渲染
   // sourceSpaceName 保持 ''，fetch 成功后由 channelManager listener bumpTick
   // 触发重算命中本地缓存；fetch 失败在 useEffect 里 console.warn 暴露，
@@ -150,7 +150,7 @@ export default function AssigneeEditor({ matterId, assignees, onChanged }: Assig
       )
       .slice(0, 8)
       .map((c) => {
-        // YUJ-138: 跨 Space 分派 Matter 时，在候选姓名后显示外部成员的来源 Space。
+        // 跨 Space 分派 Matter 时，在候选姓名后显示外部成员的来源 Space。
         // Contacts 本身不携带 home_space_* 字段，从 channelInfo.orgData 读取；
         // cache miss 由下面的 useEffect 异步 fetch，下次 tick 时命中本地缓存。
         let sourceSpaceName = '';
@@ -185,11 +185,11 @@ export default function AssigneeEditor({ matterId, assignees, onChanged }: Assig
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query, assignees, tick]);
 
-  // YUJ-138 round 3 (CR lml2468 #1088:165-168): fetch cache-miss channelInfo
+  // round 3 (CR lml2468 #1088:165-168): fetch cache-miss channelInfo
   // 作为 side effect 独立出来。关键点：
   //   1. 原 useMemo 里 `fetchChannelInfo(ch)` 是裸 Promise，try/catch 只能捕到
   //      同步异常，Promise reject 被吞，渲染继续 sourceSpaceName=''，外部候选
-  //      被当成同 Space → fail-open 破坏 YUJ-138 的跨 Space 保护。
+  //      被当成同 Space → fail-open 破坏跨 Space 保护。
   //   2. 每个 fetch 用 .catch 单独兜底（语义等价 Promise.allSettled，但本包
   //      tsconfig target=es2019 没有 allSettled 类型，手写更稳），再 Promise.all
   //      汇总，reject 不再静默。
@@ -229,7 +229,6 @@ export default function AssigneeEditor({ matterId, assignees, onChanged }: Assig
       if (failed.length > 0) {
         // 可见性：本次 CR 要求 reject 不静默。prod 也 warn（量很小，只在候选
         // 下拉打开且 cache miss 时触发，且 WKSDK 对同一 channel 自带去重）。
-        // TODO(YUJ-138 follow-up): 若 UX 需要显式 retry icon，再 setState 暴露到 UI。
         console.warn(
           '[AssigneeEditor] fetchChannelInfo failed for',
           failed.length,

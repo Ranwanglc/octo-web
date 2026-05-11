@@ -9,7 +9,7 @@ interface ItemMessageProps {
     digest: string; // 消息摘要
     sender?: string; // 发送者
     /**
-     * YUJ-138: 发送者相对当前查看 Space 的来源 Space 名称。非空时在发送者
+     * 发送者相对当前查看 Space 的来源 Space 名称。非空时在发送者
      * 名字后追加「@{sourceSpaceName}」后缀，让用户直观区分外部消息来源。
      * 同 Space / 内部消息时由调用方传空字符串，不渲染。
      */
@@ -38,7 +38,7 @@ export default class ItemMessage extends Component<ItemMessageProps> {
                     {hasSender && (
                         <>
                             <span className="wk-item-message-sender">{sender}</span>
-                            {/* YUJ-138: 发送者名字后的外部来源 Space 后缀（企微风格） */}
+                            {/* 发送者名字后的外部来源 Space 后缀（企微风格） */}
                             {senderSourceSpaceName && (
                                 <span
                                     className="wk-search-result-item-space"

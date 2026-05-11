@@ -41,7 +41,7 @@
     color: var(--wk-text-secondary);
 }
 
-/* YUJ-66: 成员列表「@SpaceName」后缀（企微风格），紧随昵称展示 */
+/* 成员列表「@SpaceName」后缀（企微风格），紧随昵称展示 */
 .wk-subscrierlist-item-space {
     margin-left: 4px;
     font-size: 12px;

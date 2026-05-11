@@ -6,7 +6,7 @@ import {
 } from '../joinSuccessNotice';
 
 /**
- * YUJ-106 / dmwork-web#1065 — tab-scoped post-join notice round-trip.
+ * dmwork-web#1065 — tab-scoped post-join notice round-trip.
  *
  * Tests sessionStorage round-trip, consume-clears-key semantics, and
  * graceful fallback on malformed payloads.
@@ -65,7 +65,7 @@ describe('joinSuccessNotice (sessionStorage round-trip)', () => {
 });
 
 /**
- * YUJ-112 / dmwork-web#1068 Round 2 — computeAndSaveJoinSuccess helper shared by
+ * dmwork-web#1068 Round 2 — computeAndSaveJoinSuccess helper shared by
  * InviteLanding (direct join) and Layout.onLogin (pendingInviteCode path).
  */
 describe('computeAndSaveJoinSuccess (shared cross-path helper)', () => {

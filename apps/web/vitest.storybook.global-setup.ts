@@ -1,5 +1,5 @@
 /**
- * YUJ-376 · vitest.storybook.config.ts 的 test.globalSetup 入口
+ * vitest.storybook.config.ts 的 test.globalSetup 入口
  *
  * 为什么要「接管现有 listener」而不是单纯加一个 listener：
  * vitest 自己在 cli-api 里注册的 `unhandledRejection` listener（见 vitest
@@ -9,7 +9,7 @@
  * Node EventEmitter 按顺序调所有 listener，再加 listener 也拦不住 vitest 的
  * `process.exit()` —— 所以必须**替换 listener 集合**：先暂存所有既有 listener，
  * 再把它们全挪走；替换为一个单入口 listener，它做分流：
- *   - 命中 YUJ-376 pattern → 打 warn、计数、安排 1s 后 self-exit(0)
+ *   - 命中 stale-RPC pattern → 打 warn、计数、安排 1s 后 self-exit(0)
  *     （单独调度原因见下）
  *   - 其他 → 原样转发给所有原 listener（vitest 的行为完全保留）
  *
@@ -18,7 +18,7 @@
  * 触发 vitest 自己的 onUnhandledRejection → process.exit()」。一旦我们把这条
  * 吞了，vitest 的 main loop 还在等 Playwright WebSocket / route handler 的
  * promise resolve，而这些 promise 因 birpc 关闭永远不会 resolve。结果就是
- * CI run 25569584276 观测到的「最后一个 story pass → [YUJ-376] Swallow #1 →
+ * CI 观测到的「最后一个 story pass → [STALE-RPC] Swallow #1 →
  * 15 分钟挂起，job timeout cancelled」。
  *
  * 类比：吞 EPIPE 是对的，但还得 `close(fd)`/`exit()`，不然 fd 泄漏。
@@ -32,12 +32,8 @@
  *     exit code，那条路径先于 teardown 竞态发生，我们不会拦到。
  *
  * 分流逻辑本身（纯函数、可单测）写在 ./vitest.storybook.handler.ts。
- *
- * TODO(YUJ-376): 等上游 vitest#9957 修复后，删除本文件 +
- *   vitest.storybook.handler.ts + vitest.storybook.config.ts 的 globalSetup
- *   配置项。
  */
-import { handleUnhandledRejection, YUJ_376_TAG } from './vitest.storybook.handler'
+import { handleUnhandledRejection, STALE_RPC_TAG } from './vitest.storybook.handler'
 
 type UnhandledRejectionListener = (reason: unknown, promise: Promise<unknown>) => void
 
@@ -53,7 +49,7 @@ function scheduleSelfExit(): void {
   const timer = setTimeout(() => {
     // eslint-disable-next-line no-console
     console.warn(
-      `${YUJ_376_TAG} Teardown RPC unresolvable; forcing clean exit(0)`,
+      `${STALE_RPC_TAG} Teardown RPC unresolvable; forcing clean exit(0)`,
     )
     // eslint-disable-next-line n/no-process-exit
     process.exit(0)
@@ -92,7 +88,7 @@ export async function setup(): Promise<void> {
   process.on('unhandledRejection', wrappedListener)
   // eslint-disable-next-line no-console
   console.log(
-    `${YUJ_376_TAG} globalSetup took over ${originalListeners.length} unhandledRejection ` +
+    `${STALE_RPC_TAG} globalSetup took over ${originalListeners.length} unhandledRejection ` +
       `listener(s) (pid=${process.pid})`,
   )
 }

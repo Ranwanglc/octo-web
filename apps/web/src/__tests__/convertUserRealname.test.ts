@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { Convert } from "../../../../packages/dmworkbase/src/Service/Convert";
 
-// YUJ-359 / GH dmwork-web#1121: userToChannelInfo 应把 real_name / realname_verified
+// GH dmwork-web#1121: userToChannelInfo 应把 real_name / realname_verified
 // 透传到 orgData，并在 orgData.displayName 的解析优先级里放在 remark 之下、name 之上。
 
 describe("Convert.userToChannelInfo realname fields", () => {

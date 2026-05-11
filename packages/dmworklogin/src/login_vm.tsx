@@ -366,8 +366,8 @@ export class LoginVM extends ProviderListener {
         loginInfo.sex = data.sex ?? 0
         loginInfo.loginProvider = provider
 
-        // YUJ-412: 把后端登录 payload 的实名字段映射到 loginInfo（配套
-        // YUJ-413 dmworkim `/v1/user/login` & `/v1/user/current` response
+        // 把后端登录 payload 的实名字段映射到 loginInfo（配套
+        // dmworkim `/v1/user/login` & `/v1/user/current` response
         // 新增 realname_verified / real_name / realname_verified_at）。
         //
         // 数据契约：
@@ -380,7 +380,7 @@ export class LoginVM extends ProviderListener {
         // 为什么严格 tri-state：字段缺失 (undefined) 必须和 「明确 false」
         // 区分开，否则老后端场景下会把「状态未知」当作「明确未实名」，
         // 覆盖掉 MeInfo 页后续 /v1/users/:uid 刷新拿到的实名状态。
-        // 这是 YUJ-404 R9 的 Coda 血泪教训（memory 627798ef）：读取
+        // 这是 R9 的 Coda 血泪教训（memory 627798ef）：读取
         // state 字段前必须验证完整写入路径，本次通过登录 payload 直发解决。
         const rv = data.realname_verified
         if (rv === true || rv === 1 || rv === "1" || rv === "true") {

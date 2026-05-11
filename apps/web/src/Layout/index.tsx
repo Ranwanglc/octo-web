@@ -73,7 +73,7 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
             // 检查是否有待处理的邀请码（验证格式防止 XSS/Open Redirect）
             const pendingInvite = localStorage.getItem("pendingInviteCode");
             if (pendingInvite && /^[a-zA-Z0-9_-]+$/.test(pendingInvite)) {
-                // YUJ-112 / dmwork-web#1068 Round 2：
+                // dmwork-web#1068 Round 2：
                 // 登录+邀请路径也要弹 join-success toast（与 InviteLanding 直连加入走同一 helper）。
                 // 在调用 /space/join 前先快照 prevCurrentSpaceId，并预取 invite 信息拿 space_name。
                 const prevCurrentSpaceId = localStorage.getItem("currentSpaceId") || "";
@@ -98,7 +98,7 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
                             }
                             const spaceId = result?.space_id || inviteInfo?.space_id || "";
                             const spaceName = inviteInfo?.space_name || "";
-                            // YUJ-112: 与 InviteLanding 复用同一个 helper 计算 crossSpace + 存 notice。
+                            // 与 InviteLanding 复用同一个 helper 计算 crossSpace + 存 notice。
                             const notice = computeAndSaveJoinSuccess(
                                 { spaceId, spaceName, entityName: spaceName },
                                 prevCurrentSpaceId,

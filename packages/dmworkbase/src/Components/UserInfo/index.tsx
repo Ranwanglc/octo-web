@@ -32,12 +32,12 @@ export default class UserInfo extends Component<UserInfoProps> {
             return undefined
         }
 
-        // YUJ-67 (dmwork-web #1016): 跨 space 外部成员在任何视角下都不允许直接发起 DM，
+        // dmwork-web #1016: 跨 space 外部成员在任何视角下都不允许直接发起 DM，
         // 只能继续通过群聊交流。这里作为 UI 层唯一拦截点：隐藏"发送消息" / "添加好友"
         // 按钮，底部改显一条静态提示，查看资料入口（昵称/@SpaceName/section 列表）
         // 照常展示。后端 Phase 2 会补齐好友/同 space 校验。
         //
-        // 判定字段沿用 YUJ-64 resolveExternalForViewer（is_external 是相对当前
+        // 判定字段沿用 resolveExternalForViewer（is_external 是相对当前
         // 查看 space 的视角值，不是绝对属性）。
         const isExternalToViewer = vm.isExternalToViewer()
         if (isExternalToViewer) {
@@ -106,7 +106,7 @@ export default class UserInfo extends Component<UserInfoProps> {
                 return undefined
             }
             content = <Button onClick={() => {
-                // YUJ-412: 好友申请默认文案里的自我介绍走 selfDisplayName()，
+                // 好友申请默认文案里的自我介绍走 selfDisplayName()，
                 // 已实名用户用 "我是..." + real_name，对端更容易识别。
                 const myDisplayName = WKApp.loginInfo.selfDisplayName()
                 let msg = "我是"

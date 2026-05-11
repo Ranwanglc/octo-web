@@ -84,7 +84,7 @@
     line-height: var(--wk-text-size-sm);
 }
 
-/* YUJ-66: 侧栏缩略成员「@SpaceName」后缀（企微风格），小字居中 */
+/* 侧栏缩略成员「@SpaceName」后缀（企微风格），小字居中 */
 .wk-subscribers-item-space {
     margin-top: var(--wk-sp-0-5, 2px);
     margin-left: 0;

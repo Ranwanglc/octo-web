@@ -21,7 +21,7 @@ function buildRedirect(pathname: string, sid: string): string {
   return `https://host${basePath}/${sid ? `?sid=${sid}` : ''}`
 }
 
-describe('InviteLanding redirect basePath (YUJ-65 / #1006)', () => {
+describe('InviteLanding redirect basePath (#1006)', () => {
   it('normal root pathname → redirects to "/"', () => {
     expect(buildRedirect('/', 'abc')).toBe('https://host/?sid=abc')
   })

@@ -1,5 +1,5 @@
 /**
- * YUJ-112 / dmwork-web#1068 Round 2 — 登录+邀请自动加群路径也要弹 toast。
+ * dmwork-web#1068 Round 2 — 登录+邀请自动加群路径也要弹 toast。
  *
  * 上一轮 (dmwork-web#1065) 只覆盖了 InviteLanding 已登录直连加入的场景。
  * lml2468 发现当用户未登录时，InviteLanding 会把他们重定向到 /login 并把邀请码
@@ -16,7 +16,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
-describe('Layout.onLogin — pendingInviteCode path shares joinSuccessNotice (YUJ-112)', () => {
+describe('Layout.onLogin — pendingInviteCode path shares joinSuccessNotice', () => {
     let layout: string;
 
     beforeAll(() => {

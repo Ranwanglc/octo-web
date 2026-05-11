@@ -243,7 +243,7 @@ export default class MergeforwardMessageList extends Component<
   render(): ReactNode {
     const { mergeforwardContent } = this.props;
     const { previewImgSrc, previewImageContent } = this.state;
-    // YUJ-51：按 uid 建立外部来源映射，渲染时 O(1) 查询
+    // 按 uid 建立外部来源映射，渲染时 O(1) 查询
     const externalByUid = new Map<
       string,
       { is_external?: number; source_space_name?: string }
@@ -309,7 +309,7 @@ export default class MergeforwardMessageList extends Component<
                         </span>
                       </div>
                     )}
-                    {/* 外部来源（YUJ-51）：与 head.tsx 视觉一致，仅首条或换人时显示 */}
+                    {/* 外部来源：与 head.tsx 视觉一致，仅首条或换人时显示 */}
                     {showAvatar && showExtOrigin && (
                       <span className="ext-origin wk-mergeforwardmessagelist-content-msg-info-origin">
                         来源: {extInfo!.source_space_name}

@@ -38,7 +38,7 @@ function getSenderName(channelInfo: ChannelInfo | undefined, fromUID: string): s
 /**
  * 合并后的群成员查找：一次遍历 subscribers 同时返回 member 对象和展示名。
  *
- * YUJ-387 P1-2: 原先 `getGroupMemberName` 与 `getGroupMember` 会对同一个
+ * 原先 `getGroupMemberName` 与 `getGroupMember` 会对同一个
  * subscribers 数组做两次 `.find()`（O(2n)），在大群（1000+ 成员）每条
  * 消息都会重复扫表。此函数合并成单次查找，调用方按需解构。
  *
@@ -101,7 +101,7 @@ export function getMessageRow(
     ? () => interaction.onSenderNameClick!(uid)
     : undefined
 
-  // YUJ-98 R7: 外部成员来源 Space 后缀（@SpaceName），相对当前查看 Space 解析。
+  // 外部成员来源 Space 后缀（@SpaceName），相对当前查看 Space 解析。
   // 与新组件 wk-msg-head 保持同一套 resolve 规则（msg-level 新字段优先，
   // legacy from_* 降级），群聊时允许用 channelInfo.orgData 做最后兜底。
   const viewerSpaceId = WKApp.shared.currentSpaceId
@@ -129,22 +129,22 @@ export function getMessageRow(
   const isExternal = hasMsgLevel ? msgRes.isExternal : orgRes.isExternal
   const sourceSpaceName = hasMsgLevel ? msgRes.sourceSpaceName : orgRes.sourceSpaceName
 
-  // YUJ-387 P1-2: 单次群成员查找，同时拿到 memberName 和 member 对象，
+  // 单次群成员查找，同时拿到 memberName 和 member 对象，
   // 避免重复 .find()。
   const { member: groupMember, memberName: groupMemberName } = getGroupMemberInfo(message)
 
-  // YUJ-379 / Epic dmwork-web#1169 Phase A: 发送者实名徽章。
+  // Epic dmwork-web#1169 Phase A: 发送者实名徽章。
   // 优先群成员 orgData（群消息命中率最高），回落 Person channelInfo.orgData
   // （1v1 私聊或群成员列表尚未同步）。AI / 字段缺失一律为 false，未实名不
   // 渲染任何徽章。
   //
-  // YUJ-404: 自己看自己的消息也显示实名徽章。客户端群成员订阅列表通常不
+  // 自己看自己的消息也显示实名徽章。客户端群成员订阅列表通常不
   // 缓存 "自己" 的条目（WKSDK 优化，self 走 WKApp.loginInfo 路径），且群
   // channelInfo orgData 不带 realname_verified 字段 → 两路 fallback 都拿
   // 不到 → self-viewer 永远看不到自己的 ✓。这里再补一条 self-viewer
   // fallback，对齐 iOS/Android 视觉。
   //
-  // YUJ-408 Round 3（Jerry R2 🔴 Critical）：
+  // Round 3（Jerry R2 Critical）：
   //   "是不是 bot 会话" 必须按 **会话 channel**（`message.channel`，即对方
   //   那一端）判，不能按 **发送者 channel**（`message.fromUID` 的 Person
   //   channelInfo）判。自己在 bot 1v1 里发消息时 fromUID=自己 → 按发送者
@@ -162,7 +162,7 @@ export function getMessageRow(
   //      必须显式 === true 判断（Phase A 血泪教训：truthy 会把 undefined
   //      意外放行）。
   //
-  // YUJ-410 Round 4 (Jerry R3 🔵 timing race)：
+  // Round 4 (Jerry R3 timing race)：
   //   如果 **conversation channelInfo 首帧未缓存**，isBotConversation 会误判
   //   为 false，self-sent bot DM 首帧就会命中 self-fallback 误显 ✓。纯判定
   //   层面，对 Person 1v1 且 conversationChannelInfo 缺失的 self-sent 场景
@@ -199,7 +199,7 @@ export function getMessageRow(
     showCheckbox: selection?.showCheckbox ?? false,
     showAvatar: !isContinue,
     avatarUrl: WKApp.shared.avatarUser(message.fromUID),
-    // YUJ-412: self 气泡名字走 loginInfo.selfDisplayName() —— 已实名时
+    // self 气泡名字走 loginInfo.selfDisplayName() —— 已实名时
     // 返回 real_name，否则返回 name。self 不在 friend/sync 的 payload 里，
     // groupMember 和 Person channelInfo 都拿不到 real_name，只有登录
     // payload 下发的 loginInfo 是可靠源。规则改动同步 Messages/Base/index.tsx。
@@ -257,16 +257,16 @@ export function useMessageRow(
       WKSDK.shared().channelManager.fetchChannelInfo(channel)
     }
 
-    // YUJ-410 R4（Jerry R3 🔵 timing race）：会话对端（message.channel，Person
+    // R4（Jerry R3 timing race）：会话对端（message.channel，Person
     // 1v1 时是 bot/friend 的 Person channelInfo）也必须 fetch + listen。
     // 否则 self-sent Person 1v1 首帧 conversationChannelInfo 缺失 → bot DM
     // 误判成非 bot 会话 → self-fallback 亮 ✓（getMessageRow 里已加保守兜底，
     // 这里的 fetch/listen 保证 channelInfo 到达后 rerender 切回真实状态）。
-    // YUJ-404 Round 6 (Jerry R5 Warning)：收窄 conversation channelInfo fetch/listen 到
+    // Round 6 (Jerry R5 Warning)：收窄 conversation channelInfo fetch/listen 到
     // 仅 Person 1v1。timing race 只发生在 self-sent Person 1v1 + 首帧缓存未到的
     // bot DM 场景，群消息不需要拉 group channelInfo 来判 self fallback。不收窄
     // 会在群聊历史首屏 N 个 row 并发 fetch 同一个 group channel。
-    // YUJ-404 Round 7 (Jerry R6 🔵 Suggestion)：1v1 Person 场景下 sender channel 和
+    // Round 7 (Jerry R6 Suggestion)：1v1 Person 场景下 sender channel 和
     // conversation channel 是同一个 Person channel（对方）。上方已经 fetch 过 sender
     // channel，不要重复 fetch。用 isEqual dedupe。
     const convChannel = message.channel

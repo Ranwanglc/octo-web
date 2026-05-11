@@ -25,7 +25,7 @@ export class Subscribers extends Component<SubscribersProps> {
   baseContext!: WKBaseContext;
 
   subscriberUI(subscriber: Subscriber) {
-    // YUJ-64/YUJ-66: 外部成员按当前查看 Space 相对渲染；采用企微风格
+    // 外部成员按当前查看 Space 相对渲染；采用企微风格
     // 「昵称 @SpaceName」后缀格式，无紫色「外部」Tag、无「来自」前缀。
     const { isExternal, sourceSpaceName } = resolveExternalForViewer({
       homeSpaceId: subscriber.orgData?.home_space_id,
@@ -57,8 +57,8 @@ export class Subscribers extends Component<SubscribersProps> {
         </div>
         <div className="wk-subscribers-item-name">
           {subscriber.remark || subscriber.name}
-          {/* YUJ-379 / Epic dmwork-web#1169 Phase A: 群成员列表实名徽章
-              （icon variant），已实名才显示。解除 YUJ-359 硬约束。*/}
+          {/* Epic dmwork-web#1169 Phase A: 群成员列表实名徽章
+              （icon variant），已实名才显示。*/}
           {isRealnameVerified(subscriber.orgData) && (
             <RealnameVerifiedBadge variant="icon" />
           )}

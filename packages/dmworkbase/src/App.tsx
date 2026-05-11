@@ -251,15 +251,15 @@ export class LoginInfo {
   loginProvider?: string;
 
   /**
-   * OCTO 实名认证状态缓存（YUJ-359 / GH #1121）。
+   * OCTO 实名认证状态缓存（GH #1121）。
    *
-   * YUJ-412：数据源从「MeInfo 页主动 fetch self channelInfo」升级为
-   * 「登录 API response 直接下发」（对应 YUJ-413 后端改动）。`loginSuccess()`
+   * 数据源从「MeInfo 页主动 fetch self channelInfo」升级为
+   * 「登录 API response 直接下发」（对应后端改动）。`loginSuccess()`
    * 会把 `/v1/user/login`、`/v1/user/current` 响应的 `realname_verified` /
    * `real_name` / `realname_verified_at` 映射到这三个字段，MeInfo 仍然保留
    * 作为刷新入口。
    *
-   * **Tri-state 语义（血泪教训，见 YUJ-404 Coda 复盘）**：
+   * **Tri-state 语义（血泪教训）**：
    *   - `true`   → 已实名
    *   - `false`  → 明确未实名（后端返回 false）
    *   - `undefined` → **尚未知道**（老后端未下发字段 / 字段缺失 / 加载中）
@@ -269,7 +269,7 @@ export class LoginInfo {
    *     状态下错误地把人显示成未实名或把 real_name 覆盖成 undefined。
    *   - `save()` 在 `undefined` 时**不得**落盘成 `"0"`（= false），否则
    *     load() 回来就变成了 "明确未实名"，fresh-login 之后的刷新链路里
-   *     无法区分 "字段缺失" 和 "明确 false"。YUJ-404 R9 的 listener 兜底
+   *     无法区分 "字段缺失" 和 "明确 false"。R9 的 listener 兜底
    *     就是因为 save() 把 undefined 序列化成 "0" 才永远触发不了。
    */
   realnameVerified?: boolean;
@@ -289,11 +289,11 @@ export class LoginInfo {
     this.setStorageItemForSID("is_work", this.isWork ? "1" : "0");
     this.setStorageItemForSID("sex", this.sex === 1 ? "1" : "0");
     this.setStorageItemForSID("login_provider", this.loginProvider ?? "");
-    // YUJ-412: 实名认证状态 — 严格 tri-state 持久化。
+    // 实名认证状态 — 严格 tri-state 持久化。
     //   undefined → 删除 key（区别于「明确未实名」）
     //   true      → "1"
     //   false     → "0"
-    // 禁止把 undefined 塌陷成 "0"（YUJ-404 R9 的死循环根因）。
+    // 禁止把 undefined 塌陷成 "0"（R9 的死循环根因）。
     if (this.realnameVerified === undefined) {
       this.removeStorageItemForSID("realname_verified");
     } else {
@@ -380,13 +380,13 @@ export class LoginInfo {
     }
     const provider = this.getStorageItemForSID("login_provider");
     this.loginProvider = provider ? provider : undefined;
-    // YUJ-412: 恢复实名认证状态缓存 — 严格 tri-state。
+    // 恢复实名认证状态缓存 — 严格 tri-state。
     //   key 缺失（getStorageItemForSID 返回 null） → undefined（未知，保持空白）
     //   "1" → true
     //   "0" → false（明确未实名）
     // 不要用 `=== "1"` 把 null 塌陷成 false —— 那样和 save() 塌陷 undefined
     // 一样会丢失「未知」语义，后续 loginSuccess() 即使下发正确值也会被
-    // load 出来的假值淹没（YUJ-404 R9 死循环根因）。
+    // load 出来的假值淹没（R9 死循环根因）。
     const rvStr = this.getStorageItemForSID("realname_verified");
     if (rvStr === "1") {
       this.realnameVerified = true;
@@ -427,7 +427,7 @@ export class LoginInfo {
     this.removeStorageItemForSID("name");
     this.removeStorageItemForSID("sex");
     this.removeStorageItemForSID("login_provider");
-    // YUJ-359 / YUJ-412: 清除实名认证缓存
+    // 清除实名认证缓存
     this.realnameVerified = undefined;
     this.realName = undefined;
     this.realnameVerifiedAt = undefined;
@@ -437,7 +437,7 @@ export class LoginInfo {
   }
 
   /**
-   * YUJ-412: 自己 displayName 的统一出口。
+   * 自己 displayName 的统一出口。
    *
    * 展示规则：已实名 (`realnameVerified === true`) + `realName` 非空
    *   → 返回 `realName`；否则返回 `name`（或空串）。

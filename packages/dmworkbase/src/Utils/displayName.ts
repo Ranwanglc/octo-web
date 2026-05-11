@@ -1,7 +1,7 @@
 /**
  * displayName - 展示名解析工具
  *
- * dmwork-web YUJ-359 / GH #1121：接入 OCTO 实名认证后，所有需要展示用户
+ * dmwork-web GH #1121：接入 OCTO 实名认证后，所有需要展示用户
  * 名称的位置都应该经过本工具，以统一处理「真实姓名覆盖昵称」的优先级。
  *
  * 优先级（从高到低）：
@@ -17,8 +17,8 @@
  * 备注：
  *   - 实名认证状态除了作为名称优先级信号外，现在还会在**聊天气泡作者名旁 +
  *     群成员列表每行 + 个人资料页**展示迷你 ✓ 图标（`<RealnameVerifiedBadge
- *     variant="icon" />`）。2026-05-10 YUJ-379 / Epic dmwork-web#1169 解除了
- *     YUJ-359 / GH #1121 原先「UI 层面不在每个展示点加 ✓ 勾」的硬约束：实名
+ *     variant="icon" />`）。2026-05-10 Epic dmwork-web#1169 解除了
+ *     GH #1121 原先「UI 层面不在每个展示点加 ✓ 勾」的硬约束：实名
  *     比例只有约 20%，在外部群混合身份场景下它是差异化信号而非噪音。
  *   - 当前仍不展示徽章的位置（Phase B）：@mention 联想下拉 / 联系人列表 /
  *     已读列表 / 会话列表（见 Epic dmwork-web#1169 "不在范围"）。
@@ -40,7 +40,7 @@ function nonEmpty(v: string | null | undefined): v is string {
 /**
  * 归一化 realname_verified 到严格 boolean。
  *
- * YUJ-387 E1: 后端序列化偏差（不同节点 / 老接口）可能把 tinyint(1) 投射成
+ * 后端序列化偏差（不同节点 / 老接口）可能把 tinyint(1) 投射成
  * 字符串 `"1"` 或 `"true"`；如果只比较 `=== true` / `=== 1`，这些场景会
  * 被误判为「未实名」，导致徽章不渲染 / real_name 降级。这里把所有形如
  * truthy 的实名值统一收敛到 true。
@@ -55,7 +55,7 @@ function normalizeVerified(v: boolean | number | string | null | undefined): boo
 export function displayName(user: DisplayNameUser | null | undefined): string {
     if (!user) return "";
     if (nonEmpty(user.remark)) return user.remark;
-    // YUJ-387 E1: realname_verified 兼容 bool / 1 / 0 / "1" / "true"
+    // realname_verified 兼容 bool / 1 / 0 / "1" / "true"
     const verified = normalizeVerified(user.realname_verified);
     if (verified && nonEmpty(user.real_name)) return user.real_name;
     return nonEmpty(user.name) ? user.name : "";
@@ -65,7 +65,7 @@ export function displayName(user: DisplayNameUser | null | undefined): string {
  * 判断某个 profile 是否已完成实名认证。
  * orgData 场景通常用 realname_verified === 1；以后端决定值的真假逻辑为准。
  *
- * YUJ-387 E1: 兼容字符串 `"1"` / `"true"`（后端不同节点序列化偏差），避免
+ * 兼容字符串 `"1"` / `"true"`（后端不同节点序列化偏差），避免
  * 因类型不一致导致徽章不渲染。
  */
 export function isRealnameVerified(user: DisplayNameUser | null | undefined): boolean {

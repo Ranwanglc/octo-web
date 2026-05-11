@@ -62,7 +62,7 @@ export function getSpaceFilteredLastMessage(conversation: Conversation): Message
 }
 
 /**
- * YUJ-72 / GH dmworkim#1226: 若登录用户作为"外部成员"加入该群，返回其加入时的
+ * GH dmworkim#1226: 若登录用户作为"外部成员"加入该群，返回其加入时的
  * 来源 Space ID（subscriber.orgData.source_space_id）。用于"群归属 Space 与当前
  * 查看 Space 不一致但我自己以当前 Space 身份加入"的场景下放行展示。
  *
@@ -97,7 +97,7 @@ function getMyMembershipSourceSpaceId(channel: Channel): string | undefined {
  * - 群聊（无前缀）→ 查 channelSpaceMap 缓存 → channelInfo.orgData.space_id
  * - 都未命中 → fail-open（放行，等 channelInfo 回调后再检查）
  *
- * YUJ-72 外部群兼容：当群归属 Space 与当前 Space 不一致时，额外检查自己是否
+ * 外部群兼容：当群归属 Space 与当前 Space 不一致时，额外检查自己是否
  * 以"当前 Space"身份加入了该群（subscriber.orgData.source_space_id === currentSpaceId）。
  * 命中则不过滤 —— 外部加入者在自己的 Space 视角下应该看到这个外部群。
  */

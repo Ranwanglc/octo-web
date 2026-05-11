@@ -467,12 +467,12 @@ export default class BaseModule implements IModule {
           WKApp.loginInfo.name = channelInfo.title;
           WKApp.loginInfo.shortNo = channelInfo.orgData.short_no;
           WKApp.loginInfo.sex = channelInfo.orgData.sex;
-          // YUJ-412: 此前（YUJ-404 R9）在这里把 self Person channelInfo 的
+          // 此前在这里把 self Person channelInfo 的
           // realname_verified 回写到 loginInfo，并配合下方 addOnLogin 主动
           // fetch self channel 触发 listener。im-test 实测发现 **self 不在
           // friend/sync & conversation/sync 的 payload 里**，fetchChannelInfo
           // 单独请求也不会补 realname_verified 字段到 self channelInfo，这
-          // 条 listener 实际上永不命中。实名状态现由 YUJ-413 后端在登录
+          // 条 listener 实际上永不命中。实名状态现由后端在登录
           // payload 直发 + loginSuccess() 映射，listener 死代码已移除，
           // 避免「字段声明存在 ≠ 有人赋值」的认知陷阱再次复发。
           WKApp.loginInfo.save();
@@ -480,7 +480,7 @@ export default class BaseModule implements IModule {
       }
     });
 
-    // YUJ-412: 移除 YUJ-404 R9 引入的 `addOnLogin` self channelInfo fetch。
+    // 移除此前引入的 `addOnLogin` self channelInfo fetch。
     // 该 fetch 的唯一用途是触发上面 listener 把 realname_verified 回写到
     // loginInfo，但 self channelInfo 实际不下发 realname_verified（见上方
     // 注释），fetch 纯粹是死代码 + 每次登录多一次无用的网络请求。
@@ -752,7 +752,7 @@ export default class BaseModule implements IModule {
         }
 
         // Bot 创建者可撤回自己创建的 Bot 发送的消息（与群管理员同等待遇，
-        // 不受 message.send 和 24h 时间窗口限制，与后端 YUJ-60 行为一致）
+        // 不受 message.send 和 24h 时间窗口限制，与后端行为一致）
         let isBotOwner = false;
         const fromChannelInfo = WKSDK.shared().channelManager.getChannelInfo(
           new Channel(message.fromUID, ChannelTypePerson)
@@ -978,7 +978,7 @@ export default class BaseModule implements IModule {
           return;
         }
 
-        // YUJ-146 / GH#1090：同 Space 用户不显示「解除好友关系」和「拉黑」
+        // GH#1090：同 Space 用户不显示「解除好友关系」和「拉黑」
         // 按钮。复用 userinfo.source 里的 resolveExternalForViewer，只有
         // 相对当前查看 Space 为外部（跨 Space）时才渲染这些按钮。
         const { isExternal } = resolveExternalForViewer({
@@ -1109,8 +1109,8 @@ export default class BaseModule implements IModule {
           return;
         }
 
-        // 外部群成员：YUJ-64 改为按当前查看 Space 相对判定。
-        // 优先读 home_space_id / home_space_name（YUJ-63 后端扩展），缺失时
+        // 外部群成员：按当前查看 Space 相对判定。
+        // 优先读 home_space_id / home_space_name（后端扩展），缺失时
         // 回落到旧的 is_external + source_space_name（1v1 users/{uid} 接口不具备
         // 群内外部成员上下文，source_desc 会为空）。
         const { isExternal: isExternalMember, sourceSpaceName } =

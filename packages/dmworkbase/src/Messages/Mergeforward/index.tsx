@@ -13,7 +13,7 @@ import { getMergeforwardMessageUI } from "../../bridge/message/useMergeforwardMe
 
 import "./index.css"
 
-// YUJ-51：users 新增外部来源字段。后端在合并转发归档时填充，前端透传即可。
+// users 新增外部来源字段。后端在合并转发归档时填充，前端透传即可。
 export interface MergeforwardUser {
     uid: string
     name: string
@@ -48,7 +48,7 @@ export default class MergeforwardContent extends MessageContent {
                 return true
             })
             .map(u => {
-                // YUJ-51：透传外部来源字段；仅保留有效值避免噪音
+                // 透传外部来源字段；仅保留有效值避免噪音
                 const mapped: MergeforwardUser = { uid: u.uid, name: u.name }
                 if (u.is_external === 1 || u.is_external === 0) {
                     mapped.is_external = u.is_external
@@ -75,7 +75,7 @@ export default class MergeforwardContent extends MessageContent {
                 messageMaps.push(this.messageToMap(msg))
             }
         }
-        // YUJ-51：users 原样透传，保留 is_external / source_space_name
+        // users 原样透传，保留 is_external / source_space_name
         return { "channel_type": this.channelType || 0, "users": this.users, "msgs": messageMaps }
     }
     get contentType() {

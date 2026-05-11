@@ -24,7 +24,7 @@ export default defineConfig({
     // vi.mock can intervene. Pre-existing issue also previously blocking the
     // voice-input test files; now that those files can load, their own
     // assertions run — failures inside them are pre-existing and unrelated
-    // to YUJ-195 / PR#1113.
+    // to PR#1113.
     server: {
       deps: {
         inline: [/@tiptap\/react/],

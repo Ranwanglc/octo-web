@@ -69,7 +69,7 @@ export class MainPage extends Component<{}, MainPageState> {
                 localStorage.removeItem("currentSpaceId");
                 try { WKApp.shared.notifyListener(); } catch (_) {}
             }
-            // YUJ-106 / dmwork-web#1065: InviteLanding 走 window.location.href 跳转后，
+            // dmwork-web#1065: InviteLanding 走 window.location.href 跳转后，
             // Toast 无法跨 full-reload 存活。我们用 sessionStorage 把 notice 带过来，
             // 在主界面挂载、Space 列表就绪之后再弹出。放在 .then() 内确保 spaces 已加载，
             // 切换按钮按下时用户 Space 信息可用。
@@ -83,10 +83,10 @@ export class MainPage extends Component<{}, MainPageState> {
     }
 
     /**
-     * YUJ-106 / dmwork-web#1065 — 消费 InviteLanding 留下的 postJoinNotice
+     * dmwork-web#1065 — 消费 InviteLanding 留下的 postJoinNotice
      * - 跨 Space：双行 toast + 「切换过去」按钮；onSwitch 里调 handleSpaceSelected
      * - 同 Space / 单 Space：常规单行 toast
-     * YUJ-170 / dmwork-web#1100 — notice.kind='group'（来自 dmworkim H5
+     * dmwork-web#1100 — notice.kind='group'（来自 dmworkim H5
      * join_group.html scanjoin 成功分支）透传给 Toast，走「已加入「群聊」/
      * 位于「Space」」双行分支，切换按钮复用 handleSpaceSelected。
      * 只执行一次（consumeJoinSuccessNotice 读取后即清）。

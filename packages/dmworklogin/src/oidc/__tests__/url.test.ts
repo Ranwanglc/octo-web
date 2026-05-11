@@ -2,16 +2,16 @@ import { describe, it, expect } from 'vitest'
 import { buildAuthorizeURL, parseOidcUrlState } from '../url'
 import type { SSOProvider } from '../types'
 
-const aegis: SSOProvider = {
-  id: 'aegis',
-  name: 'Aegis',
-  authorizePath: '/v1/auth/oidc/aegis/authorize',
+const acmeSso: SSOProvider = {
+  id: 'acme-sso',
+  name: 'Acme SSO',
+  authorizePath: '/v1/auth/oidc/acme-sso/authorize',
 }
 
 describe('buildAuthorizeURL', () => {
   it('includes authcode and default return_to=/login and flag=1 (web)', () => {
-    const url = buildAuthorizeURL(aegis, 'abc123')
-    expect(url.startsWith('/v1/auth/oidc/aegis/authorize?')).toBe(true)
+    const url = buildAuthorizeURL(acmeSso, 'abc123')
+    expect(url.startsWith('/v1/auth/oidc/acme-sso/authorize?')).toBe(true)
     const qs = new URLSearchParams(url.split('?')[1])
     expect(qs.get('authcode')).toBe('abc123')
     expect(qs.get('return_to')).toBe('/login')
@@ -22,13 +22,13 @@ describe('buildAuthorizeURL', () => {
   })
 
   it('uses custom return_to when provided', () => {
-    const url = buildAuthorizeURL(aegis, 'abc', '/login?next=/home')
+    const url = buildAuthorizeURL(acmeSso, 'abc', '/login?next=/home')
     const qs = new URLSearchParams(url.split('?')[1])
     expect(qs.get('return_to')).toBe('/login?next=/home')
   })
 
   it('encodes special characters in authcode', () => {
-    const url = buildAuthorizeURL(aegis, 'a b&c')
+    const url = buildAuthorizeURL(acmeSso, 'a b&c')
     expect(url).toContain('authcode=a+b%26c')
   })
 })

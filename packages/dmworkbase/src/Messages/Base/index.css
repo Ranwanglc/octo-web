@@ -109,13 +109,13 @@
     flex-shrink: 0;
 }
 
-/* 外部群成员消息头「来源」行（YUJ-51，YUJ-66 起由 .wk-msg-head-space 行内替代） */
+/* 外部群成员消息头「来源」行（由 .wk-msg-head-space 行内替代） */
 .wk-msg-head-origin {
     margin-top: 0;
     margin-bottom: 4px;
 }
 
-/* YUJ-66: 消息气泡头部「@SpaceName」后缀，紧随昵称展示，小字次要色 */
+/* 消息气泡头部「@SpaceName」后缀，紧随昵称展示，小字次要色 */
 .wk-msg-head-space {
     font-size: 12px;
     font-weight: var(--wk-font-regular, 400);
@@ -451,8 +451,8 @@ body[theme-mode=dark] .wk-message-base-bubble-box.recv .wk-message-base-bubble  
     min-width: 0;
 }
 
-/* 外部群成员来源标识（YUJ-51） */
-/* 视觉与 YUJ-47 紫色「外部」Tag 对齐：小字、次要色，仅做来源提示用途。 */
+/* 外部群成员来源标识 */
+/* 视觉与紫色「外部」Tag 对齐：小字、次要色，仅做来源提示用途。 */
 .ext-origin {
     margin-top: 2px;
     font-size: var(--wk-text-size-sm);

@@ -1,5 +1,5 @@
 /**
- * YUJ-376 unit test · 验证 vitest.storybook.handler.ts 的分流逻辑
+ * Unit test · 验证 vitest.storybook.handler.ts 的分流逻辑
  *
  * 这份单测在 jsdom 环境（apps/web 的默认 vitest.config.ts）跑，**不**走
  * storybook browser mode，确保 handler 的分支行为在 CI 每次 lint/build
@@ -17,7 +17,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
     SWALLOW_LIMIT,
-    YUJ_376_TAG,
+    STALE_RPC_TAG,
     getSwallowCounter,
     handleUnhandledRejection,
     resetSwallowCounter,
@@ -56,7 +56,7 @@ function makeRawBirpcError(): Error {
     return err
 }
 
-describe('YUJ-376 handleUnhandledRejection', () => {
+describe('handleUnhandledRejection', () => {
     let warnSpy: ReturnType<typeof vi.spyOn>
 
     beforeEach(() => {
@@ -69,7 +69,7 @@ describe('YUJ-376 handleUnhandledRejection', () => {
         resetSwallowCounter()
     })
 
-    describe('matching the YUJ-376 pattern → swallow:true', () => {
+    describe('matching the stale-RPC pattern → swallow:true', () => {
         it('swallows the cause-wrapped form (actual vitest shape)', () => {
             const err = makeVitestWrappedError()
             const verdict = handleUnhandledRejection(err)
@@ -78,7 +78,7 @@ describe('YUJ-376 handleUnhandledRejection', () => {
             expect(getSwallowCounter()).toBe(1)
             expect(warnSpy).toHaveBeenCalledOnce()
             const warnMsg = warnSpy.mock.calls[0][0] as string
-            expect(warnMsg).toContain(YUJ_376_TAG)
+            expect(warnMsg).toContain(STALE_RPC_TAG)
             expect(warnMsg).toContain('#1')
             expect(warnMsg).toContain('There was an error when mocking a module')
         })
@@ -146,7 +146,7 @@ describe('YUJ-376 handleUnhandledRejection', () => {
             expect(getSwallowCounter()).toBe(0)
         })
 
-        it('does not log [YUJ-376] warning for non-matching rejections', () => {
+        it('does not log [STALE-RPC] warning for non-matching rejections', () => {
             handleUnhandledRejection(new Error('unrelated'))
             expect(warnSpy).not.toHaveBeenCalled()
         })
@@ -163,7 +163,7 @@ describe('YUJ-376 handleUnhandledRejection', () => {
             expect(verdict.swallow).toBe(false)
             expect(verdict.replacement).toBeInstanceOf(Error)
             expect(verdict.replacement?.message).toMatch(
-                /YUJ-376 swallow counter exceeded/,
+                /Stale-RPC swallow counter exceeded/,
             )
         })
 

@@ -291,7 +291,7 @@ export class Convert {
 
         message.isDeleted = msgMap["is_deleted"] === 1
 
-        // 外部群成员消息来源字段（YUJ-50 / YUJ-53 / YUJ-64 / dmwork-web#1069）：
+        // 外部群成员消息来源字段（dmwork-web#1069）：
         // /message/channel/sync 和 conversation/sync 响应在 msg-level 携带
         // from_is_external / from_source_space_name / from_home_space_id /
         // from_home_space_name。优先透传 wire 值；若个别字段缺失则通过
@@ -351,7 +351,7 @@ export class Convert {
         channelInfo.orgData = data.extra || {};
         channelInfo.orgData = { ...channelInfo.orgData, ...data }
         channelInfo.orgData.remark = data.remark ?? "";
-        // YUJ-359 (GH #1121): 展示名解析接入 OCTO 实名认证。
+        // GH #1121: 展示名解析接入 OCTO 实名认证。
         // 优先级：remark（本地备注）> real_name（已实名时）> name（昵称）。
         // 所有消费方统一读 `orgData.displayName`，无需逐点判断 real_name。
         // 硬约束：仅在 realname_verified 为 true/1 且 real_name 非空时才覆盖昵称；

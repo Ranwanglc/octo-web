@@ -1,7 +1,7 @@
 /**
  * joinSuccessNotice — cross-page post-join UX notice.
  *
- * YUJ-106 / dmwork-web#1065:
+ * dmwork-web#1065:
  * 多 Space 用户通过邀请链接加入一个属于「非当前 Space」的群/Space 时，
  * 点击 InviteLanding → handleJoin 后页面会 full-reload 到主界面，Toast 无法
  * 跨 location.href 持续。我们把「刚加入了什么 / 归属哪个 Space」的信息
@@ -29,17 +29,17 @@ export interface JoinSuccessNotice {
      */
     crossSpace: boolean;
     /**
-     * YUJ-170 / dmwork-web#1100 扩展：加入实体类型。
-     * - 'space'（默认/未设置）：加入 Space 本身，原 YUJ-106 行为
+     * dmwork-web#1100 扩展：加入实体类型。
+     * - 'space'（默认/未设置）：加入 Space 本身，原有行为
      * - 'group'：加入某 Space 下的群组（由 dmworkim H5 join_group.html 在 scanjoin
      *   成功且 crossSpace 时写入）。Toast 渲染「已加入「<groupName> 群聊」」+
      *   「位于「<spaceName> 空间」」+「切换过去 →」。
-     * 消费方必须按 optional 处理，兼容 YUJ-106 存量 payload。
+     * 消费方必须按 optional 处理，兼容存量 payload。
      */
     kind?: "space" | "group";
-    /** YUJ-170：群编号（仅 kind='group' 写入，供调试 / 埋点）*/
+    /** 群编号（仅 kind='group' 写入，供调试 / 埋点）*/
     groupNo?: string;
-    /** YUJ-170：群名称（仅 kind='group' 写入，Toast 文案使用）*/
+    /** 群名称（仅 kind='group' 写入，Toast 文案使用）*/
     groupName?: string;
 }
 

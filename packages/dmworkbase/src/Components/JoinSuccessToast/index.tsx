@@ -17,16 +17,16 @@ export interface JoinSuccessToastOptions {
     /** 自动消失时间（秒）；默认 5s —— 双行需要更长停留。undefined 等同默认值。 */
     duration?: number;
     /**
-     * YUJ-170 / dmwork-web#1100：加入实体类型。
-     * - 'space' / undefined：原 YUJ-106 行为（纯加 Space / entityName===spaceName 走简化单行）
+     * dmwork-web#1100：加入实体类型。
+     * - 'space' / undefined：原行为（纯加 Space / entityName===spaceName 走简化单行）
      * - 'group'：entityName 一定是群名，走「已加入「<name> 群聊」/ 位于「<spaceName> 空间」」
-     *   显式分支避免和 YUJ-112 的 sameName 退化路径误判。
+     *   显式分支避免和 sameName 退化路径误判。
      */
     kind?: "space" | "group";
 }
 
 /**
- * showJoinSuccessToast — YUJ-106 / dmwork-web#1065
+ * showJoinSuccessToast — dmwork-web#1065
  *
  * 产品语义：
  * - 单 Space / 已在归属 Space：
@@ -34,7 +34,7 @@ export interface JoinSuccessToastOptions {
  * - 跨 Space（多 Space 用户在非归属 Space 点邀请）：
  *     `✅ 已加入「xxx 群聊」`
  *     `📍 位于「yyy 空间」    [切换过去 →]`
- * - YUJ-112 / dmwork-web#1068 Round 2：
+ * - dmwork-web#1068 Round 2：
  *   当 entityName === spaceName（纯加入 Space，没有独立的群名）时，双行会
  *   变成「已加入 ExampleCorp 群聊 / 位于 ExampleCorp 空间」这样的重复文案。此时
  *   退化为单行 `✅ 已加入「xxx」空间`（crossSpace 依然展示切换按钮），
@@ -47,16 +47,16 @@ export interface JoinSuccessToastOptions {
  */
 export function showJoinSuccessToast(opts: JoinSuccessToastOptions): void {
     const { entityName, spaceName, crossSpace, onSwitch, duration, kind } = opts;
-    // YUJ-170: kind='group' 时永远走「加入群聊 / 位于 Space」双行文案，
-    // 即使 entityName===spaceName 也不触发 YUJ-112 的 sameName 退化（语义不同）。
+    // kind='group' 时永远走「加入群聊 / 位于 Space」双行文案，
+    // 即使 entityName===spaceName 也不触发 sameName 退化（语义不同）。
     const isGroup = kind === "group";
-    // YUJ-112: 仅对非 group 场景启用 sameName 退化，避免和 spaceName 重复。
+    // 仅对非 group 场景启用 sameName 退化，避免和 spaceName 重复。
     const sameName = !isGroup && !!spaceName && entityName === spaceName;
 
     if (!crossSpace) {
         // 非跨 Space — 单行 toast。
         // - kind='group' 时不会被 sameName 短路，显式使用群聊文案。
-        // - 其他场景沿用 YUJ-106/112 语义。
+        // - 其他场景沿用原有语义。
         Toast.success({
             content: isGroup
                 ? `✅ 已加入「${entityName}」群聊`

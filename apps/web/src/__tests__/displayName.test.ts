@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { displayName, isRealnameVerified } from "../../../../packages/dmworkbase/src/Utils/displayName";
 
-describe("displayName (YUJ-359 / GH dmwork-web#1121)", () => {
+describe("displayName (GH dmwork-web#1121)", () => {
     it("returns empty string for null/undefined user", () => {
         expect(displayName(undefined)).toBe("");
         expect(displayName(null)).toBe("");

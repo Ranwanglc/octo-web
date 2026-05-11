@@ -33,14 +33,14 @@ vi.mock('@octo/base', () => {
       themeColor: '#000',
       appName: 'Test',
     },
-    // 近期: providers.ts 改读 WKApp.remoteConfig.oidcProviders 来解决硬编码 Aegis,
-    // 这里桩一个固定的 aegis provider, 让 LoginVM.startOidcLogin('aegis') 能跑通。
+    // providers.ts reads WKApp.remoteConfig.oidcProviders from backend /v1/common/appconfig.
+    // Stub a fixed provider so LoginVM.startOidcLogin('acme-sso') works.
     remoteConfig: {
       oidcProviders: [
         {
-          id: 'aegis',
-          name: 'Aegis',
-          authorizePath: '/v1/auth/oidc/aegis/authorize',
+          id: 'acme-sso',
+          name: 'Acme SSO',
+          authorizePath: '/v1/auth/oidc/acme-sso/authorize',
         },
       ],
     },
@@ -112,11 +112,11 @@ describe('LoginVM.startOidcLogin', () => {
   it('fetches authcode, persists pending, and redirects to authorize URL', async () => {
     fetchAuthcodeMock.mockResolvedValue('AC-123')
     const vm = new LoginVM()
-    await vm.startOidcLogin('aegis')
+    await vm.startOidcLogin('acme-sso')
     const pending = getPendingOidcLogin()
-    expect(pending?.providerId).toBe('aegis')
+    expect(pending?.providerId).toBe('acme-sso')
     expect(pending?.authcode).toBe('AC-123')
-    expect(window.location.href).toContain('/v1/auth/oidc/aegis/authorize')
+    expect(window.location.href).toContain('/v1/auth/oidc/acme-sso/authorize')
     expect(window.location.href).toContain('authcode=AC-123')
     expect(vm.oidcLoading).toBe(true)
   })
@@ -124,7 +124,7 @@ describe('LoginVM.startOidcLogin', () => {
   it('flips oidcLoading off via the fallback timer if redirect is intercepted', async () => {
     fetchAuthcodeMock.mockResolvedValue('AC-X')
     const vm = new LoginVM()
-    await vm.startOidcLogin('aegis')
+    await vm.startOidcLogin('acme-sso')
     expect(vm.oidcLoading).toBe(true)
     vi.advanceTimersByTime(LoginVM.OIDC_LOADING_RESET_MS + 1)
     expect(vm.oidcLoading).toBe(false)
@@ -133,7 +133,7 @@ describe('LoginVM.startOidcLogin', () => {
   it('resets oidcLoading and rethrows when fetchAuthcode fails', async () => {
     fetchAuthcodeMock.mockRejectedValue(new Error('network down'))
     const vm = new LoginVM()
-    await expect(vm.startOidcLogin('aegis')).rejects.toThrow('network down')
+    await expect(vm.startOidcLogin('acme-sso')).rejects.toThrow('network down')
     expect(vm.oidcLoading).toBe(false)
     expect(getPendingOidcLogin()).toBeNull()
   })
@@ -149,14 +149,14 @@ describe('LoginVM.startOidcLogin', () => {
     fetchAuthcodeMock.mockResolvedValue('AC-1')
     const vm = new LoginVM()
     vm.oidcLoading = true
-    await vm.startOidcLogin('aegis')
+    await vm.startOidcLogin('acme-sso')
     expect(fetchAuthcodeMock).not.toHaveBeenCalled()
   })
 })
 
 describe('LoginVM.resumeOidcLoginIfPending', () => {
   it('returns handled=false when called concurrently while a resume is in-flight', async () => {
-    savePendingOidcLogin({ providerId: 'aegis', authcode: 'AC', savedAt: Date.now() })
+    savePendingOidcLogin({ providerId: 'acme-sso', authcode: 'AC', savedAt: Date.now() })
     let resolvePoll: (v: unknown) => void = () => {}
     pollAuthStatusMock.mockImplementation(
       () => new Promise((resolve) => {
@@ -184,7 +184,7 @@ describe('LoginVM.resumeOidcLoginIfPending', () => {
   })
 
   it('clears pending and reports failure when ?oidc_error=1 with matching pending', async () => {
-    savePendingOidcLogin({ providerId: 'aegis', authcode: 'AC', savedAt: Date.now() })
+    savePendingOidcLogin({ providerId: 'acme-sso', authcode: 'AC', savedAt: Date.now() })
     const vm = new LoginVM()
     const result = await vm.resumeOidcLoginIfPending('?oidc_error=1')
     expect(result.handled).toBe(true)
@@ -199,7 +199,7 @@ describe('LoginVM.resumeOidcLoginIfPending', () => {
   })
 
   it('returns timeout error and clears pending when pending is past TTL', async () => {
-    savePendingOidcLogin({ providerId: 'aegis', authcode: 'AC', savedAt: 1 })
+    savePendingOidcLogin({ providerId: 'acme-sso', authcode: 'AC', savedAt: 1 })
     const vm = new LoginVM()
     const result = await vm.resumeOidcLoginIfPending('')
     expect(result.success).toBe(false)
@@ -209,7 +209,7 @@ describe('LoginVM.resumeOidcLoginIfPending', () => {
   })
 
   it('on success calls loginSuccess and reports success', async () => {
-    savePendingOidcLogin({ providerId: 'aegis', authcode: 'AC', savedAt: Date.now() })
+    savePendingOidcLogin({ providerId: 'acme-sso', authcode: 'AC', savedAt: Date.now() })
     pollAuthStatusMock.mockResolvedValue({
       status: 1,
       result: { uid: 'u1', token: 't1' },
@@ -218,13 +218,13 @@ describe('LoginVM.resumeOidcLoginIfPending', () => {
     const loginSuccessSpy = vi.spyOn(vm, 'loginSuccess').mockImplementation(() => {})
     const result = await vm.resumeOidcLoginIfPending('')
     expect(result).toEqual({ handled: true, success: true })
-    expect(loginSuccessSpy).toHaveBeenCalledWith({ uid: 'u1', token: 't1' }, 'aegis')
+    expect(loginSuccessSpy).toHaveBeenCalledWith({ uid: 'u1', token: 't1' }, 'acme-sso')
     expect(getPendingOidcLogin()).toBeNull()
     expect(vm.oidcResuming).toBe(false)
   })
 
   it('exposes provider name on the VM during resume', async () => {
-    savePendingOidcLogin({ providerId: 'aegis', authcode: 'AC', savedAt: Date.now() })
+    savePendingOidcLogin({ providerId: 'acme-sso', authcode: 'AC', savedAt: Date.now() })
     let nameSeenDuringPoll: string | undefined
     pollAuthStatusMock.mockImplementation(async () => {
       nameSeenDuringPoll = vm.oidcResumingProviderName
@@ -233,12 +233,12 @@ describe('LoginVM.resumeOidcLoginIfPending', () => {
     const vm = new LoginVM()
     vi.spyOn(vm, 'loginSuccess').mockImplementation(() => {})
     await vm.resumeOidcLoginIfPending('')
-    expect(nameSeenDuringPoll).toBe('Aegis')
+    expect(nameSeenDuringPoll).toBe('Acme SSO')
     expect(vm.oidcResumingProviderName).toBeUndefined()
   })
 
   it('returns failure with msg when poll resolves to status=2', async () => {
-    savePendingOidcLogin({ providerId: 'aegis', authcode: 'AC', savedAt: Date.now() })
+    savePendingOidcLogin({ providerId: 'acme-sso', authcode: 'AC', savedAt: Date.now() })
     pollAuthStatusMock.mockResolvedValue({ status: 2, msg: 'IdP rejected' })
     const vm = new LoginVM()
     const result = await vm.resumeOidcLoginIfPending('')
@@ -252,7 +252,7 @@ describe('LoginVM.resumeOidcLoginIfPending', () => {
     [new OidcPollNetworkError(new Error('x')), /网络异常/],
     [new Error('boom'), /登录失败/],
   ])('maps poll error %p to user-facing message', async (err, pattern) => {
-    savePendingOidcLogin({ providerId: 'aegis', authcode: 'AC', savedAt: Date.now() })
+    savePendingOidcLogin({ providerId: 'acme-sso', authcode: 'AC', savedAt: Date.now() })
     pollAuthStatusMock.mockRejectedValue(err)
     const vm = new LoginVM()
     const result = await vm.resumeOidcLoginIfPending('')
@@ -264,14 +264,14 @@ describe('LoginVM.resumeOidcLoginIfPending', () => {
 
 describe('LoginVM.cancelOidcLogin', () => {
   it('clears pending up front so a refresh during sleep does not resume', () => {
-    savePendingOidcLogin({ providerId: 'aegis', authcode: 'AC', savedAt: Date.now() })
+    savePendingOidcLogin({ providerId: 'acme-sso', authcode: 'AC', savedAt: Date.now() })
     const vm = new LoginVM()
     vm.cancelOidcLogin()
     expect(getPendingOidcLogin()).toBeNull()
   })
 
   it('aborts the in-flight signal so cancel is felt immediately', async () => {
-    savePendingOidcLogin({ providerId: 'aegis', authcode: 'AC', savedAt: Date.now() })
+    savePendingOidcLogin({ providerId: 'acme-sso', authcode: 'AC', savedAt: Date.now() })
     let capturedSignal: AbortSignal | undefined
     pollAuthStatusMock.mockImplementation(async (opts: { signal?: AbortSignal }) => {
       capturedSignal = opts.signal
@@ -296,7 +296,7 @@ describe('LoginVM.cancelOidcLogin', () => {
 // Defensive: clearPendingOidcLogin export is used directly by some flows.
 describe('integration: clear after cancel', () => {
   it('cancel + later refresh yields handled=false', async () => {
-    savePendingOidcLogin({ providerId: 'aegis', authcode: 'AC', savedAt: Date.now() })
+    savePendingOidcLogin({ providerId: 'acme-sso', authcode: 'AC', savedAt: Date.now() })
     const vm = new LoginVM()
     vm.cancelOidcLogin()
     const fresh = new LoginVM()

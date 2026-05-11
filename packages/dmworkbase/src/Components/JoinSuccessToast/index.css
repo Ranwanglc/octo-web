@@ -1,4 +1,4 @@
-/* YUJ-106 / dmwork-web#1065: 加入成功后跨 Space 提示 toast */
+/* dmwork-web#1065: 加入成功后跨 Space 提示 toast */
 .wk-join-success-toast {
     display: flex;
     flex-direction: column;

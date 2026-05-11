@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
-describe('InviteLanding — YUJ-99 / dmwork-web#1047 login CTA for unauthenticated users', () => {
+describe('InviteLanding — dmwork-web#1047 login CTA for unauthenticated users', () => {
     let sourceCode: string;
 
     beforeAll(() => {

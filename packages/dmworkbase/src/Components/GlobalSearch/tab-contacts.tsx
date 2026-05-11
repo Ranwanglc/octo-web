@@ -27,7 +27,7 @@ export default class TabContacts extends Component<TabContactsProps, TabContacts
         botDetailVisible: false,
     };
 
-    // YUJ-138 follow-up: channelInfo 到达后强制重渲，否则 resolveSourceSpaceName
+    // channelInfo 到达后强制重渲，否则 resolveSourceSpaceName
     // 首次读缓存未命中时，UI 永远不更新。
     // 懒加载重构：使用 debounce 合批 forceUpdate，避免视口内多个 uid 集中返回
     // 时触发 N 次重渲；并用 fetchedUids 记录已发起过的 uid，避免重复请求。
@@ -75,7 +75,7 @@ export default class TabContacts extends Component<TabContactsProps, TabContacts
     }
 
     /**
-     * YUJ-138: 判定搜索到的联系人相对当前查看 Space 是否为外部成员，返回要
+     * 判定搜索到的联系人相对当前查看 Space 是否为外部成员，返回要
      * 展示在姓名后的「@{sourceSpaceName}」文本。优先读 friend 项自身带的
      * home_space_id / home_space_name / is_external / source_space_name 字段；
      * 缺失时回落到 channelInfo.orgData，同 @Mention 候选、成员列表保持一致。
@@ -151,7 +151,7 @@ export default class TabContacts extends Component<TabContactsProps, TabContacts
     }
 
     private renderItem(item: any): ReactNode {
-        // YUJ-138 follow-up: 用 local displayName 替代对 item.channel_name 的 mutation。
+        // 用 local displayName 替代对 item.channel_name 的 mutation。
         // 之前直接改 item.channel_name（props / 源数据）会在 listener 触发 re-render
         // 后累积成 <mark><mark>key</mark></mark>（double-wrap），sanitizeHighlight
         // 虽然 escape 但视觉退化。保留源数据干净，仅渲染时替换。
@@ -165,7 +165,7 @@ export default class TabContacts extends Component<TabContactsProps, TabContacts
         // Virtuoso 只渲染视口内 item，等价于懒挂载；进入视口时按需触发 channelInfo 拉取。
         // fetchedUids 去重避免 forceUpdate / 重入导致重复请求。
         this.requestChannelInfoIfNeeded(item)
-        // YUJ-138: 跨 Space 搜索联系人时展示来源 Space，避免误选外部成员
+        // 跨 Space 搜索联系人时展示来源 Space，避免误选外部成员
         const sourceSpaceName = this.resolveSourceSpaceName(item)
         return <ItemContacts
             name={displayName}

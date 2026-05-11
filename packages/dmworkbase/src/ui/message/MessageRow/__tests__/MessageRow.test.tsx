@@ -4,7 +4,7 @@ import { describe, it, expect } from "vitest"
 import MessageRow from "../index"
 
 /**
- * YUJ-98 R7 — 老组件 `wk-msg-row-header` 补齐 @SpaceName 渲染。
+ * 老组件 `wk-msg-row-header` 补齐 @SpaceName 渲染。
  *
  * 背景：
  *   R1-R6 五轮都改的是新组件 `wk-msg-head`，但真正上屏的是这个老组件
@@ -109,9 +109,9 @@ describe("MessageRow — @SpaceName suffix in wk-msg-row-header", () => {
 })
 
 /**
- * YUJ-379 / Epic dmwork-web#1169 Phase A — 聊天气泡作者名旁的实名徽章。
+ * Epic dmwork-web#1169 Phase A — 聊天气泡作者名旁的实名徽章。
  *
- * 2026-05-10 Yu 决策解除 YUJ-359「聊天气泡不使用 RealnameVerifiedBadge」硬约束：
+ * 2026-05-10 Yu 决策解除「聊天气泡不使用 RealnameVerifiedBadge」硬约束：
  * 实名比例约 20%，徽章已从「噪音」变成「稀缺的差异化信号」，尤其对外部群混合
  * 身份场景有价值。
  *
@@ -120,7 +120,7 @@ describe("MessageRow — @SpaceName suffix in wk-msg-row-header", () => {
  *   - 字段缺失 / false / 0 等都走未实名分支。
  *   - 徽章位于 wk-msg-row-header 容器内，紧贴作者名右侧。
  */
-describe("MessageRow — RealnameVerifiedBadge in wk-msg-row-header (YUJ-379 Phase A)", () => {
+describe("MessageRow — RealnameVerifiedBadge in wk-msg-row-header (Phase A)", () => {
     const baseProps = {
         isSend: false,
         isContinue: false,

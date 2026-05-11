@@ -3,13 +3,13 @@ import { Message } from "wukongimjssdk"
 import { Convert } from "../Convert"
 
 /**
- * YUJ-53 / YUJ-64: /message/channel/sync response may carry msg-level fields
+ * /message/channel/sync response may carry msg-level fields
  * from_is_external (0|1), from_source_space_name (string),
  * from_home_space_id (string), from_home_space_name (string).
  * Convert.toMessage stashes them on the resulting Message instance so
  * MessageWrap getters (see Model.tsx) can expose them to the UI.
  */
-describe("Convert.toMessage external-source passthrough (YUJ-53 / YUJ-64)", () => {
+describe("Convert.toMessage external-source passthrough", () => {
     const baseMsg = (overrides: Record<string, any> = {}) => ({
         message_id: "1",
         message_idstr: "1",
@@ -51,7 +51,7 @@ describe("Convert.toMessage external-source passthrough (YUJ-53 / YUJ-64)", () =
         expect(m.from_is_external).toBe(0)
     })
 
-    it("stashes from_home_space_id / from_home_space_name (YUJ-64)", () => {
+    it("stashes from_home_space_id / from_home_space_name", () => {
         const m: any = Convert.toMessage(baseMsg({
             from_home_space_id: "space13",
             from_home_space_name: "Space 13",
@@ -124,7 +124,7 @@ describe("MessageWrap.fromIsExternal / fromSourceSpaceName getter semantics", ()
         expect(w.fromHomeSpaceName).toBeUndefined()
     })
 
-    it("exposes fromHomeSpaceId / fromHomeSpaceName when present (YUJ-64)", () => {
+    it("exposes fromHomeSpaceId / fromHomeSpaceName when present", () => {
         const raw = new Message() as any
         raw.from_home_space_id = "space13"
         raw.from_home_space_name = "Space 13"

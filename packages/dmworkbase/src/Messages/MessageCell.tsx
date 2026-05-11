@@ -26,7 +26,7 @@ export class MessageCell<P extends MessageBaseCellProps = MessageBaseCellPropsIm
         const { message } = this.props
         // 订阅 channelInfo 更新，发送者信息到达后触发重渲染（修复 uid 显示问题）
         //
-        // YUJ-404 Round 8 (Jerry R7 🔴)：同时监听 conversation channel
+        // 同时监听 conversation channel
         // （message.channel，1v1 时是对端 Person channel）的 channelInfo 到达。
         // class 渲染路径（ImageCell/VideoCell/FileCell/MergeforwardCell 等）走
         // getMessageRow() 纯函数，getMessageRow 的保守策略（18脸 Person 1v1 +
@@ -59,7 +59,7 @@ export class MessageCell<P extends MessageBaseCellProps = MessageBaseCellPropsIm
             }
         }
 
-        // YUJ-404 Round 8：没有缓存时主动拉取 conversation Person channelInfo
+        // 没有缓存时主动拉取 conversation Person channelInfo
         //（1v1 场景，getMessageRow 的 self-fallback 保守策略需要它）。
         // 收窄到 Person 1v1：群消息不需 group channelInfo 来判 self fallback，
         // 不收窄会在群聊历史首屏引发重复 fetch。用 !isEqual dedupe避免和

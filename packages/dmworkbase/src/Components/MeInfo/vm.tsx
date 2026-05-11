@@ -21,26 +21,26 @@ import { resolveRealnameVerifyUrl } from "./realnameVerifyUrl";
 /**
  * MeInfoVM — 自己的「个人信息 / 设置」页面 ViewModel
  *
- * YUJ-359 / GH #1121 接入实名认证。
- * YUJ-391 / Aegis Phase 2a：「去认证」入口改为直跳 Aegis 账户页, 不再调用
+ * GH #1121 接入实名认证。
+ * Phase 2a：「去认证」入口改为直跳 IdP 账户页, 不再调用
  *   verify-service 翻译接口。
- * YUJ-396 / GH #1174：Aegis 域名改为按环境从后端 appconfig 下发的
+ * GH #1174：IdP 域名改为按环境从后端 appconfig 下发的
  *   `oidc_providers[].account_url` 字段读, 而非硬编码 prod URL。
  *   im-test 会拿到 `accounts-test.imocto.cn`, im-prod 拿到 `accounts.xming.ai`,
  *   和 NavSettingsPanel 「账户中心」入口口径一致。
  *
- * YUJ-398 / GH #1180（Phase 2e 闭环）:im-test 实机发现原方案有 2 个闭环 bug,
+ * GH #1180（Phase 2e 闭环）:im-test 实机发现原方案有 2 个闭环 bug,
  *   本 VM 的职责是把前端部分修好:
  *     1. startRealnameVerify 必须传 return_to = `${origin}${pathname}?verified=1`,
- *        否则用户在 Aegis 完成实名没法回跳
+ *        否则用户在 IdP 完成实名没法回跳
  *     2. 删 window.open 失败降级为 `window.location.href=verifyUrl` 的 fallback ——
  *        双跳转是 P1 UX bug,用户点"去认证"会一边开新 tab 一边把当前 tab 替换掉,
  *        导致 ?verified=1 的回跳 handler 永远没有"原页面"可触发
  *
- * YUJ-406:dmworkim 的 `POST /v1/internal/realname/pull-from-aegis` endpoint 已废弃
- *   (Aegis 不支持对应的 admin API)。实名同步改走 dmworkim 后端 sync_worker 每 15min
+ * dmworkim 的 `POST /v1/internal/realname/pull-from-idp` endpoint 已废弃
+ *   (IdP 不支持对应的 admin API)。实名同步改走 dmworkim 后端 sync_worker 每 15min
  *   自动通过 /userinfo 同步, 前端不再主动 pull。本 VM 从 didMount / 回跳 handler 里
- *   删掉了 pull-from-aegis POST, 仅保留 reloadSelfProfile() 作为刷新实名状态的唯一路径。
+ *   删掉了 pull-from-idp POST, 仅保留 reloadSelfProfile() 作为刷新实名状态的唯一路径。
  *   ?verified=1 回跳后徽章可能最多有 15min 感知延迟(下次 sync_worker tick), 对大多数
  *   用户可接受 —— 实名动作本身人无需秒级反馈。
  *
@@ -48,17 +48,17 @@ import { resolveRealnameVerifyUrl } from "./realnameVerifyUrl";
  *   - 新增「账号安全 · 实名认证」section
  *     · 已认证：展示 「已认证 · {年-月}」不可点
  *     · 未认证：展示「去认证」CTA，点击 `window.open(<account_url>/profile/info?anchor=verification&return_to=…, '_blank')`
- *       新窗打开 Aegis 账户页实名锚点。
- *   - Aegis 完成认证后会以 `return_to` 带 `?verified=1` 回跳，由本 VM 的
+ *       新窗打开 IdP 账户页实名锚点。
+ *   - IdP 完成认证后会以 `return_to` 带 `?verified=1` 回跳，由本 VM 的
  *     didMount 兜底 handler + 全局 useRealnameVerifiedLandingHandler 捕获，
  *     重新 `reloadSelfProfile()` 同步新状态(依赖 sync_worker 已写入 user_verification)。
  *   - 老版本后端兜底仍保留：dmworkim /v1/internal/verify-token 现在返回的
- *     也是按环境下发的 Aegis URL，老 App 客户端无需改动即可工作。
+ *     也是按环境下发的 IdP URL，老 App 客户端无需改动即可工作。
  */
 export class MeInfoVM extends ProviderListener {
 
     channelInfoListener!:ChannelInfoListener
-    /** YUJ-359：本页加载时主动拉取的自身 profile（含 realname_verified / real_name） */
+    /** 本页加载时主动拉取的自身 profile（含 realname_verified / real_name） */
     selfChannelInfo?: ChannelInfo
 
     didMount(): void {
@@ -79,11 +79,11 @@ export class MeInfoVM extends ProviderListener {
         }
         WKSDK.shared().channelManager.addListener(this.channelInfoListener)
 
-        // YUJ-406:pull-from-aegis endpoint 已废弃(dmworkim 侧),本页打开时仅做两件事:
+        // pull-from-idp endpoint 已废弃(dmworkim 侧),本页打开时仅做两件事:
         //   1. 同步清掉 ?verified=1 query(回跳兜底,避免二次进入重复触发)
         //   2. reloadSelfProfile 拉一次最新 /users/{uid}
         //
-        // 实名状态由 dmworkim sync_worker 每 15min 自动从 Aegis /userinfo 同步到
+        // 实名状态由 dmworkim sync_worker 每 15min 自动从 IdP /userinfo 同步到
         // user_verification cache。?verified=1 回跳时徽章不保证秒亮,最多 15min 后
         // 下一轮 sync_worker tick 同步到; 用户已登录过(OIDC callback 即时 upsert)
         // 且 sync_worker 已跑过一轮的常态下, 通常 reloadSelfProfile 已能读到最新状态。
@@ -108,7 +108,7 @@ export class MeInfoVM extends ProviderListener {
     }
 
     /**
-     * YUJ-359：把 profile orgData 里的实名字段回写到 WKApp.loginInfo（方便跨页面快速判定）。
+     * 把 profile orgData 里的实名字段回写到 WKApp.loginInfo（方便跨页面快速判定）。
      * 硬约束：仅处理 realname_verified / real_name 两个字段，不扩散其他字段到 loginInfo。
      */
     private syncRealnameFromOrgData(orgData: any) {
@@ -144,22 +144,22 @@ export class MeInfoVM extends ProviderListener {
     }
 
     /**
-     * YUJ-391 / Aegis Phase 2a：「去认证」入口直跳 Aegis 账户页。
-     * YUJ-396 / GH #1174：Aegis 域名改为按环境从后端 appconfig 下发的
+     * Phase 2a：「去认证」入口直跳 IdP 账户页。
+     * GH #1174：IdP 域名改为按环境从后端 appconfig 下发的
      *   `oidc_providers[].account_url` 读, 不再硬编码 prod URL。
-     * YUJ-398 / GH #1180（Phase 2e 闭环）:
+     * GH #1180（Phase 2e 闭环）:
      *   1. URL 必须带 `return_to=${encodeURIComponent(${origin}${pathname}?verified=1)}`,
-     *      否则用户在 Aegis 完成实名后回不到 OCTO,整个链路断在 Aegis
+     *      否则用户在 IdP 完成实名后回不到 OCTO,整个链路断在 IdP
      *   2. 删除 `window.open` 失败降级为 `window.location.href=verifyUrl` 的 fallback——
-     *      那是 P1 双跳转 bug:原页面会被替换,等 Aegis 302 回来时没有"原 MeInfo
+     *      那是 P1 双跳转 bug:原页面会被替换,等 IdP 302 回来时没有"原 MeInfo
      *      页面"可触发 ?verified=1 handler;改为 toast 提示用户允许弹窗
      *      (禁忌:`window.open fallback 不能改为 tab 跳 + 再 reload,依然会丢状态`)
      *
      * 不再调用 dmworkim `/v1/internal/verify-token` 翻译接口 —— Web 端直接
-     * `window.open` 到 Aegis 的实名认证锚点。Aegis 完成后会 redirect 回
+     * `window.open` 到 IdP 的实名认证锚点。IdP 完成后会 redirect 回
      * 本页（带 ?verified=1），由 didMount 的兜底 handler + 全局
      * useRealnameVerifiedLandingHandler 触发 reloadSelfProfile 同步状态
-     * (YUJ-406: pull-from-aegis 已废弃, 实名同步改走 dmworkim sync_worker 15min 轮询)。
+     * (pull-from-idp 已废弃, 实名同步改走 dmworkim sync_worker 15min 轮询)。
      *
      * URL 解析口径（resolveRealnameVerifyUrl）：
      *   - 按 loginInfo.loginProvider 在 remoteConfig.oidcProviders 里查
@@ -169,15 +169,15 @@ export class MeInfoVM extends ProviderListener {
      *   - loginProvider=local / 空 / provider 无 account_url / provider 不在
      *     下发列表里 → Toast 明示, 不跳转。严禁回退到任何硬编码 prod 域。
      *
-     * 弹窗被浏览器拦截:不再自动切当前 tab(那是 YUJ-398 P1 bug 的源头,会丢 session
+     * 弹窗被浏览器拦截:不再自动切当前 tab(那是 P1 bug 的源头,会丢 session
      * 和 ?verified=1 回跳上下文), 改成 toast 提示用户允许弹窗。用户允许后再次点击即可。
      *
      * 老 App 兜底：dmworkim 的 verify-token 接口仍然保留，只是现在返回
-     * 按环境下发的 Aegis URL，老版本客户端无需改动。
+     * 按环境下发的 IdP URL，老版本客户端无需改动。
      */
     startRealnameVerify() {
-        // YUJ-398 Round 1 修正(Jerry-Xin Crit):return_to 必须**保留当前 URL 的全部
-        // query 参数**(尤其 sid),否则 Aegis 302 回来时 sid 丢失 → App.tsx::getSID 读
+        // Round 1 修正(Jerry-Xin Crit):return_to 必须**保留当前 URL 的全部
+        // query 参数**(尤其 sid),否则 IdP 302 回来时 sid 丢失 → App.tsx::getSID 读
         // 空 sid bucket → loginInfo 读不到 token → 后续 /users/{uid} 刷新拿不到鉴权。
         //
         // 登录态按 sid 分桶(App.tsx:275 / 291 / Route.tsx:45 均按 sid 读写 storage key)。
@@ -188,13 +188,13 @@ export class MeInfoVM extends ProviderListener {
         //   - 原 URL `/me?sid=abc` → returnTo `/me?sid=abc&verified=1`(同时保留 sid + 新增 verified)
         //   - 原 URL `/me`(无 query)→ returnTo `/me?verified=1`
         //   - 原 URL `/me?verified=0` → returnTo `/me?verified=1`(URLSearchParams.set 覆盖旧值)
-        //   - hash 不带入 —— Aegis 对超长 return_to / 含 fragment 的 URL 可能校验失败
+        //   - hash 不带入 —— IdP 对超长 return_to / 含 fragment 的 URL 可能校验失败
         const returnToParams = new URLSearchParams(window.location.search)
         returnToParams.set("verified", "1")
         const returnToQuery = returnToParams.toString()
         const returnTo = `${window.location.origin}${window.location.pathname}${returnToQuery ? "?" + returnToQuery : ""}`
 
-        // 读按环境下发的 account_url —— 防止把 im-test 用户甩到 prod Aegis。
+        // 读按环境下发的 account_url —— 防止把 im-test 用户甩到 prod IdP。
         // 具体行为合约见 resolveRealnameVerifyUrl 的 JSDoc 和 __tests__/realnameVerifyUrl.test.ts。
         const resolved = resolveRealnameVerifyUrl(
             WKApp.loginInfo.loginProvider,
@@ -220,7 +220,7 @@ export class MeInfoVM extends ProviderListener {
         const verifyUrl = resolved.url
         // 新 tab 打开,必须能区分「真被浏览器拦截」vs「成功打开」。
         //
-        // YUJ-402 (Jerry R3 blocking):
+        // Jerry R3 blocking:
         //   之前写法 `window.open(url, "_blank", "noopener,noreferrer")` 有致命坑 ——
         //   MDN 明确说明 `noopener` feature 会让 window.open 返回 null(新窗口没有
         //   opener 引用),这意味着**成功打开的 case 也会返回 null**,原 `if (!opened)`
@@ -229,9 +229,9 @@ export class MeInfoVM extends ProviderListener {
         // 正确做法:先 open("about:blank") 拿窗口引用,再手动解除 opener + 导航:
         //   - 真被拦截 → window.open 返 null → 正确 toast
         //   - 成功打开 → 拿到窗口引用 → opener=null 等价 noopener 安全隔离 →
-        //     location.href 再跳目标 URL,Aegis 无法通过 window.opener 反操作本页。
+        //     location.href 再跳目标 URL,IdP 无法通过 window.opener 反操作本页。
         //
-        // YUJ-398: 绝不再降级为 `window.location.href = verifyUrl` —— 双跳 + 丢状态是 P1 bug 根因。
+        // 绝不再降级为 `window.location.href = verifyUrl` —— 双跳 + 丢状态是 P1 bug 根因。
         const opened = window.open("about:blank", "_blank")
         if (!opened) {
             // 弹窗被浏览器拦截:提示用户允许弹窗后重试,不自动替换当前 tab。
@@ -240,7 +240,7 @@ export class MeInfoVM extends ProviderListener {
             Toast.warning("浏览器拦截了新窗口，请允许本站弹窗后重试「去认证」")
             return
         }
-        // 手动解除 opener,等价 noopener 安全隔离(防 Aegis 通过 window.opener 反操作本页)。
+        // 手动解除 opener,等价 noopener 安全隔离(防 IdP 通过 window.opener 反操作本页)。
         try {
             opened.opener = null
         } catch {
@@ -294,9 +294,9 @@ export class MeInfoVM extends ProviderListener {
     }
 
     /**
-     * YUJ-359：「名字」行的 subTitle — 已认证时展示 「real_name ✓ 已实名」，
+     * 「名字」行的 subTitle — 已认证时展示 「real_name ✓ 已实名」，
      * 未认证时退化为普通昵称字符串。
-     * YUJ-412：已实名时的 displayName 走 `loginInfo.selfDisplayName()`，和
+     * 已实名时的 displayName 走 `loginInfo.selfDisplayName()`，和
      * 气泡 / QRCode / 好友申请文案同一处结算，规则改动全局一致。
      */
     private nameRowSubTitle(): React.ReactNode {
@@ -312,7 +312,7 @@ export class MeInfoVM extends ProviderListener {
     }
 
     /**
-     * YUJ-359：格式化「已认证 · 2025-03」展示文本。
+     * 格式化「已认证 · 2025-03」展示文本。
      * verified_at 字段后端若缺失，只展示「已认证」不拼年月，避免显示 NaN。
      */
     private formatVerifiedAtLabel(): string {
@@ -416,8 +416,8 @@ export class MeInfoVM extends ProviderListener {
             ]
         }))
 
-        // YUJ-359：账号安全 · 实名认证。
-        // YUJ-391 / Aegis Phase 2a：未认证点击直跳 Aegis 账户页。
+        // 账号安全 · 实名认证。
+        // Phase 2a：未认证点击直跳 IdP 账户页。
         const verified = !!WKApp.loginInfo.realnameVerified
         sections.push(new Section({
             title: "账号安全",

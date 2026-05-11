@@ -27,20 +27,20 @@ describe('getSSOProviders', () => {
   it('returns providers from WKApp.remoteConfig.oidcProviders', () => {
     remoteConfig.oidcProviders = [
       {
-        id: 'aegis',
-        name: 'Aegis',
-        authorizePath: '/v1/auth/oidc/aegis/authorize',
-        accountUrl: 'https://aegis.example.com',
-        resetPasswordUrl: 'https://aegis.example.com/reset',
+        id: 'acme-sso',
+        name: 'Acme SSO',
+        authorizePath: '/v1/auth/oidc/acme-sso/authorize',
+        accountUrl: 'https://idp.example.com',
+        resetPasswordUrl: 'https://idp.example.com/reset',
       },
     ]
     const result = getSSOProviders()
     expect(result).toHaveLength(1)
-    expect(result[0].id).toBe('aegis')
-    expect(result[0].name).toBe('Aegis')
-    expect(result[0].authorizePath).toBe('/v1/auth/oidc/aegis/authorize')
-    expect(result[0].accountUrl).toBe('https://aegis.example.com')
-    expect(result[0].resetPasswordUrl).toBe('https://aegis.example.com/reset')
+    expect(result[0].id).toBe('acme-sso')
+    expect(result[0].name).toBe('Acme SSO')
+    expect(result[0].authorizePath).toBe('/v1/auth/oidc/acme-sso/authorize')
+    expect(result[0].accountUrl).toBe('https://idp.example.com')
+    expect(result[0].resetPasswordUrl).toBe('https://idp.example.com/reset')
   })
 
   it('returns empty array when remoteConfig has no providers', () => {
@@ -59,18 +59,18 @@ describe('getSSOProviders', () => {
 describe('getProviderById', () => {
   beforeEach(() => {
     remoteConfig.oidcProviders = [
-      { id: 'aegis', name: 'Aegis', authorizePath: '/v1/auth/oidc/aegis/authorize' },
+      { id: 'acme-sso', name: 'Acme SSO', authorizePath: '/v1/auth/oidc/acme-sso/authorize' },
       { id: 'google', name: 'Google', authorizePath: '/v1/auth/oidc/google/authorize' },
     ]
   })
 
   it('returns the provider when id matches', () => {
-    const result = getProviderById('aegis')
-    expect(result?.id).toBe('aegis')
-    expect(result?.name).toBe('Aegis')
+    const result = getProviderById('acme-sso')
+    expect(result?.id).toBe('acme-sso')
+    expect(result?.name).toBe('Acme SSO')
   })
 
-  it('matches against the configured id (no longer hardcoded to aegis)', () => {
+  it('matches against the configured id (not hardcoded)', () => {
     expect(getProviderById('google')?.name).toBe('Google')
   })
 
@@ -80,6 +80,6 @@ describe('getProviderById', () => {
 
   it('returns undefined when remoteConfig has no providers', () => {
     remoteConfig.oidcProviders = []
-    expect(getProviderById('aegis')).toBeUndefined()
+    expect(getProviderById('acme-sso')).toBeUndefined()
   })
 })

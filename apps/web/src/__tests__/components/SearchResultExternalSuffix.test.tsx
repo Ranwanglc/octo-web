@@ -1,5 +1,5 @@
 /**
- * YUJ-138 — 搜索结果外部成员/消息 @SpaceName 后缀判定单测。
+ * 搜索结果外部成员/消息 @SpaceName 后缀判定单测。
  *
  * 覆盖 tab-contacts / tab-all / AssigneeEditor 三处搜索入口使用的 resolver
  * 输入构造路径：
@@ -67,7 +67,7 @@ function computeAssigneeSuffix(org: any, viewerSpaceId: string): string {
   return isExternal ? sourceSpaceName : '';
 }
 
-describe('YUJ-138 搜索结果外部后缀', () => {
+describe('搜索结果外部后缀', () => {
   describe('联系人搜索（tab-contacts）', () => {
     it('跨 Space friend（新字段）→ 显示 @SpaceName', () => {
       expect(

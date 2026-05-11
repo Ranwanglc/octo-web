@@ -1,7 +1,7 @@
 import WKSDK, { Channel, ChannelTypePerson } from "wukongimjssdk";
 
 /**
- * Production routing helper for "view user profile" entry (YUJ-195, GH#1112, PR#1113).
+ * Production routing helper for "view user profile" entry (GH#1112, PR#1113).
  *
  * Centralises three orthogonal concerns that `WKBase.showUserInfo` previously
  * inlined:
@@ -19,10 +19,10 @@ import WKSDK, { Channel, ChannelTypePerson } from "wukongimjssdk";
  *      are silently dropped. This fixes the race where a late-resolving fetch
  *      for avatar A could overwrite the modal that was just opened for B.
  *
- *   3) External-viewer gate for bots (YUJ-207, YUJ-67 regression fix). A bot
+ *   3) External-viewer gate for bots (regression fix). A bot
  *      opened from a cross-space external group must NOT open the editable
  *      BotDetailModal, because BotDetailModal renders "发送消息 / 添加好友"
- *      based purely on follow state and would bypass the YUJ-67 UI guard that
+ *      based purely on follow state and would bypass the UI guard that
  *      UserInfo.getBottomPanel applies to external humans. When the viewer is
  *      external relative to the bot (same criteria as UserInfoVM.isExternalToViewer),
  *      we demote `isBot=false` so the request routes through UserInfo and the
@@ -55,7 +55,7 @@ export interface ChannelManagerLike {
 }
 
 /**
- * External-viewer decision surface (YUJ-207). Abstracted out of the router so
+ * External-viewer decision surface. Abstracted out of the router so
  * unit tests can inject a deterministic answer without standing up WKSDK
  * subscribers + WKApp.currentSpaceId. The default implementation wired in
  * createUserInfoRouter mirrors UserInfoVM.isExternalToViewer exactly:
@@ -125,7 +125,7 @@ export class UserInfoRouter {
     }
 
     /**
-     * Apply the external-viewer gate (YUJ-207) before deciding isBot, then
+     * Apply the external-viewer gate before deciding isBot, then
      * forward to the injected dispatcher. Kept private so callers can't bypass
      * the gate — every production path that routes to BotDetailModal must go
      * through here.
@@ -149,7 +149,7 @@ export class UserInfoRouter {
             try {
                 if (this.externalGate.isExternal(uid, fromChannel, info ?? undefined)) {
                     // External viewer → demote to UserInfo path so the existing
-                    // YUJ-67 "仅可在群内交流" hint (UserInfo.getBottomPanel)
+                    // "仅可在群内交流" hint (UserInfo.getBottomPanel)
                     // fires for bots too.
                     isBot = false;
                 }
@@ -188,7 +188,7 @@ export class UserInfoRouter {
  * Convenience factory bound to the global WKSDK singleton — used by WKBase so
  * callers don't need to know about the underlying channel manager.
  *
- * YUJ-207: `externalGate` is optional and must be injected by the caller. It
+ * `externalGate` is optional and must be injected by the caller. It
  * is factored out of this module to keep userInfoRouter.ts free of the WKApp
  * / resolveExternalForViewer coupling that WKBase owns. Tests can call this
  * factory without a gate (default: no external demotion) or construct

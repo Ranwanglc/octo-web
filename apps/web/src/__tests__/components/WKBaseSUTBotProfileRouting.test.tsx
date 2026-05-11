@@ -3,7 +3,7 @@ import React from 'react';
 import { act, render } from '@testing-library/react';
 
 /**
- * Round-3 regression tests for YUJ-195 / PR#1113.
+ * Round-3 regression tests for PR#1113.
  *
  * Unlike the sibling file `WKBaseBotProfileRouting.test.tsx` (which exercises
  * the extracted `UserInfoRouter` helper in isolation), this file mounts the
@@ -228,7 +228,7 @@ async function flushMicrotasks() {
     await Promise.resolve();
 }
 
-describe('WKBase SUT: real component routes bot vs human entries (YUJ-195, GH#1112, PR#1113 round-3)', () => {
+describe('WKBase SUT: real component routes bot vs human entries (GH#1112, PR#1113 round-3)', () => {
     beforeEach(() => {
         resetChannelState();
     });

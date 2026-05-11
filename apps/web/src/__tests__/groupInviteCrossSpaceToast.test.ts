@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 /**
- * YUJ-170 / dmwork-web#1100 — 跨 Space 群邀请加入后 toast 引导（kind='group'）。
+ * dmwork-web#1100 — 跨 Space 群邀请加入后 toast 引导（kind='group'）。
  *
  * 背景：dmworkim H5 `assets/web/join_group.html` scanjoin 成功且 crossSpace
  * 时写 `sessionStorage.pendingJoinSuccessNotice` ≈ { kind: 'group', spaceId,
@@ -13,12 +13,12 @@ import * as path from 'path';
  *
  * 本组 grep 断言锁定 dmwork-web 这边的全部契约：
  *   A. JoinSuccessNotice type 扩展 `kind?: 'space' | 'group'` + groupNo/groupName
- *   B. JoinSuccessToast 源码含 `kind === "group"` 分支（显式避开 YUJ-112 sameName 退化）
+ *   B. JoinSuccessToast 源码含 `kind === "group"` 分支（显式避开 sameName 退化）
  *   C. MainPage showPostJoinToastIfPending 透传 `kind`，group 场景优先取 groupName
  *   D. H5 源（dmworkim）那一侧由 api_invite_h5_test.go 的后端断言 + H5 inline JS
  *      review 覆盖；跨仓库 FS 路径无法在 dmwork-web CI 中稳定访问，故此处不重复 grep。
  */
-describe('JoinSuccessToast + MainPage — YUJ-170 / dmwork-web#1100 cross-space group-join toast', () => {
+describe('JoinSuccessToast + MainPage — dmwork-web#1100 cross-space group-join toast', () => {
     let helper: string;
     let toast: string;
     let mainPage: string;
@@ -47,7 +47,7 @@ describe('JoinSuccessToast + MainPage — YUJ-170 / dmwork-web#1100 cross-space 
         expect(helper).toMatch(/groupName\?\s*:\s*string/);
     });
 
-    it('A3. consumeJoinSuccessNotice still validates spaceId/spaceName (back-compat with YUJ-106 payloads)', () => {
+    it('A3. consumeJoinSuccessNotice still validates spaceId/spaceName (back-compat payloads)', () => {
         expect(helper).toMatch(/typeof\s+parsed\.spaceId\s*!==\s*["']string["']/);
         expect(helper).toMatch(/typeof\s+parsed\.spaceName\s*!==\s*["']string["']/);
     });
@@ -64,7 +64,7 @@ describe('JoinSuccessToast + MainPage — YUJ-170 / dmwork-web#1100 cross-space 
         expect(toast).toMatch(/kind\s*===\s*["']group["']/);
     });
 
-    it('B3. kind==="group" prevents YUJ-112 sameName degrade from firing', () => {
+    it('B3. kind==="group" prevents sameName degrade from firing', () => {
         // sameName 的计算应该带上 !isGroup 前缀（或等价逻辑），保证 group 场景永远走群聊文案。
         expect(toast).toMatch(/!\s*isGroup[\s\S]{0,80}entityName\s*===\s*spaceName/);
     });
@@ -97,10 +97,10 @@ describe('JoinSuccessToast + MainPage — YUJ-170 / dmwork-web#1100 cross-space 
         expect(mainPage).toMatch(/handleSpaceSelected\(\s*notice\.spaceId\s*\)/);
     });
 
-    // ---------- D. Back-compat with YUJ-106 "space" payloads ----------
+    // ---------- D. Back-compat with "space" payloads ----------
 
-    it('D1. undefined/space kind still renders the original YUJ-106 single-line toast', () => {
-        // 确认 fallback 分支 (`已加入「${entityName}」`) 仍在源码里，避免 YUJ-170 把 YUJ-106 玩坏。
+    it('D1. undefined/space kind still renders the original single-line toast', () => {
+        // 确认 fallback 分支 (`已加入「${entityName}」`) 仍在源码里，避免 group 分支把 space 分支玩坏。
         expect(toast).toMatch(/已加入「\$\{entityName\}」(?!\s*群聊)/);
     });
 });

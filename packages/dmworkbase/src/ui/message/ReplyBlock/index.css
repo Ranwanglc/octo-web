@@ -52,7 +52,7 @@
   text-overflow: ellipsis;
 }
 
-/* 外部成员来源 Space 后缀（dmwork-web#1069 / YUJ-66）：
+/* 外部成员来源 Space 后缀（dmwork-web#1069）：
    与消息头 .wk-msg-head-space 等价，放在引用块的昵称行中。 */
 .wk-reply-block__space {
   font-size: 12px;

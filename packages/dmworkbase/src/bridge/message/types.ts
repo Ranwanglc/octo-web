@@ -58,21 +58,21 @@ export interface MessageRowUIProps {
   isEdit?: boolean
 
   /**
-   * 相对当前查看 Space，发送者是否来自外部 Space（YUJ-98 R7）。
+   * 相对当前查看 Space，发送者是否来自外部 Space。
    * 由 bridge 层调用 `resolveExternalForViewer` 计算（基于 message.fromHomeSpaceId
    * 等字段），UI 只做渲染，不直接依赖 WKApp / WKSDK。
    */
   isExternal?: boolean
 
   /**
-   * 外部来源 Space 名称（相对当前查看 Space 解析后）（YUJ-98 R7）。
+   * 外部来源 Space 名称（相对当前查看 Space 解析后）。
    * 非空且 `isExternal === true` 时，在昵称后以 `@{sourceSpaceName}` 形式
-   * 内联展示，与新组件 `wk-msg-head-space` 行为对齐（YUJ-66 / dmwork-web#1069）。
+   * 内联展示，与新组件 `wk-msg-head-space` 行为对齐（dmwork-web#1069）。
    */
   sourceSpaceName?: string
 
   /**
-   * 发送者是否已完成 OCTO 实名认证（YUJ-379 / Epic dmwork-web#1169 Phase A）。
+   * 发送者是否已完成 OCTO 实名认证（Epic dmwork-web#1169 Phase A）。
    * 为 true 时在发送者名右侧紧贴渲染 `<RealnameVerifiedBadge variant="icon" />`
    * 迷你蓝色 ✓ 圆点。Bridge 层优先从群成员 orgData 读取 `realname_verified`，
    * 回落到 Person channelInfo.orgData。未实名 / AI / 字段缺失：一律不渲染

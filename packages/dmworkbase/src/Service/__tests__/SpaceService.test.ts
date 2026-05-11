@@ -92,7 +92,7 @@ describe("shouldSkipChannelForSpace prefix logic", () => {
 })
 
 // ---------------------------------------------------------------------------
-// YUJ-72: shouldSkipChannelForSpace external-group escape hatch
+// shouldSkipChannelForSpace external-group escape hatch
 //
 // When the group's orgData.space_id doesn't match currentSpaceId but the
 // logged-in user joined as an external member sourced from currentSpaceId
@@ -153,7 +153,7 @@ import { Channel, ChannelTypeGroup } from "wukongimjssdk"
 const SPACE_A = "a".repeat(32)
 const SPACE_B = "b".repeat(32)
 
-describe("shouldSkipChannelForSpace — external group (YUJ-72)", () => {
+describe("shouldSkipChannelForSpace — external group", () => {
     beforeEach(() => {
         mockState.channelSpaceMap.clear()
         mockState.subscribesByChannel.clear()

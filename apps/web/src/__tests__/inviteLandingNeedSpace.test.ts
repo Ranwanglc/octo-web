@@ -3,7 +3,7 @@ import * as path from 'path';
 import { describe, it, expect, beforeAll } from 'vitest';
 
 /**
- * Unit tests for YUJ-372 Phase 2 / dmworkim#1319 — InviteLanding need_space
+ * Unit tests for dmworkim#1319 — InviteLanding need_space
  * handling on the Web SPA.
  *
  * 后端 4 个入群入口 (authorize / detail / scanjoin / handleJoinGroup) 在调用者
@@ -18,7 +18,7 @@ import { describe, it, expect, beforeAll } from 'vitest';
  * 重试入群 / 入 Space（authorize + scanjoin 流程的 Web 对应形式）。
  */
 
-describe('InviteLanding — YUJ-372 Phase 2 / dmworkim#1319 need_space handling', () => {
+describe('InviteLanding — dmworkim#1319 need_space handling', () => {
     let sourceCode: string;
 
     beforeAll(() => {
@@ -160,7 +160,7 @@ describe('InviteLanding — YUJ-372 Phase 2 / dmworkim#1319 need_space handling'
         expect(needIdx).toBeLessThan(errorIdx);
     });
 
-    it('does not regress YUJ-99 login CTA or #1006 basePath helpers', () => {
+    it('does not regress login CTA or #1006 basePath helpers', () => {
         // 回归：确保 need_space 改动没破坏既有 CTA / basePath 逻辑
         expect(sourceCode).toContain('invite-landing-login-cta');
         expect(sourceCode).toContain('登录后加入');
