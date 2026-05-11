@@ -747,7 +747,7 @@ export default function MatterDetailPanel({
                     </div>
                   )}
                   {/* 展开时间线: 仅成员可见, 非成员无权查看群消息衍生内容 */}
-                  {isMember && (
+                  {isMember && (<>
                   <div className="wk-mp-channels__card-actions">
                     <button
                       type="button"
@@ -829,7 +829,7 @@ export default function MatterDetailPanel({
                         />
                       );
                     })()}
-                  )}
+                  </>)}
                 </div>
                 );
               })
