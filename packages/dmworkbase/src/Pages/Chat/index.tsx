@@ -580,14 +580,21 @@ export class ChatContentPage extends Component<
                           className="wk-chat-conversation-header-right-item"
                           onClick={(e) => {
                             e.stopPropagation();
-                            this.setState((prevState) => ({
-                              showThreadPanel: !prevState.showThreadPanel,
-                              showMatterPanel: false, // 与事项列表面板互斥
-                              showMatterDetailPanel: false, // 与事项详情面板互斥
-                              activeThread: null,
-                              previewFile: null, // 关闭文件预览（互斥）
-                              activePreviewMessageId: null,
-                            }));
+                            this.setState((prevState) => {
+                              // 如果有文件预览或其他面板打开，视为"子区列表未显示"，点击应打开子区列表
+                              const isThreadListVisible =
+                                prevState.showThreadPanel &&
+                                !prevState.previewFile &&
+                                !prevState.activeThread;
+                              return {
+                                showThreadPanel: !isThreadListVisible,
+                                showMatterPanel: false, // 与事项列表面板互斥
+                                showMatterDetailPanel: false, // 与事项详情面板互斥
+                                activeThread: null,
+                                previewFile: null, // 关闭文件预览（互斥）
+                                activePreviewMessageId: null,
+                              };
+                            });
                           }}
                           title="子区"
                         >
