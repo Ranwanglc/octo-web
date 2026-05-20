@@ -1,4 +1,5 @@
 import { defineConfig, loadEnv } from 'vite'
+import { resolve as pathResolve } from 'path'
 import react from '@vitejs/plugin-react'
 import tsconfigPaths from 'vite-tsconfig-paths'
 import commonjs from 'vite-plugin-commonjs'
@@ -115,16 +116,19 @@ export default defineConfig(({ mode }) => {
     resolve: {
       extensions: ['.mjs', '.js', '.mts', '.ts', '.jsx', '.tsx', '.json'],
       dedupe: ['react', 'react-dom'],
-      alias: mode === 'production' ? {
-        'vitest': './src/vitest-stub.ts',
-        '@vitest/spy': './src/vitest-stub.ts',
-        '@vitest/expect': './src/vitest-stub.ts',
-        '@vitest/runner': './src/vitest-stub.ts',
-        '@vitest/utils': './src/vitest-stub.ts',
-        '@vitest/snapshot': './src/vitest-stub.ts',
-        '@storybook/addon-vitest': './src/vitest-stub.ts',
-        '@storybook/test': './src/vitest-stub.ts',
-      } : {},
+      alias: mode === 'production' ? (() => {
+        const stub = pathResolve(__dirname, 'src/vitest-stub.ts')
+        return {
+          'vitest': stub,
+          '@vitest/spy': stub,
+          '@vitest/expect': stub,
+          '@vitest/runner': stub,
+          '@vitest/utils': stub,
+          '@vitest/snapshot': stub,
+          '@storybook/addon-vitest': stub,
+          '@storybook/test': stub,
+        }
+      })() : {},
     },
     build: {
       outDir: 'build',
