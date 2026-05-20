@@ -332,7 +332,10 @@ const getWindowConfig = () => {
       preload: join(__dirname, "..", "preload/index"),
       nodeIntegration: false,
       contextIsolation: true,
-      devTools: isDevelopment,
+      devTools: true,
+      // Electron loads from file:// but API is on https://,
+      // disable same-origin policy to allow cross-origin requests
+      webSecurity: false,
     },
     // frame: !isWin,
   };
@@ -400,6 +403,9 @@ const createMainWindow = async () => {
     const WEB_URL = join(process.env.DIST_ELECTRON, "../build/index.html");
     mainWindow.loadFile(WEB_URL, { query: { sid: getRandomSid() } });
   }
+
+  // Open devTools in production for debugging (remove after stabilization)
+  mainWindow.webContents.openDevTools();
 
   ipcMain.on("screenshots-start", (event, args) => {
     console.log("main voip-message event", args);
