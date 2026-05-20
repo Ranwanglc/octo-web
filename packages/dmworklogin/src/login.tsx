@@ -250,7 +250,7 @@ class Login extends Component<any, LoginState> {
                 <div className="wk-login-brand">
                     {/* Logo fixed top-left */}
                     <div className="wk-login-brand-logo-top">
-                        <img src={`/logo.png`} alt="logo" height={56} style={{ width: 'auto', display: 'inline-block', marginBottom: -10, borderRadius: 10 }} />
+                        <img src={`./logo.png`} alt="logo" height={56} style={{ width: 'auto', display: 'inline-block', marginBottom: -10, borderRadius: 10 }} />
                         <span className="wk-login-brand-logo-name">{WKApp.config.appName || 'Octo'}</span>
                     </div>
                     <div className="wk-login-brand-inner">
@@ -319,7 +319,7 @@ class Login extends Component<any, LoginState> {
                     <div className="wk-login-content">
                         {/* Mobile logo fallback */}
                         <div className="wk-login-content-logo">
-                            <img src={`/logo.png`} alt="logo" height={56} style={{ width: 'auto', display: 'inline-block', marginBottom: -10 }} />
+                            <img src={`./logo.png`} alt="logo" height={56} style={{ width: 'auto', display: 'inline-block', marginBottom: -10 }} />
                         </div>
 
                         {vm.inviteInfo && (
