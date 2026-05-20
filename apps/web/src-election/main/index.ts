@@ -397,10 +397,39 @@ const createMainWindow = async () => {
       }
     }
   });
+  // ========== DIAGNOSTIC: log renderer errors to main process stdout ==========
+  mainWindow.webContents.on('did-fail-load', (_e: any, code: number, desc: string, url: string) => {
+    console.error(`[DIAG] did-fail-load: code=${code} desc="${desc}" url=${url}`);
+  });
+  mainWindow.webContents.on('render-process-gone', (_e: any, details: any) => {
+    console.error(`[DIAG] render-process-gone:`, JSON.stringify(details));
+  });
+  mainWindow.webContents.on('console-message', (_e: any, level: number, message: string, line: number, sourceId: string) => {
+    const tag = ['LOG','WARN','ERR'][level] || 'UNK';
+    console.log(`[RENDERER-${tag}] ${message} (${sourceId}:${line})`);
+  });
+  mainWindow.webContents.on('did-finish-load', () => {
+    console.log('[DIAG] did-finish-load OK');
+    // Inject a visible error overlay in case the React app fails to mount
+    mainWindow.webContents.executeJavaScript(`
+      setTimeout(() => {
+        if (!document.getElementById('root') || document.getElementById('root').children.length === 0) {
+          document.body.innerHTML = '<div style="padding:40px;font:16px monospace;color:red">' +
+            '<h2>OCTO Desktop Diagnostic</h2>' +
+            '<p>React app failed to mount. Check console for errors.</p>' +
+            '<p>API URL: ' + (window.__OCTO_API_URL || 'unknown') + '</p>' +
+            '</div>';
+        }
+      }, 3000);
+    `).catch((err: any) => console.error('[DIAG] executeJS error:', err));
+  });
+  // ===========================================================================
+
   if (NODE_ENV === "development") mainWindow.loadURL("http://localhost:3000");
   if (NODE_ENV !== "development") {
     process.env.DIST_ELECTRON = join(__dirname, "../");
     const WEB_URL = join(process.env.DIST_ELECTRON, "../build/index.html");
+    console.log(`[DIAG] Loading: ${WEB_URL}`);
     mainWindow.loadFile(WEB_URL, { query: { sid: getRandomSid() } });
   }
 

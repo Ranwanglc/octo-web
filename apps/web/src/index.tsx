@@ -29,7 +29,9 @@ if((window as any).__TAURI_IPC__ || (window as any)?.__POWERED_ELECTRON__) {
   } catch {
     throw new Error(`VITE_API_URL format is invalid: "${rawApiURL}". Please use full URL, e.g. https://api.example.com`)
   }
-  WKApp.apiClient.config.apiURL = apiURL + "/v1/"
+  WKApp.apiClient.config.apiURL = apiURL + "/v1/";
+  (window as any).__OCTO_API_URL = apiURL + "/v1/";
+  console.log('[OCTO] Electron/Tauri mode, apiURL:', apiURL + '/v1/');
 } else {
   // Web 环境（DEV/PROD）统一走相对路径 /api/v1/
   // DEV: 由 Vite proxy 转发到 VITE_API_URL（保留 /api 前缀，后端直连）
