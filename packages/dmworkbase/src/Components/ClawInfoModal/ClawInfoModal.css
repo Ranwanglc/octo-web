@@ -6,7 +6,7 @@
 }
 
 .claw-info-modal .wk-modal-content {
-  border-radius: 18px;
+  border-radius: var(--wk-r-lg);
   overflow: hidden;
 }
 

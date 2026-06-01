@@ -19,11 +19,6 @@
   height: 420px;
 }
 
-/* 转发弹窗宽度 */
-.wk-base-modal-forward .wk-modal-content {
-  width: 625px;
-}
-
 .wk-base-modal-forward .wk-modal-body {
   height: 560px;
   overflow: hidden;
