@@ -69,7 +69,11 @@ function resolveFooter(
 ): React.ReactNode {
   // 显式传了 footer JSX（包括空字符串等 falsy 要排除，但 null 表示"不渲染"）
   if (footer !== undefined) {
-    return footer === null ? null : footer
+    return footer === null ? null : (
+      <div className="wk-modal-footer">
+        {footer}
+      </div>
+    )
   }
   if (footerConfig?.onOk) {
     const { okText = t('base.common.ok'), cancelText = t('base.common.cancel'), isOkLoading, isDanger, onOk } = footerConfig

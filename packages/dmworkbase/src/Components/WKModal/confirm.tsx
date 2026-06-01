@@ -4,7 +4,19 @@ import type { ModalReactProps } from '@douyinfe/semi-ui/modal'
 import { t } from '../../i18n'
 import WKButton from '../WKButton'
 
-export type WKConfirmProps = Omit<ModalReactProps, 'className' | 'icon'> & {
+type WKConfirmPending = 'ok' | 'cancel' | null
+
+export type WKConfirmProps = Omit<
+  ModalReactProps,
+  | 'cancelButtonProps'
+  | 'cancelLoading'
+  | 'className'
+  | 'confirmLoading'
+  | 'footer'
+  | 'hasCancel'
+  | 'icon'
+  | 'okButtonProps'
+> & {
   className?: string
 }
 
@@ -14,24 +26,30 @@ export function wkConfirm(props: WKConfirmProps) {
   const resolvedCancelText = cancelText ?? t('base.common.cancel')
   let modalRef: ReturnType<typeof Modal.confirm>
 
-  const closeAfter = (result: void | Promise<unknown>) => {
-    if (result && typeof (result as Promise<unknown>).then === 'function') {
-      void (result as Promise<unknown>).then(() => modalRef?.destroy())
-      return
+  const renderContent = (pending: WKConfirmPending = null) => {
+    const updatePending = (nextPending: WKConfirmPending) => {
+      modalRef?.update({
+        content: renderContent(nextPending),
+      } as WKConfirmProps)
     }
-    modalRef?.destroy()
-  }
 
-  modalRef = Modal.confirm({
-    ...rest,
-    icon: null,
-    className: ['wk-modal', 'wk-modal-confirm', className].filter(Boolean).join(' '),
-    modalContentClass: 'wk-modal-content',
-    title: null,
-    header: null,
-    footer: null,
-    onCancel,
-    content: (
+    const runAction = (action: 'ok' | 'cancel', event: React.MouseEvent<HTMLButtonElement>) => {
+      if (pending) return
+      const callback = action === 'ok' ? onOk : onCancel
+      const result = callback?.(event)
+
+      if (result && typeof (result as Promise<unknown>).then === 'function') {
+        updatePending(action)
+        void (result as Promise<unknown>)
+          .then(() => modalRef?.destroy())
+          .catch(() => updatePending(null))
+        return
+      }
+
+      modalRef?.destroy()
+    }
+
+    return (
       <div className="wk-modal-confirm-shell">
         {props.title !== null && props.title !== undefined && (
           <div className="wk-modal-title wk-modal-confirm-title">{props.title}</div>
@@ -46,19 +64,35 @@ export function wkConfirm(props: WKConfirmProps) {
         <div className="wk-modal-footer wk-modal-confirm-footer">
           <WKButton
             variant="secondary"
-            onClick={(event) => closeAfter(onCancel?.(event) as void | Promise<unknown>)}
+            disabled={pending !== null}
+            loading={pending === 'cancel'}
+            onClick={(event) => runAction('cancel', event)}
           >
             {resolvedCancelText}
           </WKButton>
           <WKButton
             variant={okType === 'danger' ? 'danger' : 'primary'}
-            onClick={(event) => closeAfter(onOk?.(event) as void | Promise<unknown>)}
+            disabled={pending !== null}
+            loading={pending === 'ok'}
+            onClick={(event) => runAction('ok', event)}
           >
             {resolvedOkText}
           </WKButton>
         </div>
       </div>
-    ),
+    )
+  }
+
+  modalRef = Modal.confirm({
+    ...rest,
+    icon: null,
+    className: ['wk-modal', 'wk-modal-confirm', className].filter(Boolean).join(' '),
+    modalContentClass: 'wk-modal-content',
+    title: null,
+    header: null,
+    footer: null,
+    onCancel,
+    content: renderContent(),
   })
 
   return modalRef
