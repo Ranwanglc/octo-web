@@ -74,12 +74,13 @@ import { VideoCell, VideoContent } from "./Messages/Video";
 import { TypingCell } from "./Messages/Typing";
 import { LottieSticker, LottieStickerCell } from "./Messages/LottieSticker";
 import { LocationCell, LocationContent } from "./Messages/Location";
-import { Toast, Modal, Tag } from "@douyinfe/semi-ui";
+import { Toast, Tag } from "@douyinfe/semi-ui";
 import { ChannelSettingManager } from "./Service/ChannelSetting";
 import { DefaultEmojiService } from "./Service/EmojiService";
 import IconClick from "./Components/IconClick";
 import EmojiToolbar from "./Components/EmojiToolbar";
 import MergeforwardContent, { MergeforwardCell } from "./Messages/Mergeforward";
+import { wkConfirm } from "./Components/WKModal";
 import { UserInfoRouteData } from "./Components/UserInfo/vm";
 import { IconAlertCircle } from "@douyinfe/semi-icons";
 import { TypingManager } from "./Service/TypingManager";
@@ -814,9 +815,8 @@ export default class BaseModule implements IModule {
               message.content?.conversationDigest || ""
             ).slice(0, 20);
             let threadName = defaultName;
-            Modal.confirm({
+            wkConfirm({
               title: t("base.module.createThread.title"),
-              icon: null,
               okText: t("base.module.createThread.ok"),
               cancelText: t("base.common.cancel"),
               content: (
@@ -2107,11 +2107,10 @@ export default class BaseModule implements IModule {
                 type: ListItemButtonType.default,
                 onClick: () => {
                   const threadDisplayName = thread?.name || data.channelInfo?.title || t("base.module.thread.fallbackName");
-                  Modal.confirm({
+                  wkConfirm({
                     title: isArchived
                       ? t("base.module.thread.unarchiveConfirmTitle", { values: { name: threadDisplayName } })
                       : t("base.module.thread.archiveConfirmTitle", { values: { name: threadDisplayName } }),
-                    icon: null,
                     okText: isArchived
                       ? t("base.module.thread.unarchive")
                       : t("base.module.thread.archiveOk"),

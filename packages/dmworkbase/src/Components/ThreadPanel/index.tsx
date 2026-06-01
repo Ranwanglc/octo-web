@@ -5,7 +5,7 @@ import {
   ChannelTypeGroup,
   WKSDK,
 } from "wukongimjssdk";
-import { Modal, Toast, Spin, Popover } from "@douyinfe/semi-ui";
+import { Toast, Spin, Popover } from "@douyinfe/semi-ui";
 import {
   Thread,
   ThreadStatus,
@@ -31,6 +31,7 @@ import { MarkdownRenderer } from "../FilePreviewPanel/renderers/MarkdownRenderer
 import { HtmlRenderer } from "../FilePreviewPanel/renderers/HtmlRenderer";
 import { ImageRenderer } from "../FilePreviewPanel/renderers/ImageRenderer";
 import { I18nContext, t } from "../../i18n";
+import { wkConfirm } from "../WKModal";
 import {
   SMALL_SCREEN_WIDTH,
   THREAD_DEFAULT_WIDTH,
@@ -574,9 +575,8 @@ export default class ThreadPanel extends Component<
     // 延迟弹窗，等 Popover 完全关闭后再触发，避免 Modal 被 Popover 关闭事件误关
     setTimeout(() => {
       let newName = thread.name;
-      Modal.confirm({
+      wkConfirm({
         title: t("base.threadPanel.editNameTitle"),
-        icon: null,
         okText: t("base.threadPanel.save"),
         cancelText: t("base.common.cancel"),
         content: (
@@ -650,11 +650,10 @@ export default class ThreadPanel extends Component<
     this.setState({ showMoreMenu: false });
 
     setTimeout(() => {
-      Modal.confirm({
+      wkConfirm({
         title: archiving
           ? t("base.module.thread.archiveConfirmTitle", { values: { name: thread.name } })
           : t("base.module.thread.unarchiveConfirmTitle", { values: { name: thread.name } }),
-        icon: null,
         okText: archiving ? t("base.module.thread.archiveOk") : t("base.module.thread.unarchive"),
         cancelText: t("base.common.cancel"),
         content: archiving
@@ -808,9 +807,8 @@ export default class ThreadPanel extends Component<
     this.setState({ showMoreMenu: false });
 
     setTimeout(() => {
-      Modal.confirm({
+      wkConfirm({
         title: t("base.threadPanel.deleteConfirmTitle", { values: { name: thread.name } }),
-        icon: null,
         okText: t("base.threadPanel.delete"),
         okType: "danger",
         cancelText: t("base.common.cancel"),
@@ -840,9 +838,8 @@ export default class ThreadPanel extends Component<
     if (!groupNo) return;
 
     let threadName = "";
-    Modal.confirm({
+    wkConfirm({
       title: t("base.module.createThread.title"),
-      icon: null,
       okText: t("base.module.createThread.ok"),
       cancelText: t("base.common.cancel"),
       content: (
