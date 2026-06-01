@@ -22,6 +22,33 @@ vi.mock('axios', () => {
   };
 });
 
+vi.mock('@octo/base', () => {
+  const messages: Record<string, string> = {
+    'todo.status.pending': '待处理',
+    'todo.status.done': '已完成',
+    'todo.status.archived': '已归档',
+  };
+  const t = (key: string) => messages[key] ?? key;
+
+  return {
+    WKApp: {
+      loginInfo: { token: 'test-token-abc', uid: 'test-uid' },
+      shared: {
+        currentSpaceId: 'space-123',
+        logout: vi.fn(),
+      },
+    },
+    buildAcceptLanguage: () => 'zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7',
+    useI18n: () => ({
+      locale: 'zh-CN',
+      setLocale: () => {},
+      t,
+      format: {},
+    }),
+    t,
+  };
+});
+
 // We need to import after mocking
 import * as matterApi from '../../api/todoApi';
 
@@ -37,6 +64,22 @@ describe('matterApi', () => {
   beforeEach(() => {
     mockAxios = getMockInstance();
     vi.clearAllMocks();
+  });
+
+  describe('interceptors', () => {
+    it('injects language, token, and space headers', async () => {
+      vi.resetModules();
+      mockAxios.interceptors.request.use.mockClear();
+      await import('../../api/todoApi');
+      const requestInterceptor = mockAxios.interceptors.request.use.mock.calls[0]?.[0];
+      const config = { headers: {} } as any;
+
+      const result = requestInterceptor(config);
+
+      expect(result.headers['Accept-Language']).toBe('zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7');
+      expect(result.headers['token']).toBe('test-token-abc');
+      expect(result.headers['X-Space-Id']).toBe('space-123');
+    });
   });
 
   describe('listMatters', () => {
@@ -204,6 +247,54 @@ describe('matterApi', () => {
         { params: { limit: '20' } },
       );
       expect(result).toEqual(mockResponse.data);
+    });
+  });
+
+  describe('listOutputs', () => {
+    it('sends GET to /matters/:id/outputs with limit/cursor/q params', async () => {
+      const mockResponse = {
+        data: {
+          data: [{ id: 'o1', file_url: 'https://cdn.example/file.pdf' }],
+          pagination: { has_more: true, next_cursor: 'next123' },
+        },
+      };
+      mockAxios.get.mockResolvedValueOnce(mockResponse);
+
+      const result = await matterApi.listOutputs('t1', {
+        limit: 50,
+        cursor: 'abc',
+        q: 'report',
+      });
+
+      expect(mockAxios.get).toHaveBeenCalledWith(
+        '/matter/api/v1/matters/t1/outputs',
+        { params: { limit: '50', cursor: 'abc', q: 'report' } },
+      );
+      expect(result).toEqual(mockResponse.data);
+    });
+
+    it('omits undefined params (no q on initial load)', async () => {
+      const mockResponse = { data: { data: [], pagination: { has_more: false } } };
+      mockAxios.get.mockResolvedValueOnce(mockResponse);
+
+      await matterApi.listOutputs('t1', { limit: 50 });
+
+      expect(mockAxios.get).toHaveBeenCalledWith(
+        '/matter/api/v1/matters/t1/outputs',
+        { params: { limit: '50' } },
+      );
+    });
+
+    it('works without params (defaults applied server-side)', async () => {
+      const mockResponse = { data: { data: [], pagination: { has_more: false } } };
+      mockAxios.get.mockResolvedValueOnce(mockResponse);
+
+      await matterApi.listOutputs('t1');
+
+      expect(mockAxios.get).toHaveBeenCalledWith(
+        '/matter/api/v1/matters/t1/outputs',
+        { params: {} },
+      );
     });
   });
 

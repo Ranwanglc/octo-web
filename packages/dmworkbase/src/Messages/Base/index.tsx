@@ -34,6 +34,8 @@ import moment from "moment";
 import ThreadIndicator, {
   ThreadIndicatorData,
 } from "../../Components/ThreadIndicator";
+import { isMessageContinuation } from "../../Service/messageContinuity";
+import { I18nContext } from "../../i18n";
 
 interface MessageBaseProps extends HTMLProps<any> {
   message: MessageWrap;
@@ -47,6 +49,9 @@ interface MessageBaseProps extends HTMLProps<any> {
 }
 
 export default class MessageBase extends Component<MessageBaseProps, any> {
+  static contextType = I18nContext;
+  declare context: React.ContextType<typeof I18nContext>;
+
   channelInfoListener!: ChannelInfoListener;
   subscriberChangeListener!: (channel: Channel) => void;
   conversationProvider: IConversationProvider;
@@ -142,12 +147,7 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
       return false;
     }
     const { message } = this.props;
-    if (message.preMessage) {
-      if (message.fromUID === message.preMessage.fromUID) {
-        return true;
-      }
-    }
-    return false;
+    return isMessageContinuation(message.preMessage, message);
   }
 
   getMessageStyle(hasContinue: boolean, message: MessageWrap) {
@@ -167,18 +167,12 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
       messageStyle.marginBottom = "0px";
       messageStyle.marginRight = "0px";
     }
-    if (message.preMessage && message.preMessage.fromUID !== message.fromUID) {
-      if (
-        message.nextMessage &&
-        message.nextMessage.fromUID === message.fromUID
-      ) {
+    if (!hasContinue) {
+      if (isMessageContinuation(message, message.nextMessage)) {
         messageStyle.marginBottom = "0px";
       }
     }
-    if (
-      message.nextMessage &&
-      message.nextMessage.fromUID !== message.fromUID
-    ) {
+    if (!isMessageContinuation(message, message.nextMessage)) {
       messageStyle.marginBottom = "15px";
     }
     return messageStyle;
@@ -190,15 +184,13 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
     }
     if (
       hasContinue &&
-      message.nextMessage &&
-      message.nextMessage.fromUID === message.fromUID
+      isMessageContinuation(message, message.nextMessage)
     ) {
       return "8px 20px 20px 8px";
     }
     if (
       hasContinue &&
-      message.nextMessage &&
-      message.nextMessage.fromUID !== message.fromUID
+      !isMessageContinuation(message, message.nextMessage)
     ) {
       return "8px 20px 20px 8px";
     }
@@ -292,7 +284,7 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
     const { message } = this.props;
     switch (message.reasonCode) {
       case MessageReasonCode.reasonSubscriberNotExist:
-        return "您已被踢出群聊。";
+        return this.context.t("base.messageBase.error.removedFromGroup");
       case MessageReasonCode.reasonNotAllowSend:
       case MessageReasonCode.reasonNotInWhitelist:
       case MessageReasonCode.reasonInBlacklist: {
@@ -302,14 +294,14 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
           if (ch && ch.channelType === ChannelTypePerson) {
             const chInfo = WKSDK.shared().channelManager.getChannelInfo(ch);
             if (chInfo?.orgData?.robot === 1) {
-              return "请先添加好友后再与该机器人对话";
+              return this.context.t("base.messageBase.error.addBotFriendFirst");
             }
           }
         }
-        return "你已被禁言或全员禁言";
+        return this.context.t("base.messageBase.error.muted");
       }
       case MessageReasonCode.reasonSystemError:
-        return "系统错误";
+        return this.context.t("base.messageBase.error.system");
     }
   }
 
@@ -478,9 +470,9 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
           >
             {message.send && message.status === MessageStatus.Fail ? (
               <Popconfirm
-                title="是否重新发送"
-                okText="是"
-                cancelText="否"
+                title={this.context.t("base.messageBase.resendConfirm.title")}
+                okText={this.context.t("base.messageBase.resendConfirm.ok")}
+                cancelText={this.context.t("base.messageBase.resendConfirm.cancel")}
                 onConfirm={() => {
                   context.resendMessage(message.message);
                 }}

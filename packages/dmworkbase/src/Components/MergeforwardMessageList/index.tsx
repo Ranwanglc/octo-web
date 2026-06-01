@@ -19,10 +19,13 @@ import WKAvatar, { isBot } from "../WKAvatar";
 import AiBadge from "../AiBadge";
 import WKApp from "../../App";
 import { downloadFile } from "../../Utils/download";
+import { isSafeUrl } from "../../Utils/security";
+import { getExtension } from "../FilePreviewPanel/types";
 import MarkdownContent from "../../Messages/Text/MarkdownContent";
 import Lightbox from "yet-another-react-lightbox";
 import Download from "yet-another-react-lightbox/plugins/download";
 import "yet-another-react-lightbox/styles.css";
+import { I18nContext } from "../../i18n";
 
 import MergeforwardCard from "../../ui/message/MergeforwardCard";
 
@@ -53,6 +56,9 @@ export default class MergeforwardMessageList extends Component<
   MergeforwardMessageListProps,
   MergeforwardMessageListState
 > {
+  static contextType = I18nContext;
+  declare context: React.ContextType<typeof I18nContext>;
+
   constructor(props: MergeforwardMessageListProps) {
     super(props);
     this.state = {
@@ -111,8 +117,9 @@ export default class MergeforwardMessageList extends Component<
   }
 
   getTitle(content: MergeforwardContent) {
+    const { locale, t } = this.context;
     if (content.channelType === ChannelTypeGroup) {
-      return "群的聊天记录";
+      return t("base.mergeForward.groupChatHistory");
     }
 
     const names = content.users
@@ -120,10 +127,16 @@ export default class MergeforwardMessageList extends Component<
       .filter(Boolean);
 
     if (names.length === 0) {
-      return "聊天记录";
+      return t("base.mergeForward.chatHistory");
     }
 
-    return `${names.join("、")}的聊天记录`;
+    const formattedNames = locale === "zh-CN"
+      ? names.join("、")
+      : new Intl.ListFormat(locale, { style: "short", type: "conjunction" }).format(names);
+
+    return t("base.mergeForward.userChatHistory", {
+      values: { names: formattedNames },
+    });
   }
 
   getTimeline(content: MergeforwardContent) {
@@ -290,7 +303,7 @@ export default class MergeforwardMessageList extends Component<
           previewMsgs={previewMsgs}
           onClick={() => {
             if (this.state.contentStack.length >= MAX_NESTED_DEPTH) {
-              Toast.info("已达最大展开层级");
+              Toast.info(this.context.t("base.mergeForward.maxDepthReached"));
               return;
             }
             this.setState((prev) => ({
@@ -303,16 +316,38 @@ export default class MergeforwardMessageList extends Component<
     if (msg.contentType === MessageContentTypeConst.file) {
       const fileContent = msg.content as FileContent;
       const url = this.getFileURL(fileContent);
+      // 卡片可预览的判定: URL 存在且为 http(s) 协议。
+      // 同时绑定到 className (cursor: pointer) 和 onClick 守卫,
+      // 避免出现"看着可点但点了无反应"的哑卡片 (#136 r2 Jerry-Xin)。
+      const canPreview = !!url && isSafeUrl(url);
       const ext = (fileContent.extension || "").toUpperCase();
       const iconBg = this.getFileExtColor(fileContent.extension);
+      const fileName = fileContent.name || this.context.t("base.messageFile.unknownFile");
       return (
         <div
           className={`wk-mergeforward-file${
-            url ? " wk-mergeforward-file--clickable" : ""
+            canPreview ? " wk-mergeforward-file--clickable" : ""
           }`}
-          onClick={async () => {
-            if (!url) return;
-            await downloadFile(url, fileContent.name || "file");
+          onClick={() => {
+            if (!canPreview) return;
+            // 与 Messages/File:handlePreview 行为一致 (fix #125)。
+            // 合并转发的 inner message 没有 channel/messageSeq 上下文,
+            // 因此 sourceChannelId/sourceChannelType/messageSeq 不传 —
+            // 预览面板的"回复"能力在这里不适用是预期行为。
+            const previewData = {
+              url,
+              name: fileName,
+              extension: getExtension(fileContent.extension, fileContent.name),
+              size: fileContent.size,
+              messageId: msg.messageID,
+              fromUID: msg.fromUID,
+              conversationDigest: msg.content?.conversationDigest,
+            };
+            // 先关闭合并转发 modal, 再 emit 预览事件; 否则预览面板会
+            // 被仍然激活的 WKModal mask 挡住, 用户无法操作 (PR #136
+            // round-1)。
+            this.props.onClose?.();
+            WKApp.mittBus.emit("wk:file-preview", previewData);
           }}
         >
           <div
@@ -326,9 +361,9 @@ export default class MergeforwardMessageList extends Component<
           <div className="wk-mergeforward-file__info">
             <div
               className="wk-mergeforward-file__name"
-              title={fileContent.name}
+              title={fileName}
             >
-              {fileContent.name || "unknown file"}
+              {fileName}
             </div>
             <div className="wk-mergeforward-file__size">
               {this.formatFileSize(fileContent.size)}
@@ -418,7 +453,7 @@ export default class MergeforwardMessageList extends Component<
                     {/* 外部来源 */}
                     {showAvatar && showExtOrigin && (
                       <span className="ext-origin wk-mergeforwardmessagelist-content-msg-info-origin">
-                        来源: {extInfo!.source_space_name}
+                        {this.context.t("base.mergeForward.sourceLabel")} {extInfo!.source_space_name}
                       </span>
                     )}
 

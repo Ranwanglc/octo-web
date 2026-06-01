@@ -1,10 +1,10 @@
-import { WKApp, WKLayout, Provider, WKModal } from "@octo/base";
+import { WKApp, WKLayout, Provider, WKModal, t } from "@octo/base";
 import React, { Component } from "react";
 import "./index.css"
 import MainVM from "./vm";
 import { EmptyStateIllustration } from "./EmptyStateIllustration";
 import { Space, SpaceService } from "@octo/base";
-import { JoinSpaceModalConnected, NavRail, MeInfo } from "@octo/base";
+import { JoinSpaceModalConnected, NavRail, MeInfo, SpaceCreate } from "@octo/base";
 import { consumeJoinSuccessNotice, showJoinSuccessToast } from "@octo/base";
 import { Toast } from "@douyinfe/semi-ui";
 
@@ -37,6 +37,7 @@ export class MainContentLeft extends Component<MainContentLeftProps> {
 interface MainPageState {
     allSpaces: Space[];
     showJoinSpace: boolean;
+    showCreateSpace: boolean;
     showMeInfo: boolean;
 }
 
@@ -46,13 +47,23 @@ export class MainPage extends Component<{}, MainPageState> {
         this.state = {
             allSpaces: [],
             showJoinSpace: false,
+            showCreateSpace: false,
             showMeInfo: false,
         };
     }
 
+    private unsubscribeRemoteConfig?: () => void;
+
     componentDidMount() {
         // 注册菜单刷新回调，触发父组件 re-render（原 TabNormalScreen componentDidMount 里的逻辑）
         WKApp.menus.setRefresh = () => { this.forceUpdate(); };
+        this.unsubscribeRemoteConfig = WKApp.remoteConfig.addConfigChangeListener(() => {
+            if (WKApp.remoteConfig.disableUserCreateSpace && this.state.showCreateSpace) {
+                this.setState({ showCreateSpace: false });
+                return;
+            }
+            this.forceUpdate();
+        });
 
         SpaceService.shared.getMySpaces().then(spaces => {
             this.setState({ allSpaces: spaces });
@@ -80,6 +91,7 @@ export class MainPage extends Component<{}, MainPageState> {
     componentWillUnmount() {
         // 清理菜单刷新回调，避免组件卸载后触发 forceUpdate
         WKApp.menus.setRefresh = undefined;
+        this.unsubscribeRemoteConfig?.();
     }
 
     /**
@@ -114,15 +126,27 @@ export class MainPage extends Component<{}, MainPageState> {
     }
 
     handleSpaceSelected = (spaceId: string) => {
+        // 同步更新 currentSpaceId 与持久化，并立刻 emit space-changed，
+        // 避免随后用户立即触发的"合并转发"等动作读到旧的 spaceId
+        // （此前这些更新都放在 getMySpaces().then 内，存在网络 race）。
+        WKApp.shared.currentSpaceId = spaceId;
+        localStorage.setItem("currentSpaceId", spaceId);
+        const existing = this.state.allSpaces.find(s => s.space_id === spaceId);
+        if (existing) {
+            WKApp.mittBus.emit("space-changed", existing);
+        }
+        WKApp.shared.notifyListener();
+
+        // 后台刷新 Space 列表（用户可能新加入/离开 Space），完成后再补一次
+        // 事件给那些以 Space 对象为入参的监听者（首次拿不到 existing 的情况）。
         SpaceService.shared.getMySpaces().then(spaces => {
             this.setState({ allSpaces: spaces, showJoinSpace: false });
-            WKApp.shared.currentSpaceId = spaceId;
-            localStorage.setItem("currentSpaceId", spaceId);
-            const target = spaces.find(s => s.space_id === spaceId);
-            if (target) WKApp.mittBus.emit("space-changed", target);
-            WKApp.shared.notifyListener();
+            if (!existing) {
+                const target = spaces.find(s => s.space_id === spaceId);
+                if (target) WKApp.mittBus.emit("space-changed", target);
+            }
         }).catch(() => {
-            Toast.error("刷新 Space 列表失败，请手动刷新");
+            Toast.error(t("app.main.spaceListRefreshFailed"));
         });
     };
 
@@ -144,7 +168,7 @@ export class MainPage extends Component<{}, MainPageState> {
     };
 
     render() {
-        const { allSpaces, showJoinSpace, showMeInfo } = this.state;
+        const { allSpaces, showJoinSpace, showCreateSpace, showMeInfo } = this.state;
         // 客户端 UI 可见性控制：仅在用户拥有任一 Space 的 owner/admin 角色时显示入口；
         // 真正的接口鉴权由 admin SPA 后端负责。allSpaces 来自登录后刷新，角色变更需重新加载。
         const canManageSpace = allSpaces.some(s => s.role === 1 || s.role === 2);
@@ -163,6 +187,7 @@ export class MainPage extends Component<{}, MainPageState> {
                                     currentSpaceId={currentSpaceId}
                                     onSpaceSelect={this.handleSpaceSelected}
                                     onJoinSpace={() => this.setState({ showJoinSpace: true })}
+                                    onCreateSpace={() => this.setState({ showCreateSpace: true })}
                                     canManageSpace={canManageSpace}
                                     // 菜单
                                     menusList={vm.menusList}
@@ -258,6 +283,11 @@ export class MainPage extends Component<{}, MainPageState> {
                         <JoinSpaceModalConnected
                             visible={showJoinSpace}
                             onClose={() => this.setState({ showJoinSpace: false })}
+                            onSuccess={this.handleSpaceSelected}
+                        />
+                        <SpaceCreate
+                            visible={!WKApp.remoteConfig.disableUserCreateSpace && showCreateSpace}
+                            onClose={() => this.setState({ showCreateSpace: false })}
                             onSuccess={this.handleSpaceSelected}
                         />
                     </>

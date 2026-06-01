@@ -1,11 +1,14 @@
 export { default as BaseModule } from "./module" 
 export { default as WKApp } from "./App"
 export * from "./App"
+export * from './i18n'
 export * from './Service/Const'
 export * from './Service/Thread'
 export * from './Service/Module'
 export * from './Service/Menus'
 export * from './Service/APIClient'
+export * from './Service/apiLanguage'
+export * from './Service/apiFetch'
 export { default as Provider } from './Service/Provider'
 export * from './Service/Provider'
 export * from './Service/Route'

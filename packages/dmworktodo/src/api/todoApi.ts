@@ -1,5 +1,5 @@
 import axios from "axios";
-import { WKApp } from "@octo/base";
+import { WKApp, buildAcceptLanguage } from "@octo/base";
 import type {
   Matter,
   MatterDetail,
@@ -17,6 +17,8 @@ import type {
   ListCommentsParams,
   MatterActivity,
   ListActivitiesParams,
+  MatterOutput,
+  ListOutputsParams,
 } from "../bridge/types";
 
 /**
@@ -29,14 +31,14 @@ const matterAxios = axios.create({ baseURL: "" });
 // Inject auth headers via interceptor (consistent with base APIClient pattern).
 // Token is read at request time so it stays fresh after refresh.
 matterAxios.interceptors.request.use((config) => {
+  config.headers = config.headers ?? {};
+  config.headers["Accept-Language"] = buildAcceptLanguage();
   const token = WKApp.loginInfo.token;
   if (token) {
-    config.headers = config.headers ?? {};
     config.headers["token"] = token;
   }
   const spaceId = WKApp.shared.currentSpaceId;
   if (spaceId) {
-    config.headers = config.headers ?? {};
     config.headers["X-Space-Id"] = spaceId;
   }
   return config;
@@ -304,6 +306,18 @@ export async function listActivities(
 ): Promise<PaginatedList<MatterActivity>> {
   return get<PaginatedList<MatterActivity>>(
     `/matters/${matterId}/activities`,
+    params as unknown as Record<string, unknown>,
+  );
+}
+
+// ─── Outputs (产出文件) ──────────────────────────────────
+
+export async function listOutputs(
+  matterId: string,
+  params?: ListOutputsParams,
+): Promise<PaginatedList<MatterOutput>> {
+  return get<PaginatedList<MatterOutput>>(
+    `/matters/${matterId}/outputs`,
     params as unknown as Record<string, unknown>,
   );
 }

@@ -41,6 +41,7 @@ import NavSignalBadge from "../../Components/NavRail/NavSignalBadge";
 import ThreadPanel from "../../Components/ThreadPanel";
 import {
   Thread,
+  ThreadStatus,
   parseThreadChannelId,
   buildThreadStub,
   isEffectivelyMuted,
@@ -50,6 +51,11 @@ import FilePreviewPanel, {
 } from "../../Components/FilePreviewPanel";
 import { FollowSidebarProvider, useFollowSidebarContext } from "../../Hooks/useFollowSidebar";
 import { SidebarTargetType } from "../../Service/SidebarService";
+import { I18nContext, t } from "../../i18n";
+
+// 消息 ACK 只代表发送成功；后端把归档子区恢复为活跃存在短暂异步窗口。
+// 实测立即 threadGet 可能仍返回 Archived，因此发送后用短轮询等后端状态落稳。
+const THREAD_REACTIVATE_REFRESH_DELAYS_MS = [0, 300, 800, 1500];
 
 interface SidebarTabBarWithBadgesProps {
   conversations: ConversationWrap[];
@@ -181,11 +187,26 @@ export interface ChatContentPageState {
   showMatterPanel: boolean;
   /** v0.7 Matter 详情面板是否显示（跟子区/文件预览/任务列表可并存） */
   showMatterDetailPanel: boolean;
+  /**
+   * 从事项详情面板触发文件预览时记下来源 matter ID。
+   * 关闭/返回预览时, 据此把事项面板重新拉起来并自动选回这条 matter,
+   * 避免用户落到子区列表或空白侧边。
+   */
+  previewReturnMatterId: string | null;
+  /**
+   * 文件预览触发前是否真有子区面板上下文 (用户先打开了子区列表 / 子区详情)。
+   * 据此决定 ThreadPanel 文件预览模式下要不要显示左上角 ← 返回箭头 —
+   * 没来过子区的情况下让 ← 把用户带到子区列表会很突兀。
+   */
+  previewHadThreadShell: boolean;
 }
 export class ChatContentPage extends Component<
   ChatContentPageProps,
   ChatContentPageState
 > {
+  static contextType = I18nContext;
+  declare context: React.ContextType<typeof I18nContext>;
+
   channelInfoListener!: ChannelInfoListener;
   conversationContext!: ConversationContext;
   private parentGroupChannel?: Channel;
@@ -202,6 +223,8 @@ export class ChatContentPage extends Component<
       activePreviewMessageId: null,
       showMatterPanel: false,
       showMatterDetailPanel: false,
+      previewReturnMatterId: null,
+      previewHadThreadShell: false,
     };
   }
 
@@ -252,13 +275,47 @@ export class ChatContentPage extends Component<
     // 互斥：事项列表 / 事项详情跟文件预览都在同一个侧边容器区域，同时显示会
     // 相互遮盖。打开文件预览时强制关掉两个事项面板，避免 "看不到预览" 的
     // 死锁 (跟 _onToggleMatterPanel 打开事项时关文件预览的处理对称)。
+    //
+    // 例外: 来源 = 事项详情 (file.originMatterId 非空), 不卸事项面板,
+    // 改成 display:none 暂时隐藏 (见 render), 关掉预览后 unhide 时
+    // 内部 state (tab / 展开的时间线 / 选中的 matter) 全部保留, 用户感受
+    // 上跟 "回到事项详情" 一致, 且不会闪一下重新拉数据。
+    const fromMatter = !!file.originMatterId;
     this.setState({
       previewFile: file,
       showThreadPanel: true, // 确保面板打开
       showChannelSetting: false, // 关闭设置面板，避免布局冲突
-      showMatterPanel: false, // 关闭事项列表面板, 避免遮盖文件预览
-      showMatterDetailPanel: false, // 关闭事项详情面板, 避免遮盖文件预览
+      showMatterPanel: fromMatter ? this.state.showMatterPanel : false,
+      showMatterDetailPanel: fromMatter
+        ? this.state.showMatterDetailPanel
+        : false,
       activePreviewMessageId: file.messageId || null, // 保存激活的消息 ID
+      previewReturnMatterId: file.originMatterId || null,
+      // 仅当预览触发前用户已经在子区面板里 (showThreadPanel 已经是 true)
+      // 才允许显示 ← 返回箭头, 让 ← 真正回到子区列表/详情。其他来源
+      // (消息附件、事项详情等) 一律隐藏 ← , 避免误导用户跳到子区。
+      previewHadThreadShell: this.state.showThreadPanel,
+    });
+  };
+
+  /**
+   * 关闭文件预览 (X 或 ←) 的统一收尾。
+   *   - 来源 = 事项详情 (previewReturnMatterId 非空): 事项面板被 display:none
+   *     隐藏着 (见 render), 这里只清预览相关 state, unhide 后内部 state
+   *     (tab / 展开的时间线 / 选中的 matter) 全部保留。但必须把 showThreadPanel
+   *     复位, 否则 ThreadPanel 会留下退化成子区列表遮住事项。
+   *   - 来源 = 其他: resetThreadShell 控制是否同时关掉子区壳 (群聊路径下
+   *     X 全关传 true; 子区频道/私聊路径下 X / ← 也传 true)。
+   */
+  private _closePreviewAndMaybeRestoreMatter = (resetThreadShell: boolean) => {
+    const fromMatter = !!this.state.previewReturnMatterId;
+    const shouldResetThread = fromMatter || resetThreadShell;
+    this.setState({
+      previewFile: null,
+      activePreviewMessageId: null,
+      previewReturnMatterId: null,
+      previewHadThreadShell: false,
+      ...(shouldResetThread ? { showThreadPanel: false, activeThread: null } : {}),
     });
   };
 
@@ -515,6 +572,90 @@ export class ChatContentPage extends Component<
     WKSDK.shared().channelManager.removeListener(this.channelInfoListener);
   }
 
+  private getThreadStatus(channelInfo?: ChannelInfo | null) {
+    return (channelInfo?.orgData?.thread as any)?.status as
+      | ThreadStatus
+      | undefined;
+  }
+
+  private handleConversationMessageSent = () => {
+    const { channel } = this.props;
+    if (channel.channelType !== ChannelTypeCommunityTopic) return;
+
+    const channelInfo = WKSDK.shared().channelManager.getChannelInfo(channel);
+    if (this.getThreadStatus(channelInfo) !== ThreadStatus.Archived) return;
+
+    const threadInfo = parseThreadChannelId(channel.channelID);
+    if (threadInfo) {
+      void this.reconcileConversationThreadAfterMessageSent(
+        threadInfo.groupNo,
+        threadInfo.shortId,
+        channel,
+      );
+    }
+  };
+
+  private async reconcileConversationThreadAfterMessageSent(
+    groupNo: string,
+    shortId: string,
+    channel: Channel,
+  ) {
+    try {
+      const updatedThread = await this.fetchThreadAfterMessageSent(
+        groupNo,
+        shortId,
+      );
+      if (!this.props.channel.isEqual(channel)) return;
+      if (updatedThread.status === ThreadStatus.Archived) return;
+
+      // 独立子区会话的提示来自 SDK channelInfo。
+      // 只有 threadGet 确认非归档后才刷新 channelInfo，避免 UI 先切活跃再回退。
+      await this.refreshCurrentThreadChannelInfo(channel);
+      if (!this.props.channel.isEqual(channel)) return;
+
+      this.setState({});
+    } catch {
+      // Message sending already succeeded. Leave the archived prompt visible
+      // until a backend-backed channel-info refresh confirms the state change.
+    }
+  }
+
+  private async fetchThreadAfterMessageSent(
+    groupNo: string,
+    shortId: string,
+  ): Promise<Thread> {
+    let lastThread: Thread | null = null;
+
+    for (const delay of THREAD_REACTIVATE_REFRESH_DELAYS_MS) {
+      if (delay > 0) {
+        await this.sleep(delay);
+      }
+
+      const updatedThread = await WKApp.dataSource.channelDataSource.threadGet(
+        groupNo,
+        shortId,
+      );
+      lastThread = updatedThread;
+      if (updatedThread.status !== ThreadStatus.Archived) {
+        break;
+      }
+    }
+
+    if (!lastThread) {
+      throw new Error("thread status refresh failed");
+    }
+    return lastThread;
+  }
+
+  private async refreshCurrentThreadChannelInfo(channel: Channel) {
+    WKSDK.shared().channelManager.deleteChannelInfo(channel);
+    await WKSDK.shared().channelManager.fetchChannelInfo(channel);
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise<void>((resolve) => window.setTimeout(resolve, ms));
+  }
+
   render(): React.ReactNode {
     const { channel, initLocateMessageSeq } = this.props;
     const {
@@ -533,6 +674,7 @@ export class ChatContentPage extends Component<
     if (!channelInfo) {
       WKSDK.shared().channelManager.fetchChannelInfo(channel);
     }
+    const threadStatus = this.getThreadStatus(channelInfo);
     return (
       <div
         className={classNames(
@@ -563,7 +705,9 @@ export class ChatContentPage extends Component<
                 {selectionMode ? (
                   <div className="wk-chat-conversation-selection-header">
                     <div className="wk-chat-conversation-selection-title">
-                      已选择 {selectedCount} 条消息
+                      {t("base.chatPage.selectionCount", {
+                        values: { count: selectedCount },
+                      })}
                     </div>
                   </div>
                 ) : (
@@ -667,7 +811,7 @@ export class ChatContentPage extends Component<
                       this.conversationContext?.setEditOn(false);
                     }}
                   >
-                    取消
+                    {t("base.common.cancel")}
                   </button>
                 ) : (
                   <>
@@ -708,7 +852,7 @@ export class ChatContentPage extends Component<
                               };
                             });
                           }}
-                          title="子区"
+                          title={t("base.chatPage.threadPanel")}
                         >
                           <ThreadIcon size={20} color="currentColor" />
                         </div>
@@ -742,7 +886,7 @@ export class ChatContentPage extends Component<
             </div>
           </div>
           <div className="wk-chat-conversation">
-            <ErrorBoundary moduleName="聊天">
+            <ErrorBoundary moduleName={t("base.chatPage.chatModuleName")}>
               <Conversation
                 initLocateMessageSeq={initLocateMessageSeq}
                 shouldShowHistorySplit={true}
@@ -786,13 +930,19 @@ export class ChatContentPage extends Component<
                 }
                 channel={channel}
                 activePreviewMessageId={this.state.activePreviewMessageId}
+                inputNotice={
+                  isThreadChannel && threadStatus === ThreadStatus.Archived
+                    ? t("base.chatPage.archivedThreadNotice")
+                    : undefined
+                }
+                onMessageSent={this.handleConversationMessageSent}
               ></Conversation>
             </ErrorBoundary>
           </div>
         </div>
 
         <div className={classNames("wk-chat-channelsetting")}>
-          <ErrorBoundary moduleName="频道设置">
+          <ErrorBoundary moduleName={t("base.chatPage.channelSettings")}>
             <ChannelSetting
               conversationContext={this.conversationContext}
               key={channel.getChannelKey()}
@@ -815,22 +965,30 @@ export class ChatContentPage extends Component<
               groupNo={channel.channelID}
               thread={activeThread}
               onClose={() => {
+                // X 关闭: 若当前是从事项详情打开的预览, 回到事项详情;
+                // 否则沿用原行为, 把整个侧边壳 (子区 + 预览) 一起关掉。
+                if (previewFile && this.state.previewReturnMatterId) {
+                  this._closePreviewAndMaybeRestoreMatter(true);
+                  return;
+                }
                 this.setState({
                   showThreadPanel: false,
                   activeThread: null,
                   previewFile: null,
                   activePreviewMessageId: null,
+                  previewReturnMatterId: null,
+                  previewHadThreadShell: false,
                 });
               }}
               onThreadSelect={(thread) => {
                 this.setState({ activeThread: thread });
               }}
               filePreview={previewFile}
+              showBackButton={this.state.previewHadThreadShell}
               onFilePreviewClose={() => {
-                this.setState({
-                  previewFile: null,
-                  activePreviewMessageId: null,
-                });
+                // ← 返回: 来自事项详情的预览统一走 restore 路径, 落回事项详情;
+                // 否则按原行为只清预览, 保留 showThreadPanel 让用户回到子区列表。
+                this._closePreviewAndMaybeRestoreMatter(false);
               }}
               onReplyFile={(info) => {
                 // 触发回复功能，保持文件预览面板打开
@@ -850,20 +1008,10 @@ export class ChatContentPage extends Component<
         {(isThreadChannel || channel.channelType === ChannelTypePerson) &&
           previewFile && (
             <ThreadPanel
-              onClose={() =>
-                this.setState({
-                  previewFile: null,
-                  activePreviewMessageId: null,
-                  showThreadPanel: false, // 重置状态，移除 wk-chat-threadpanel-open 类
-                })
-              }
+              onClose={() => this._closePreviewAndMaybeRestoreMatter(true)}
               filePreview={previewFile}
               onFilePreviewClose={() =>
-                this.setState({
-                  previewFile: null,
-                  activePreviewMessageId: null,
-                  showThreadPanel: false, // 重置状态，移除 wk-chat-threadpanel-open 类
-                })
+                this._closePreviewAndMaybeRestoreMatter(true)
               }
               onReplyFile={(info) => {
                 // 触发回复功能，保持文件预览面板打开
@@ -879,18 +1027,36 @@ export class ChatContentPage extends Component<
             />
           )}
 
-        {/* 任务列表面板（与子区互斥，复用 ThreadPanel 容器样式） */}
+        {/* 任务列表面板（与子区互斥，复用 ThreadPanel 容器样式）。
+            从事项详情触发文件预览时不卸面板, 只 display:none 隐藏,
+            unhide 时 ChatMatterPanel 内部 state (active matter / tab /
+            展开的时间线) 全部保留, 用户感受像 "回到原样"。 */}
         {showMatterPanel && (
-          <div className="wk-thread-panel">
+          <div
+            className="wk-thread-panel"
+            style={
+              previewFile && this.state.previewReturnMatterId
+                ? { display: "none" }
+                : undefined
+            }
+          >
             {WKApp.endpoints.chatMatterPanel(channel, () =>
               this.setState({ showMatterPanel: false }),
             )}
           </div>
         )}
 
-        {/* v0.7 Matter 详情面板（跟子区/文件预览/任务列表可并存，不互斥） */}
+        {/* v0.7 Matter 详情面板（跟子区/文件预览/任务列表可并存，不互斥）。
+            从事项详情触发文件预览时同样改 display:none 保留 state。 */}
         {showMatterDetailPanel && (
-          <div className="wk-matter-detail-panel">
+          <div
+            className="wk-matter-detail-panel"
+            style={
+              previewFile && this.state.previewReturnMatterId
+                ? { display: "none" }
+                : undefined
+            }
+          >
             {WKApp.endpoints.chatMatterDetailPanel(channel, () =>
               this.setState({ showMatterDetailPanel: false }),
             )}
@@ -921,6 +1087,9 @@ interface ChatPageState {
 }
 
 export default class ChatPage extends Component<any, ChatPageState> {
+  static contextType = I18nContext;
+  declare context: React.ContextType<typeof I18nContext>;
+
   vm!: ChatVM;
   spaceListRef: SpaceList | null = null;
   openCreateCategoryRef: React.MutableRefObject<(() => void) | null> = {
@@ -944,6 +1113,7 @@ export default class ChatPage extends Component<any, ChatPageState> {
 
   private _onSpaceChanged?: (space: any) => void;
   private _onSwitchTab?: (tab: string) => void;
+  private _unsubscribeRemoteConfig?: () => void;
 
   componentDidMount() {
     // 监听 space-changed，同步 spacename 到 state
@@ -967,6 +1137,14 @@ export default class ChatPage extends Component<any, ChatPageState> {
     };
     WKApp.mittBus.on("wk:switch-sidebar-tab", this._onSwitchTab);
 
+    this._unsubscribeRemoteConfig = WKApp.remoteConfig.addConfigChangeListener(() => {
+      if (WKApp.remoteConfig.disableUserCreateSpace && this.vm?.showSpaceCreate) {
+        this.vm.showSpaceCreate = false;
+      } else {
+        this.forceUpdate();
+      }
+    });
+
     // 初始化：主动拉当前 Space 名称（首次渲染时 space-changed 还没触发）
     const currentSpaceId = WKApp.shared.currentSpaceId;
     if (currentSpaceId) {
@@ -989,6 +1167,7 @@ export default class ChatPage extends Component<any, ChatPageState> {
     if (this._onSwitchTab) {
       WKApp.mittBus.off("wk:switch-sidebar-tab", this._onSwitchTab);
     }
+    this._unsubscribeRemoteConfig?.();
   }
 
   render(): ReactNode {
@@ -1064,7 +1243,7 @@ export default class ChatPage extends Component<any, ChatPageState> {
                                   <Columns2 size={16} strokeWidth={1.5} />
                                 </div>
                                 <div className="wk-chatmenuspopover-title">
-                                  创建分组
+                                  {t("base.chatPage.createCategory")}
                                 </div>
                               </div>
                             )}
@@ -1120,7 +1299,7 @@ export default class ChatPage extends Component<any, ChatPageState> {
                             marginBottom: 6,
                           }}
                         >
-                          还没有会话
+                          {t("base.chatPage.emptyTitle")}
                         </div>
                         <div
                           style={{
@@ -1129,7 +1308,7 @@ export default class ChatPage extends Component<any, ChatPageState> {
                             marginBottom: 24,
                           }}
                         >
-                          从通讯录选择联系人开始聊天
+                          {t("base.chatPage.emptyDescription")}
                         </div>
                         <div style={{ display: "flex", gap: 12 }}>
                           <button
@@ -1143,11 +1322,11 @@ export default class ChatPage extends Component<any, ChatPageState> {
                                     );
                                   }
                                 },
-                                "找人聊天",
+                                t("base.chatPage.findContact"),
                               );
                             }}
                           >
-                            找人聊天
+                            {t("base.chatPage.findContact")}
                           </button>
                           <button
                             className="wk-chat-empty-guide-btn"
@@ -1159,12 +1338,12 @@ export default class ChatPage extends Component<any, ChatPageState> {
                               if (groupMenu?.onClick) groupMenu.onClick();
                             }}
                           >
-                            创建群聊
+                            {t("base.chatPage.startGroup")}
                           </button>
                         </div>
                       </div>
                     ) : (
-                      <ErrorBoundary moduleName="会话列表">
+                      <ErrorBoundary moduleName={t("base.chatPage.conversationListModuleName")}>
                         <ChatConversationList
                           conversations={vm.filteredConversations}
                           filter={filter}
@@ -1250,15 +1429,17 @@ export default class ChatPage extends Component<any, ChatPageState> {
                   </FollowSidebarProvider>
                 </div>
               </div>
-              <SpaceCreate
-                visible={vm.showSpaceCreate}
-                onClose={() => {
-                  vm.showSpaceCreate = false;
-                }}
-                onSuccess={() => {
-                  this.spaceListRef?.loadSpaces();
-                }}
-              />
+              {!WKApp.remoteConfig.disableUserCreateSpace && (
+                <SpaceCreate
+                  visible={vm.showSpaceCreate}
+                  onClose={() => {
+                    vm.showSpaceCreate = false;
+                  }}
+                  onSuccess={() => {
+                    this.spaceListRef?.loadSpaces();
+                  }}
+                />
+              )}
               <WKModal
                 size="full"
                 visible={vm.showGlobalSearch}
@@ -1267,7 +1448,7 @@ export default class ChatPage extends Component<any, ChatPageState> {
                 }}
               >
                 <div style={{ marginTop: "30px" }}>
-                  <ErrorBoundary moduleName="搜索">
+                  <ErrorBoundary moduleName={t("base.chatPage.searchModuleName")}>
                     <GlobalSearch
                       onClick={(item, type: string) => {
                         void handleGlobalSearchClick(item, type, () => {
@@ -1282,7 +1463,7 @@ export default class ChatPage extends Component<any, ChatPageState> {
               {/* 附件未发送切换会话确认弹窗 */}
               <WKModal
                 visible={!!this.state.pendingConfirm}
-                title="有未发送的附件"
+                title={t("base.chatPage.unsentAttachmentTitle")}
                 footer={
                   <div
                     style={{
@@ -1295,7 +1476,7 @@ export default class ChatPage extends Component<any, ChatPageState> {
                       variant="secondary"
                       onClick={() => this.setState({ pendingConfirm: null })}
                     >
-                      取消
+                      {t("base.common.cancel")}
                     </WKButton>
                     <WKButton
                       variant="primary"
@@ -1304,7 +1485,7 @@ export default class ChatPage extends Component<any, ChatPageState> {
                         this.setState({ pendingConfirm: null });
                       }}
                     >
-                      继续切换
+                      {t("base.chatPage.continueSwitch")}
                     </WKButton>
                   </div>
                 }
@@ -1318,7 +1499,7 @@ export default class ChatPage extends Component<any, ChatPageState> {
                     fontSize: "var(--wk-text-size-md)",
                   }}
                 >
-                  切换会话后，未发送的附件将被丢弃，是否继续？
+                  {t("base.chatPage.unsentAttachmentContent")}
                 </p>
               </WKModal>
             </div>

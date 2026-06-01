@@ -1,4 +1,16 @@
 import axios, { AxiosResponse } from "axios";
+import { buildAcceptLanguage } from "./apiLanguage";
+import { isAuthExpiredApiError, normalizeApiError, NormalizedApiError } from "./apiError";
+
+export interface APIClientRejectedError {
+    error: unknown;
+    msg: string;
+    status?: number;
+    code?: string;
+    details?: Record<string, unknown>;
+    backendMessage?: string;
+    normalized: NormalizedApiError;
+}
 
 
 /**
@@ -47,6 +59,8 @@ export default class APIClient {
     initAxios() {
         const self = this
         axios.interceptors.request.use(function (config) {
+            config.headers = config.headers || {};
+            config.headers["Accept-Language"] = buildAcceptLanguage();
             let token:string | undefined
             if(self.config.tokenCallback) {
                 token = self.config.tokenCallback()
@@ -69,30 +83,24 @@ export default class APIClient {
         axios.interceptors.response.use(function (response) {
             return response;
         }, function (error) {
-            // 后端错误信息长度保护：避免异常路径（如堆栈、SQL 错误）透传给用户 Toast
-            const rawBackendMsg = error?.response?.data?.msg;
-            const backendMsg = typeof rawBackendMsg === "string" && rawBackendMsg.length > 0
-                ? rawBackendMsg.slice(0, 200)
-                : "";
-            let msg = "";
-            switch (error.response && error.response.status) {
-                case 400:
-                    msg = backendMsg;
-                    break;
-                case 404:
-                    msg = backendMsg || "请求地址没有找到（404）"
-                    break;
-                case 401:
-                    msg = backendMsg || "登录已过期，请重新登录";
-                    if(self.logoutCallback) {
-                        self.logoutCallback()
-                    }
-                    break;
-                default:
-                    msg = backendMsg || "未知错误"
-                    break;
+            const normalized = normalizeApiError({
+                data: error?.response?.data,
+                httpStatus: error?.response?.status,
+                raw: error,
+            });
+            if (isAuthExpiredApiError(normalized) && self.logoutCallback) {
+                self.logoutCallback()
             }
-            return Promise.reject({ error: error, msg: msg, status: error?.response?.status });
+            const rejected: APIClientRejectedError = {
+                error: error,
+                msg: normalized.message,
+                status: normalized.httpStatus,
+                code: normalized.code,
+                details: normalized.details,
+                backendMessage: normalized.backendMessage,
+                normalized,
+            };
+            return Promise.reject(rejected);
         });
     }
 

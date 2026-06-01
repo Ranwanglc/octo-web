@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { i18n } from '@octo/base/src/i18n/instance'
 
 // Stub @octo/base so LoginVM can be instantiated in jsdom without bringing
 // in the real WKApp / apiClient. Only the surface LoginVM touches needs filling in.
@@ -45,7 +46,15 @@ vi.mock('@octo/base', () => {
       ],
     },
   }
-  return { WKApp, ProviderListener }
+  return {
+    WKApp,
+    ProviderListener,
+    i18n: { setLocale: vi.fn() },
+    normalizeLocale: vi.fn((value: string | null | undefined) => {
+      if (value === 'zh-CN' || value === 'en-US') return value
+      return undefined
+    }),
+  }
 })
 
 // Stub the oidc http client so no network IO happens in tests.
@@ -96,6 +105,7 @@ function restoreLocation() {
 }
 
 beforeEach(() => {
+  i18n.setLocale('zh-CN', { persist: false })
   sessionStorage.clear()
   fetchAuthcodeMock.mockReset()
   pollAuthStatusMock.mockReset()

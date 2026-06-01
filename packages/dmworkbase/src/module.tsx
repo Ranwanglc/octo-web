@@ -100,13 +100,14 @@ import { notificationUtil } from "./Utils/NotificationUtil";
 import { resolveExternalForViewer } from "./Utils/externalViewer";
 import { copyImageToClipboard } from "./Utils/clipboard";
 import { shouldSkipMessageForSpace } from "./Service/SpaceService";
+import { t } from "./i18n";
 import {
   ThreadCreatedCell,
   ThreadCreatedContent,
 } from "./Messages/ThreadCreated";
 import { SummaryCardContent } from "./Messages/SummaryCard/SummaryCardContent";
 import { SummaryCardCell } from "./Messages/SummaryCard";
-import { parseThreadChannelId } from "./Service/Thread";
+import { parseThreadChannelId, ThreadStatus } from "./Service/Thread";
 
 /** execCommand 降级复制，用于 navigator.clipboard 不可用的场景 */
 function fallbackCopy(text: string) {
@@ -627,7 +628,7 @@ export default class BaseModule implements IModule {
       const isDark = WKApp.config.themeMode === ThemeMode.dark;
       return {
         key: "start-group",
-        title: "发起群聊",
+        title: t("base.module.chatMenus.startGroup"),
         icon: isDark
           ? new URL("./assets/popmenus_startchat_dark.png", import.meta.url)
               .href
@@ -648,7 +649,7 @@ export default class BaseModule implements IModule {
         }
 
         return {
-          title: "复制",
+          title: t("base.module.contextMenus.copy"),
           onClick: () => {
             const selectedText = context.getCachedSelectedText?.();
             const textToCopy =
@@ -681,11 +682,11 @@ export default class BaseModule implements IModule {
         const src = WKApp.dataSource.commonDataSource.getImageURL(rawSrc, { width: content.width || 0, height: content.height || 0 });
 
         return {
-          title: "复制图片",
+          title: t("base.module.contextMenus.copyImage"),
           onClick: () => {
             copyImageToClipboard(src)
-              .then(() => Toast.success("已复制图片"))
-              .catch((err: Error) => Toast.warning(err.message || "复制失败"));
+              .then(() => Toast.success(t("base.module.contextMenus.copyImageSuccess")))
+              .catch((err: Error) => Toast.warning(err.message || t("base.module.contextMenus.copyFailed")));
           },
         };
       },
@@ -700,7 +701,7 @@ export default class BaseModule implements IModule {
         }
 
         return {
-          title: "转发",
+          title: t("base.module.contextMenus.forward"),
           onClick: () => {
             context.fowardMessageUI(message);
           },
@@ -712,7 +713,7 @@ export default class BaseModule implements IModule {
       "contextmenus.reply",
       (message, context) => {
         return {
-          title: "回复",
+          title: t("base.module.contextMenus.reply"),
           onClick: () => {
             context.reply(message, 1);
           },
@@ -723,7 +724,7 @@ export default class BaseModule implements IModule {
       "contextmenus.muli",
       (message, context) => {
         return {
-          title: "多选",
+          title: t("base.module.contextMenus.multiSelect"),
           onClick: () => {
             context.setEditOn(true);
           },
@@ -778,7 +779,7 @@ export default class BaseModule implements IModule {
           }
         }
         return {
-          title: "撤回",
+          title: t("base.module.contextMenus.revoke"),
           onClick: () => {
             context.revokeMessage(message).catch((err) => {
               Toast.error(err.msg);
@@ -806,7 +807,7 @@ export default class BaseModule implements IModule {
           return null;
         }
         return {
-          title: "创建子区",
+          title: t("base.module.contextMenus.createThread"),
           onClick: () => {
             // 使用消息内容作为默认名称，截取前20个字符
             const defaultName = (
@@ -814,10 +815,10 @@ export default class BaseModule implements IModule {
             ).slice(0, 20);
             let threadName = defaultName;
             Modal.confirm({
-              title: "创建子区",
+              title: t("base.module.createThread.title"),
               icon: null,
-              okText: "创建",
-              cancelText: "取消",
+              okText: t("base.module.createThread.ok"),
+              cancelText: t("base.common.cancel"),
               content: (
                 <div>
                   <div
@@ -827,11 +828,11 @@ export default class BaseModule implements IModule {
                       color: "var(--wk-text-secondary)",
                     }}
                   >
-                    话题名称
+                    {t("base.module.createThread.nameLabel")}
                   </div>
                   <input
                     type="text"
-                    placeholder="输入讨论话题..."
+                    placeholder={t("base.module.createThread.namePlaceholder")}
                     defaultValue={defaultName}
                     style={{
                       width: "100%",
@@ -853,7 +854,7 @@ export default class BaseModule implements IModule {
               ),
               onOk: async () => {
                 if (!threadName || threadName.trim() === "") {
-                  Toast.error("话题名称不能为空");
+                  Toast.error(t("base.module.createThread.nameRequired"));
                   return;
                 }
                 try {
@@ -869,7 +870,7 @@ export default class BaseModule implements IModule {
                       source_message_payload: sourcePayload,
                     }
                   );
-                  Toast.success("子区创建成功");
+                  Toast.success(t("base.module.createThread.success"));
                   if (resp && resp.channel_id) {
                     const channel = new Channel(
                       resp.channel_id,
@@ -878,7 +879,7 @@ export default class BaseModule implements IModule {
                     WKApp.endpoints.showConversation(channel);
                   }
                 } catch (err: any) {
-                  Toast.error(err.msg || "创建失败");
+                  Toast.error(err.msg || t("base.module.createThread.failed"));
                 }
               },
             });
@@ -906,7 +907,7 @@ export default class BaseModule implements IModule {
           new Row({
             cell: ListItem,
             properties: {
-              title: "设置备注",
+              title: t("base.module.userInfo.remark"),
               onClick: () => {
                 this.inputEditPush(
                   context,
@@ -919,7 +920,7 @@ export default class BaseModule implements IModule {
                       });
                     return;
                   },
-                  "设置备注"
+                  t("base.module.userInfo.remark")
                 );
               },
             },
@@ -941,18 +942,18 @@ export default class BaseModule implements IModule {
             const inviteChannelInfo =
               WKSDK.shared().channelManager.getChannelInfo(inviterChannel);
             if (inviteChannelInfo) {
-              joinDesc += ` ${inviteChannelInfo.title}邀请入群`;
+              joinDesc += t("base.module.userInfo.invitedBy", { values: { name: inviteChannelInfo.title } });
             } else {
               WKSDK.shared().channelManager.fetchChannelInfo(inviterChannel);
             }
           } else {
-            joinDesc += "加入群聊";
+            joinDesc += t("base.module.userInfo.joinedGroup");
           }
           rows.push(
             new Row({
               cell: ListItem,
               properties: {
-                title: "进群方式",
+                title: t("base.module.userInfo.joinMethod"),
                 subTitle: joinDesc,
               },
             })
@@ -1006,10 +1007,12 @@ export default class BaseModule implements IModule {
             new Row({
               cell: ListItem,
               properties: {
-                title: "解除好友关系",
+                title: t("base.module.userInfo.removeFriend"),
                 onClick: () => {
                   WKApp.shared.baseContext.showAlert({
-                    content: `将联系人“${channelInfo?.orgData?.displayName}”删除，同时删除与该联系人的聊天记录`,
+                    content: t("base.module.userInfo.removeFriendConfirm", {
+                      values: { name: channelInfo?.orgData?.displayName || "" },
+                    }),
                     onOk: () => {
                       WKApp.dataSource.commonDataSource
                         .deleteFriend(data.uid)
@@ -1055,7 +1058,9 @@ export default class BaseModule implements IModule {
             cell: ListItem,
             properties: {
               title:
-                status === UserRelation.blacklist ? "拉出黑名单" : "拉入黑名单",
+                status === UserRelation.blacklist
+                  ? t("base.module.userInfo.removeFromBlacklist")
+                  : t("base.module.userInfo.addToBlacklist"),
               onClick: () => {
                 if (status === UserRelation.blacklist) {
                   WKApp.dataSource.commonDataSource
@@ -1068,7 +1073,7 @@ export default class BaseModule implements IModule {
                     });
                 } else {
                   WKApp.shared.baseContext.showAlert({
-                    content: "加入黑名单，你将不再收到对方的消息。",
+                    content: t("base.module.userInfo.addToBlacklistConfirm"),
                     onOk: () => {
                       WKApp.dataSource.commonDataSource
                         .blacklistAdd(data.uid)
@@ -1138,7 +1143,7 @@ export default class BaseModule implements IModule {
               new Row({
                 cell: ListItem,
                 properties: {
-                  title: "来源",
+                  title: t("base.module.userInfo.source"),
                   subTitle: sourceSpaceName,
                 },
               }),
@@ -1161,7 +1166,7 @@ export default class BaseModule implements IModule {
             new Row({
               cell: ListItem,
               properties: {
-                title: "来源",
+                title: t("base.module.userInfo.source"),
                 subTitle: sourceDesc,
               },
             }),
@@ -1200,7 +1205,7 @@ export default class BaseModule implements IModule {
                       size="small"
                       style={{ marginRight: "4px", color: "red" }}
                     />
-                    已添加至黑名单，你将不再收到对方的消息
+                    {t("base.module.userInfo.blacklistTip")}
                   </div>
                 ),
               },
@@ -1298,7 +1303,7 @@ export default class BaseModule implements IModule {
                     disableSelectList={disableSelectList}
                   ></ContactsSelect>,
                   {
-                    title: "联系人选择",
+                    title: t("base.module.channelSettings.contactSelect"),
                     showFinishButton: true,
                     onFinish: async () => {
                       addFinishButtonContext.loading(true);
@@ -1350,7 +1355,7 @@ export default class BaseModule implements IModule {
                     canSelect={true}
                   ></SubscriberList>,
                   {
-                    title: "删除群成员",
+                    title: t("base.module.channelSettings.removeMembers"),
                     showFinishButton: true,
                     onFinish: async () => {
                       removeFinishButtonContext.loading(true);
@@ -1397,7 +1402,7 @@ export default class BaseModule implements IModule {
           <span>
             {channelInfo?.title}
             <Tag color="orange" size="small" style={{ marginLeft: 6 }}>
-              外部群
+              {t("base.module.channelSettings.externalGroup")}
             </Tag>
           </span>
         ) : (
@@ -1407,11 +1412,11 @@ export default class BaseModule implements IModule {
           new Row({
             cell: ListItem,
             properties: {
-              title: "群聊名称",
+              title: t("base.module.channelSettings.groupName"),
               subTitle: groupNameSubTitle,
               onClick: () => {
                 if (!data.isManagerOrCreatorOfMe) {
-                  Toast.warning("只有管理者才能修改群名字");
+                  Toast.warning(t("base.module.channelSettings.groupNameOnlyManager"));
                   return;
                 }
                 this.inputEditPush(
@@ -1424,7 +1429,7 @@ export default class BaseModule implements IModule {
                         Toast.error(err.msg);
                       });
                   },
-                  "群名称",
+                  t("base.module.channelSettings.groupNamePlaceholder"),
                   20
                 );
               },
@@ -1436,7 +1441,7 @@ export default class BaseModule implements IModule {
           new Row({
             cell: ListItemIcon,
             properties: {
-              title: "群头像",
+              title: t("base.module.channelSettings.groupAvatar"),
               icon: (
                 <img
                   style={{ width: "24px", height: "24px", borderRadius: "50%" }}
@@ -1451,7 +1456,7 @@ export default class BaseModule implements IModule {
                     channel={channel}
                     context={context}
                   ></ChannelAvatar>,
-                  { title: "群头像" }
+                  { title: t("base.module.channelSettings.groupAvatar") }
                 );
               },
             },
@@ -1462,7 +1467,7 @@ export default class BaseModule implements IModule {
           new Row({
             cell: ListItemIcon,
             properties: {
-              title: "群二维码",
+              title: t("base.module.channelSettings.groupQrCode"),
               icon: (
                 <img
                   style={{ width: "24px", height: "24px" }}
@@ -1474,7 +1479,7 @@ export default class BaseModule implements IModule {
                 context.push(
                   <ChannelQRCode channel={channel}></ChannelQRCode>,
                   new RouteContextConfig({
-                    title: "群二维码名片",
+                    title: t("base.module.channelSettings.groupQrCard"),
                   })
                 );
               },
@@ -1485,11 +1490,11 @@ export default class BaseModule implements IModule {
           new Row({
             cell: ListItemMuliteLine,
             properties: {
-              title: "群公告",
+              title: t("base.module.channelSettings.groupNotice"),
               subTitle: channelInfo?.orgData?.notice,
               onClick: () => {
                 if (!data.isManagerOrCreatorOfMe) {
-                  Toast.warning("只有管理者才能修改群公告");
+                  Toast.warning(t("base.module.channelSettings.groupNoticeOnlyManager"));
                   return;
                 }
                 this.inputEditPush(
@@ -1502,7 +1507,7 @@ export default class BaseModule implements IModule {
                         Toast.error(err.msg);
                       });
                   },
-                  "群公告",
+                  t("base.module.channelSettings.groupNotice"),
                   400,
                   true,
                   true
@@ -1519,7 +1524,9 @@ export default class BaseModule implements IModule {
               cell: ListItem,
               properties: {
                 title: "GROUP.md",
-                subTitle: hasGroupMd ? `已配置 v${mdVersion}` : "未配置",
+                subTitle: hasGroupMd
+                  ? t("base.module.channelSettings.configuredVersion", { values: { version: mdVersion } })
+                  : t("base.module.channelSettings.notConfigured"),
                 onClick: () => {
                   // Fall back to role check: creator (role=1) or manager (role=2) can edit GROUP.md
                   const latestData =
@@ -1552,7 +1559,7 @@ export default class BaseModule implements IModule {
               new Row({
                 cell: ListItem,
                 properties: {
-                  title: "群管理",
+                  title: t("base.module.channelSettings.groupManagement"),
                   onClick: () => {
                     const rd = context.routeData() as ChannelSettingRouteData;
                     const me = rd?.subscriberOfMe;
@@ -1564,7 +1571,7 @@ export default class BaseModule implements IModule {
                         context={context}
                       />,
                       new RouteContextConfig({
-                        title: "群管理",
+                        title: t("base.module.channelSettings.groupManagement"),
                       })
                     );
                   },
@@ -1577,7 +1584,7 @@ export default class BaseModule implements IModule {
           new Row({
             cell: ListItem,
             properties: {
-              title: "备注",
+              title: t("base.module.channelSettings.remark"),
               subTitle: channelInfo?.orgData?.remark,
               onClick: () => {
                 this.inputEditPush(
@@ -1590,7 +1597,7 @@ export default class BaseModule implements IModule {
                         data.refresh();
                       });
                   },
-                  "群聊的备注仅自己可见",
+                  t("base.module.channelSettings.remarkPlaceholder"),
                   15,
                   true
                 );
@@ -1660,7 +1667,7 @@ export default class BaseModule implements IModule {
           new Row({
             cell: ListItemSwitch,
             properties: {
-              title: "消息免打扰",
+              title: t("base.module.channelSettings.mute"),
               checked: channelInfo?.mute,
               onCheck: (v: boolean, ctx: ListItemSwitchContext) => {
                 ctx.loading = true;
@@ -1682,7 +1689,7 @@ export default class BaseModule implements IModule {
           new Row({
             cell: ListItemSwitch,
             properties: {
-              title: "聊天置顶",
+              title: t("base.module.channelSettings.pin"),
               checked: channelInfo?.top,
               onCheck: (v: boolean, ctx: ListItemSwitchContext) => {
                 ctx.loading = true;
@@ -1705,7 +1712,7 @@ export default class BaseModule implements IModule {
             new Row({
               cell: ListItemSwitch,
               properties: {
-                title: "保存到通讯录",
+                title: t("base.module.channelSettings.saveToContacts"),
                 checked: channelInfo?.orgData.save === 1,
                 onCheck: (v: boolean, ctx: ListItemSwitchContext) => {
                   ctx.loading = true;
@@ -1748,7 +1755,7 @@ export default class BaseModule implements IModule {
             new Row({
               cell: ListItem,
               properties: {
-                title: "我在本群的昵称",
+                title: t("base.module.channelSettings.myGroupNickname"),
                 subTitle: name,
                 onClick: () => {
                   this.inputEditPush(
@@ -1761,7 +1768,7 @@ export default class BaseModule implements IModule {
                         { remark: value }
                       );
                     },
-                    "在这里可以设置你在这个群里的昵称。这个昵称只会在此群内显示。",
+                    t("base.module.channelSettings.myGroupNicknamePlaceholder"),
                     10,
                     true
                   );
@@ -1825,11 +1832,11 @@ export default class BaseModule implements IModule {
             new Row({
               cell: ListItemButton,
               properties: {
-                title: "清空聊天记录",
+                title: t("base.module.channelSettings.clearMessages"),
                 type: ListItemButtonType.warn,
                 onClick: () => {
                   WKApp.shared.baseContext.showAlert({
-                    content: "是否清空此会话的所有消息？",
+                    content: t("base.module.channelSettings.clearMessagesConfirm"),
                     onOk: async () => {
                       const conversation =
                         WKSDK.shared().conversationManager.findConversation(
@@ -1854,12 +1861,11 @@ export default class BaseModule implements IModule {
             new Row({
               cell: ListItemButton,
               properties: {
-                title: "删除并退出",
+                title: t("base.module.channelSettings.deleteAndExit"),
                 type: ListItemButtonType.warn,
                 onClick: () => {
                   WKApp.shared.baseContext.showAlert({
-                    content:
-                      "退出后不会通知群里其他成员，且不会再接收此群聊消息",
+                    content: t("base.module.channelSettings.deleteAndExitConfirm"),
                     onOk: async () => {
                       WKApp.dataSource.channelDataSource
                         .exitChannel(data.channel)
@@ -1903,18 +1909,30 @@ export default class BaseModule implements IModule {
         const isCreator = thread?.creator_uid === WKApp.loginInfo.uid;
         const isManagerOrOwner = data.isManagerOrCreatorOfMe;
         const canEdit = isCreator || isManagerOrOwner;
+        const statusTitle =
+          thread?.status === ThreadStatus.Archived
+            ? t("base.module.thread.status.archived")
+            : thread?.status === ThreadStatus.Deleted
+              ? t("base.module.thread.status.deleted")
+              : t("base.module.thread.status.active");
+        const statusColor =
+          thread?.status === ThreadStatus.Archived
+            ? "grey"
+            : thread?.status === ThreadStatus.Deleted
+              ? "red"
+              : "green";
 
         const rows = new Array<Row>();
         rows.push(
           new Row({
             cell: ListItem,
             properties: {
-              title: "子区名称",
+              title: t("base.module.thread.name"),
               subTitle: threadName,
               onClick: () => {
                 if (!threadInfo) return;
                 if (!canEdit) {
-                  Toast.warning("只有子区创建者或群管理者才能修改名称");
+                  Toast.warning(t("base.module.thread.nameOnlyCreatorOrManager"));
                   return;
                 }
                 this.inputEditPush(
@@ -1928,7 +1946,7 @@ export default class BaseModule implements IModule {
                         { name: value }
                       );
                     } catch (err: any) {
-                      Toast.error(err?.msg || "保存失败，请重试");
+                      Toast.error(err?.msg || t("base.module.thread.saveFailedRetry"));
                       return; // 失败时 inputEditPush 正常关闭，不刷新缓存
                     }
                     // 清除缓存后重新拉取，拿到新数据再刷新 UI
@@ -1938,10 +1956,23 @@ export default class BaseModule implements IModule {
                     );
                     data.refresh();
                   },
-                  "子区名称",
+                  t("base.module.thread.name"),
                   50
                 );
               },
+            },
+          })
+        );
+        rows.push(
+          new Row({
+            cell: ListItem,
+            properties: {
+              title: t("base.module.thread.status.title"),
+              subTitle: (
+                <Tag color={statusColor} size="small">
+                  {statusTitle}
+                </Tag>
+              ),
             },
           })
         );
@@ -1958,9 +1989,10 @@ export default class BaseModule implements IModule {
           const groupName = groupInfo?.title || threadInfo.groupNo;
           rows.push(
             new Row({
-              cell: ListItemButton,
+              cell: ListItem,
               properties: {
-                title: `返回群聊「${groupName}」`,
+                title: t("base.module.thread.parentGroup"),
+                subTitle: groupName,
                 onClick: () => {
                   WKApp.endpoints.showConversation(groupChannel);
                 },
@@ -1969,6 +2001,7 @@ export default class BaseModule implements IModule {
           );
         }
         return new Section({
+          title: t("base.module.thread.info"),
           rows: rows,
         });
       },
@@ -1999,7 +2032,9 @@ export default class BaseModule implements IModule {
               cell: ListItem,
               properties: {
                 title: "GROUP.md",
-                subTitle: hasThreadMd ? `已配置 v${mdVersion}` : "未配置",
+                subTitle: hasThreadMd
+                  ? t("base.module.channelSettings.configuredVersion", { values: { version: mdVersion } })
+                  : t("base.module.channelSettings.notConfigured"),
                 onClick: () => {
                   // 延迟获取最新数据
                   const latestData =
@@ -2044,7 +2079,6 @@ export default class BaseModule implements IModule {
 
     // 子区设置说明：
     // - 消息免打扰/聊天置顶：子区继承父群组设置，暂不支持单独配置
-    // - 清空聊天记录/归档：子区管理由父群组统一处理，暂不开放
     // - 成员管理：子区成员通过加入/离开操作，不支持手动添加
     WKApp.shared.channelSettingRegister(
       "thread.actions",
@@ -2055,33 +2089,106 @@ export default class BaseModule implements IModule {
           return undefined;
         }
         const threadInfo = parseThreadChannelId(channel.channelID);
-        return new Section({
-          rows: [
+        const thread = data.channelInfo?.orgData?.thread as any;
+        const isCreator = thread?.creator_uid === WKApp.loginInfo.uid;
+        const canArchive = isCreator || data.isManagerOrCreatorOfMe;
+        const isArchived = thread?.status === ThreadStatus.Archived;
+        const isActive = thread?.status === ThreadStatus.Active;
+        const rows = new Array<Row>();
+
+        if (threadInfo && canArchive && (isActive || isArchived)) {
+          rows.push(
             new Row({
               cell: ListItemButton,
               properties: {
-                title: "离开子区",
-                type: ListItemButtonType.warn,
+                title: isArchived
+                  ? t("base.module.thread.unarchive")
+                  : t("base.module.thread.archive"),
+                type: ListItemButtonType.default,
                 onClick: () => {
-                  WKApp.shared.baseContext.showAlert({
-                    content: "确定要离开此子区吗？",
+                  const threadDisplayName = thread?.name || data.channelInfo?.title || t("base.module.thread.fallbackName");
+                  Modal.confirm({
+                    title: isArchived
+                      ? t("base.module.thread.unarchiveConfirmTitle", { values: { name: threadDisplayName } })
+                      : t("base.module.thread.archiveConfirmTitle", { values: { name: threadDisplayName } }),
+                    icon: null,
+                    okText: isArchived
+                      ? t("base.module.thread.unarchive")
+                      : t("base.module.thread.archiveOk"),
+                    cancelText: t("base.common.cancel"),
+                    content: isArchived
+                      ? t("base.module.thread.unarchiveConfirmContent")
+                      : t("base.module.thread.archiveConfirmContent"),
                     onOk: async () => {
-                      if (threadInfo) {
-                        await WKApp.apiClient
-                          .post(`threads/${threadInfo.shortId}/leave`)
-                          .catch((err: any) => {
-                            Toast.error(err.msg || "离开失败");
-                          });
-                        WKApp.conversationProvider.deleteConversation(
-                          data.channel
+                      try {
+                        if (isArchived) {
+                          await WKApp.dataSource.channelDataSource.threadUnarchive(
+                            threadInfo.groupNo,
+                            threadInfo.shortId
+                          );
+                        } else {
+                          await WKApp.dataSource.channelDataSource.threadArchive(
+                            threadInfo.groupNo,
+                            threadInfo.shortId
+                          );
+                        }
+                        Toast.success(
+                          isArchived
+                            ? t("base.module.thread.unarchiveSuccess")
+                            : t("base.module.thread.archiveSuccess")
+                        );
+                        WKSDK.shared().channelManager.deleteChannelInfo(
+                          channel
+                        );
+                        await WKSDK.shared().channelManager.fetchChannelInfo(
+                          channel
+                        );
+                        data.refresh();
+                      } catch (err: any) {
+                        Toast.error(
+                          err?.msg ||
+                            (isArchived
+                              ? t("base.module.thread.unarchiveFailedRetry")
+                              : t("base.module.thread.archiveFailedRetry"))
                         );
                       }
                     },
                   });
                 },
               },
-            }),
-          ],
+            })
+          );
+        }
+
+        rows.push(
+          new Row({
+              cell: ListItemButton,
+              properties: {
+              title: t("base.module.thread.leave"),
+              type: ListItemButtonType.warn,
+              onClick: () => {
+                WKApp.shared.baseContext.showAlert({
+                  content: t("base.module.thread.leaveConfirm"),
+                  onOk: async () => {
+                    if (threadInfo) {
+                      await WKApp.apiClient
+                        .post(`threads/${threadInfo.shortId}/leave`)
+                        .catch((err: any) => {
+                          Toast.error(err.msg || t("base.module.thread.leaveFailed"));
+                        });
+                      WKApp.conversationProvider.deleteConversation(
+                        data.channel
+                      );
+                    }
+                  },
+                });
+              },
+            },
+          })
+        );
+        return new Section({
+          title: t("base.module.thread.management"),
+          rows,
         });
       },
       90000

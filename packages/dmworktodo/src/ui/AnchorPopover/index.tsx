@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
+import { t, useI18n } from '@octo/base';
 import type { IMMessageResp } from '../../api/imMessageApi';
 import './index.css';
 
@@ -33,11 +34,19 @@ export interface AnchorPopoverProps {
     /** 展示在头部的 channel 名称 */
     channelName: string;
     /**
-     * popover 锚定 viewport 坐标 (px)。由调用方根据触发按钮
-     * boundingClientRect 计算, 已做边界收缩。未传时居中。
+     * popover 锚定 viewport 坐标 (px), 由调用方根据触发按钮
+     * boundingClientRect 计算, 已做边界收缩。
+     *
+     * 垂直方向二选一:
+     *   - top: 弹框顶边距 viewport 顶部的距离 (向下展开时使用)
+     *   - bottom: 弹框底边距 viewport 底部的距离 (向上展开时使用)
+     *
+     * 用 bottom 锚定能让"向上展开"的弹框底边贴住按钮顶边, 不依赖
+     * 弹框实际高度。两个都不传时居中。
      */
     x?: number;
-    y?: number;
+    top?: number;
+    bottom?: number;
     onClose: () => void;
     /** 外部注入的消息获取函数（UI/数据分离）。 */
     fetchMessage: (params: { channelId: string; channelType: number; messageId: string }) => Promise<IMMessageResp>;
@@ -67,13 +76,15 @@ export default function AnchorPopover({
     messageIds,
     channelName,
     x,
-    y,
+    top,
+    bottom,
     onClose,
     fetchMessage,
     renderAvatar,
     renderUserName,
     onJumpToMessage,
 }: AnchorPopoverProps) {
+    const { t: translate } = useI18n();
     const [results, setResults] = useState<FetchResult[]>([]);
     const [loading, setLoading] = useState(true);
     const bodyRef = useRef<HTMLDivElement>(null);
@@ -160,10 +171,26 @@ export default function AnchorPopover({
         onJumpToMessage(messageSeq);
     }, [results, onClose, onJumpToMessage]);
 
-    // 有 x/y 时锚定到指定 viewport 坐标 (按钮下方), 无则走 CSS 居中
-    const anchored = typeof x === 'number' && typeof y === 'number';
+    // 有 x + top/bottom 时锚定到指定 viewport 坐标, 无则走 CSS 居中。
+    // 用 bottom 锚定时弹框底边贴按钮顶边, 不再依赖弹框预估高度。
+    const anchored =
+        typeof x === 'number' &&
+        (typeof top === 'number' || typeof bottom === 'number');
     const popStyle: React.CSSProperties | undefined = anchored
-        ? { top: y, left: x, right: 'auto', bottom: 'auto', transform: 'none' }
+        ? {
+              left: x,
+              right: 'auto',
+              top: typeof top === 'number' ? top : 'auto',
+              bottom: typeof bottom === 'number' ? bottom : 'auto',
+              transform: 'none',
+              // 限制 max-height 防止溢出 viewport
+              maxHeight:
+                  typeof top === 'number'
+                      ? `calc(100vh - ${top + 16}px)`
+                      : typeof bottom === 'number'
+                          ? `calc(100vh - ${bottom + 16}px)`
+                          : undefined,
+          }
         : undefined;
 
     // 是否有成功加载的消息且支持跳转（用于判断是否显示跳转按钮）
@@ -183,25 +210,22 @@ export default function AnchorPopover({
                     <span className="wk-anchor-pop__channel">
                         #{displayChannelName}
                     </span>
-                    <button
-                        type="button"
-                        className="wk-anchor-pop__close"
-                        onClick={onClose}
-                        aria-label="关闭"
-                    >
-                        ✕
-                    </button>
+                    {!loading && results.length > 0 && results[0].ok && (
+                        <span className="wk-anchor-pop__head-time">
+                            {formatTime(results[0].data.timestamp)}
+                        </span>
+                    )}
                 </div>
 
                 <div className="wk-anchor-pop__body" ref={bodyRef}>
                     {loading && (
                         <div className="wk-anchor-pop__empty">
-                            正在加载消息...
+                            {translate("todo.anchor.loadingMessages")}
                         </div>
                     )}
                     {!loading && results.length === 0 && (
                         <div className="wk-anchor-pop__empty">
-                            没有关联原消息
+                            {translate("todo.anchor.noSourceMessages")}
                         </div>
                     )}
                     {!loading &&
@@ -211,22 +235,13 @@ export default function AnchorPopover({
                                 result={r}
                                 renderAvatar={renderAvatar}
                                 renderUserName={renderUserName}
+                                onJump={r.ok && onJumpToMessage ? () => {
+                                    onClose();
+                                    onJumpToMessage(r.data.message_seq);
+                                } : undefined}
                             />
                         ))}
                 </div>
-
-                {/* 跳转到原消息链接：仅在有有效消息且提供了跳转回调时显示 */}
-                {hasValidMessage && (
-                    <div className="wk-anchor-pop__footer">
-                        <button
-                            type="button"
-                            className="wk-anchor-pop__jump-link"
-                            onClick={handleJumpToMessage}
-                        >
-                            ↗ 跳到原消息
-                        </button>
-                    </div>
-                )}
             </div>
         </>
     );
@@ -238,20 +253,25 @@ function MessageRow({
     result,
     renderAvatar,
     renderUserName,
+    onJump,
 }: {
     result: FetchResult;
     renderAvatar: (uid: string, size: number) => React.ReactNode;
     renderUserName: (uid: string) => React.ReactNode;
+    onJump?: () => void;
 }) {
+    const { t: translate } = useI18n();
     if (!result.ok) {
         return (
             <div className="wk-anchor-pop__msg wk-anchor-pop__msg--missing">
-                <span className="wk-anchor-pop__msg-time">—</span>
+                <div className="wk-anchor-pop__msg-header">
+                    <span className="wk-anchor-pop__msg-time">—</span>
+                </div>
                 <div className="wk-anchor-pop__msg-content">
                     <div className="wk-anchor-pop__msg-text wk-anchor-pop__msg-text--dim">
                         {result.reason === 'not_found'
-                            ? '该消息不可查看或已被删除'
-                            : '加载失败, 请稍后再试'}
+                            ? translate('todo.anchor.messageUnavailable')
+                            : translate('todo.anchor.loadFailed')}
                     </div>
                 </div>
             </div>
@@ -259,17 +279,28 @@ function MessageRow({
     }
     const msg = result.data;
     return (
-        <div className="wk-anchor-pop__msg">
-            <span className="wk-anchor-pop__msg-time">
-                {formatTime(msg.timestamp)}
-            </span>
-            <span className="wk-anchor-pop__msg-avatar">
-                {renderAvatar(msg.from_uid, 18)}
-            </span>
+        <div
+            className={`wk-anchor-pop__msg${onJump ? ' wk-anchor-pop__msg--clickable' : ' wk-anchor-pop__msg--disabled'}`}
+            onClick={onJump}
+            onKeyDown={onJump ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onJump(); } } : undefined}
+            role={onJump ? 'button' : undefined}
+            tabIndex={onJump ? 0 : undefined}
+        >
+            <div className="wk-anchor-pop__msg-header">
+                <span className="wk-anchor-pop__msg-user">
+                    <span className="wk-anchor-pop__msg-avatar">
+                        {renderAvatar(msg.from_uid, 20)}
+                    </span>
+                    <span className="wk-anchor-pop__msg-name">
+                        {renderUserName(msg.from_uid)}
+                    </span>
+                </span>
+                <span className="wk-anchor-pop__msg-time">
+                    {formatTime(msg.timestamp)}
+                </span>
+                <span className="wk-anchor-pop__msg-colon">：</span>
+            </div>
             <div className="wk-anchor-pop__msg-content">
-                <div className="wk-anchor-pop__msg-name">
-                    {renderUserName(msg.from_uid)}
-                </div>
                 <div className="wk-anchor-pop__msg-text">
                     {extractDisplayText(msg)}
                 </div>
@@ -304,39 +335,39 @@ function extractDisplayText(msg: IMMessageResp): string {
     const type = p.type;
     switch (type) {
         case 2:
-            return '[图片]';
+            return t('todo.messageType.image');
         case 3:
-            return '[语音]';
+            return t('todo.messageType.voice');
         case 4:
-            return '[视频]';
+            return t('todo.messageType.video');
         case 5:
-            return '[小视频]';
+            return t('todo.messageType.shortVideo');
         case 6:
-            return '[位置]';
+            return t('todo.messageType.location');
         case 7:
-            return '[名片]';
+            return t('todo.messageType.contactCard');
         case 8: {
             // 文件消息：显示文件名和大小
             const name = p.name;
             const size = p.size;
-            const fileName = typeof name === 'string' && name ? name : '未知文件';
+            const fileName = typeof name === 'string' && name ? name : t('todo.messageType.unknownFile');
             if (typeof size === 'number' && size > 0) {
                 const formattedSize = formatFileSize(size);
-                return `[文件] ${fileName} (${formattedSize})`;
+                return t('todo.messageType.fileWithSize', { values: { name: fileName, size: formattedSize } });
             }
-            return `[文件] ${fileName}`;
+            return t('todo.messageType.file', { values: { name: fileName } });
         }
         case 11:
-            return '[合并转发]';
+            return t('todo.messageType.mergeForward');
         case 12:
         case 13:
-            return '[表情]';
+            return t('todo.messageType.emoji');
         case 1000:
-            return '[系统消息]';
+            return t('todo.messageType.system');
         default:
             return typeof type === 'number'
-                ? `[消息 type=${type}]`
-                : '[消息]';
+                ? t('todo.messageType.typedMessage', { values: { type } })
+                : t('todo.messageType.message');
     }
 }
 
@@ -352,9 +383,10 @@ function formatFileSize(bytes: number): string {
 
 function formatTime(ts: number): string {
     if (!ts) return '';
-    // 后端 timestamp 是秒级 10 位, 乘 1000 转毫秒
     const d = new Date(ts * 1000);
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
     const hh = String(d.getHours()).padStart(2, '0');
-    const mm = String(d.getMinutes()).padStart(2, '0');
-    return `${hh}:${mm}`;
+    const min = String(d.getMinutes()).padStart(2, '0');
+    return `${mm}-${dd} ${hh}:${min}`;
 }

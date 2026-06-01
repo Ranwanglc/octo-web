@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useLayoutEffect } from "react";
-import { WKApp } from "@octo/base";
+import { WKApp, useI18n } from "@octo/base";
 import WKAvatar from "@octo/base/src/Components/WKAvatar";
 import { Channel, ChannelTypePerson } from "wukongimjssdk";
 import { useMatterList } from "../../hooks/useTodoList";
@@ -29,6 +29,7 @@ export default function ChatMatterPanel({
   channelName,
   onClose,
 }: ChatMatterPanelProps) {
+  const { t } = useI18n();
   const [activeTab, setActiveTab] = useState<Tab>("all");
   const [selectedMatterId, setSelectedMatterId] = useState<string | null>(null);
 
@@ -116,9 +117,9 @@ export default function ChatMatterPanel({
   })();
 
   const TABS: Array<{ id: Tab; label: string }> = [
-    { id: "mine", label: "我负责的" },
-    { id: "created", label: "我创建的" },
-    { id: "all", label: "全部" },
+    { id: "mine", label: t("todo.tabs.mine") },
+    { id: "created", label: t("todo.tabs.created") },
+    { id: "all", label: t("todo.tabs.all") },
   ];
 
   // ── Splitter drag ──
@@ -208,6 +209,7 @@ export default function ChatMatterPanel({
           channelId={channelId}
           channelType={channelType}
           onClose={() => setSelectedMatterId(null)}
+          showClose
         />
         {isDragging && <div className="wk-thread-panel-drag-overlay" />}
       </div>
@@ -225,12 +227,12 @@ export default function ChatMatterPanel({
       </div>
 
       <div className="wk-mp-page-sidebar__header">
-        <h2 className="wk-mp-page-sidebar__title">事项</h2>
+        <h2 className="wk-mp-page-sidebar__title">{t("todo.menu.title")}</h2>
         <button
           type="button"
           className="wk-mp-page-sidebar__close"
           onClick={onClose}
-          aria-label="关闭"
+          aria-label={t("todo.common.close")}
         >
           ✕
         </button>
@@ -250,12 +252,11 @@ export default function ChatMatterPanel({
       </div>
 
       <div className="wk-mp-page-sidebar__list" ref={listRef}>
-        {loading && <div className="wk-mp-page-sidebar__empty">加载中...</div>}
+        {loading && matters.length === 0 && <div className="wk-mp-page-sidebar__empty">{t("todo.state.loading")}</div>}
         {!loading && displayMatters.length === 0 && (
-          <div className="wk-mp-page-sidebar__empty">暂无事项</div>
+          <div className="wk-mp-page-sidebar__empty">{t("todo.state.empty")}</div>
         )}
-        {!loading &&
-          displayMatters.map((matter) => (
+        {displayMatters.map((matter) => (
             <SidebarCard
               key={matter.id}
               matter={matter}
@@ -266,10 +267,15 @@ export default function ChatMatterPanel({
               sourceChannelName={matter.source_name}
             />
           ))}
-        {!loading && displayMatters.length > 0 && (
+        {displayMatters.length > 0 && (
           <button type="button" className="wk-mp-page-sidebar__archived-toggle">
-            <span className="wk-mp-page-sidebar__archived-chev">▸</span>
-            已归档 (0)
+            <span className="wk-mp-page-sidebar__archived-bar" />
+            <span className="wk-mp-page-sidebar__nav-label">{t("todo.status.unarchived")}</span>
+            <span className="wk-mp-page-sidebar__archived-chev">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path d="M6.29 4.27L9.71 8l-3.42 3.73" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </span>
           </button>
         )}
       </div>

@@ -1,4 +1,5 @@
 import { WKApp, ProviderListener } from "@octo/base";
+import { applyLoginResp } from "./loginSession";
 import {
     buildAuthorizeURL,
     clearPendingOidcLogin,
@@ -15,6 +16,7 @@ import {
     pollAuthStatus,
     savePendingOidcLogin,
 } from "./oidc";
+import { loginT as t } from "./i18n";
 
 
 export class LoginStatus {
@@ -353,59 +355,10 @@ export class LoginVM extends ProviderListener {
     }
 
     loginSuccess(data:any, provider: string = 'local') {
-        if (!data || !data.uid || !data.token) {
-            throw new Error('Invalid login response: missing required fields (uid, token)')
-        }
         this.clearSensitiveFields()
-        const loginInfo = WKApp.loginInfo
-        loginInfo.appID = data.app_id ?? ''
-        loginInfo.uid = data.uid
-        loginInfo.token = data.token
-        loginInfo.shortNo = data.short_no ?? ''
-        loginInfo.name = data.name ?? ''
-        loginInfo.sex = data.sex ?? 0
-        loginInfo.loginProvider = provider
-
-        // 把后端登录 payload 的实名字段映射到 loginInfo（配套
-        // dmworkim `/v1/user/login` & `/v1/user/current` response
-        // 新增 realname_verified / real_name / realname_verified_at）。
-        //
-        // 数据契约：
-        //   - 已实名用户：realname_verified=true, real_name=非空, realname_verified_at=unix秒
-        //   - 未实名用户：realname_verified=false（或字段缺失），real_name 缺失或空
-        //   - 老后端尚未部署：三个字段都 **缺失** → loginInfo 三个字段保持
-        //     undefined（tri-state 的「未知」态），前端继续用 loginInfo.name
-        //     显示，不报错（渐进兼容）。
-        //
-        // 为什么严格 tri-state：字段缺失 (undefined) 必须和 「明确 false」
-        // 区分开，否则老后端场景下会把「状态未知」当作「明确未实名」，
-        // 覆盖掉 MeInfo 页后续 /v1/users/:uid 刷新拿到的实名状态。
-        // 这是 R9 的 Coda 血泪教训（memory 627798ef）：读取
-        // state 字段前必须验证完整写入路径，本次通过登录 payload 直发解决。
-        const rv = data.realname_verified
-        if (rv === true || rv === 1 || rv === "1" || rv === "true") {
-            loginInfo.realnameVerified = true
-        } else if (rv === false || rv === 0 || rv === "0" || rv === "false") {
-            loginInfo.realnameVerified = false
-        } else {
-            loginInfo.realnameVerified = undefined
-        }
-        if (typeof data.real_name === "string" && data.real_name.length > 0) {
-            loginInfo.realName = data.real_name
-        } else {
-            loginInfo.realName = undefined
-        }
-        const rvAt = data.realname_verified_at
-        if (typeof rvAt === "number" && rvAt > 0) {
-            loginInfo.realnameVerifiedAt = rvAt
-        } else if (typeof rvAt === "string" && rvAt !== "") {
-            const n = Number(rvAt)
-            loginInfo.realnameVerifiedAt = Number.isFinite(n) && n > 0 ? n : undefined
-        } else {
-            loginInfo.realnameVerifiedAt = undefined
-        }
-
-        loginInfo.save()
+        // 数据映射 (含实名 tri-state) 与 loginInfo.save() 统一抽到 loginSession.ts
+        // 共享; bind 流程 (BindPage) 复用同一份写入路径, 走的是后端同一份 execLogin.
+        applyLoginResp(data, provider)
 
         // 登录/注册成功后，检查是否有待处理的邀请码（来自邀请链接）
         // 有邀请码：直接 callOnLogin()，邀请码加入逻辑统一由 Layout/onLogin 处理，避免重复执行
@@ -581,12 +534,12 @@ export class LoginVM extends ProviderListener {
         if (urlState.error && pending) {
             const name = getProviderById(pending.providerId)?.name || 'SSO'
             clearPendingOidcLogin()
-            return { handled: true, success: false, error: `${name} 登录失败，请重试` }
+            return { handled: true, success: false, error: t('oidc.failedWithProvider', { values: { provider: name } }) }
         }
         if (!pending) return { handled: false }
         if (isPendingExpired(pending)) {
             clearPendingOidcLogin()
-            return { handled: true, success: false, error: '登录超时，请重新发起' }
+            return { handled: true, success: false, error: t('oidc.timeout') }
         }
         const providerName = getProviderById(pending.providerId)?.name || 'SSO'
         this.oidcResuming = true
@@ -612,20 +565,20 @@ export class LoginVM extends ProviderListener {
             }
             clearPendingOidcLogin()
             this._resetOidcResume()
-            return { handled: true, success: false, error: result.msg || `${providerName} 登录失败` }
+            return { handled: true, success: false, error: result.msg || t('oidc.failedWithProvider', { values: { provider: providerName } }) }
         } catch (e) {
             clearPendingOidcLogin()
             this._resetOidcResume()
             if (e instanceof OidcPollTimeoutError) {
-                return { handled: true, success: false, error: '登录超时，请重新发起' }
+                return { handled: true, success: false, error: t('oidc.timeout') }
             }
             if (e instanceof OidcPollCancelledError) {
-                return { handled: true, success: false, error: '已取消登录' }
+                return { handled: true, success: false, error: t('oidc.canceled') }
             }
             if (e instanceof OidcPollNetworkError) {
-                return { handled: true, success: false, error: '网络异常，请检查网络后重试' }
+                return { handled: true, success: false, error: t('oidc.network') }
             }
-            return { handled: true, success: false, error: '登录失败，请重试' }
+            return { handled: true, success: false, error: t('oidc.failed') }
         }
     }
 

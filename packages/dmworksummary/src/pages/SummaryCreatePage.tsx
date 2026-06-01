@@ -1,14 +1,16 @@
-import React, { Component } from "react";
+import React, { Component, createRef } from "react";
 import {
     Button,
-    TextArea,
     Toast,
     Typography,
     Tag,
     Avatar,
 } from "@douyinfe/semi-ui";
 import { IconPlus } from "@douyinfe/semi-icons";
+import { I18nContext, t } from "@octo/base";
 import WKApp from "@octo/base/src/App";
+import VoiceInputButton from "@octo/base/src/Components/VoiceInputButton";
+import type { ReplaceMode, SelectionRange } from "@octo/base/src/Components/VoiceInputButton";
 import * as api from "../api/summaryApi";
 import SummaryDetailPage from "./SummaryDetailPage";
 import ChatSelectorModal from "../components/ChatSelectorModal";
@@ -22,7 +24,7 @@ import type {
     ScheduleConfig,
 } from "../types/summary";
 import { SummaryMode, SourceType } from "../types/summary";
-import { scheduleToCron } from "../utils/summaryHelpers";
+import { getWeekdayName, scheduleToCron } from "../utils/summaryHelpers";
 
 const { Text } = Typography;
 
@@ -52,6 +54,11 @@ const TEMPLATE_ICONS: Record<string, string> = {
 };
 
 export default class SummaryCreatePage extends Component<SummaryCreatePageProps, SummaryCreatePageState> {
+    static contextType = I18nContext;
+    declare context: React.ContextType<typeof I18nContext>;
+
+    private textareaRef = createRef<HTMLTextAreaElement>();
+
     state: SummaryCreatePageState = {
         topic: "",
         templates: [],
@@ -87,15 +94,40 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
     };
 
     getScheduleLabel(cfg: ScheduleConfig): string {
-        const weekDays = ["", "周一", "周二", "周三", "周四", "周五", "周六", "周日"];
-        if (cfg.period === "daily") return `按天 ${cfg.time}`;
-        if (cfg.period === "weekly") return `每${weekDays[cfg.dayOfWeek ?? 1]} ${cfg.time}`;
-        return `每月${cfg.dayOfMonth ?? 1}日 ${cfg.time}`;
+        if (cfg.period === "daily") {
+            return t("summary.create.scheduleDaily", { values: { time: cfg.time } });
+        }
+        if (cfg.period === "weekly") {
+            return t("summary.create.scheduleWeekly", {
+                values: { day: getWeekdayName(cfg.dayOfWeek ?? 1), time: cfg.time },
+            });
+        }
+        return t("summary.create.scheduleMonthly", {
+            values: { day: cfg.dayOfMonth ?? 1, time: cfg.time },
+        });
     }
 
     canSubmit(): boolean {
         return this.state.topic.trim().length > 0;
     }
+
+    handleVoiceTranscribed = (text: string, mode: ReplaceMode, savedRange?: SelectionRange) => {
+        if (mode === "all") {
+            this.setState({ topic: text.slice(0, 1000) });
+        } else if (mode === "selection" && savedRange) {
+            // Note: savedRange indices are from recording start; assumes input is read-only during recording
+            this.setState((prev) => {
+                const updated = prev.topic.slice(0, savedRange.from) + text + prev.topic.slice(savedRange.to);
+                return { topic: updated.slice(0, 1000) };
+            });
+        } else {
+            this.setState((prev) => {
+                const pos = savedRange?.from ?? prev.topic.length;
+                const updated = prev.topic.slice(0, pos) + text + prev.topic.slice(pos);
+                return { topic: updated.slice(0, 1000) };
+            });
+        }
+    };
 
     handleSubmit = async () => {
         const { topic, selectedChats, selectedMembers, scheduleConfig } = this.state;
@@ -140,17 +172,17 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                     });
                 } catch {
                     // non-fatal: schedule creation failed
-                    Toast.warning("总结已创建，但定时更新配置失败");
+                    Toast.warning(t("summary.create.scheduleFailed"));
                 }
             }
 
-            Toast.success("总结任务已创建");
+            Toast.success(t("summary.create.success"));
             WKApp.routeRight.popToRoot();
             WKApp.routeRight.push(<SummaryDetailPage taskId={result.task_id} />);
             this.props.onCreated?.();
         } catch (err: any) {
-            this.setState({ error: err.message || "创建失败" });
-            Toast.error(err.message || "创建失败");
+            this.setState({ error: err.message || t("summary.common.createFailed") });
+            Toast.error(err.message || t("summary.common.createFailed"));
         } finally {
             this.setState({ submitting: false });
         }
@@ -163,6 +195,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             showChatSelector, showMemberSelector, showScheduleConfig,
             submitting, error,
         } = this.state;
+        const { t: translate } = this.context;
 
         return (
             <div className="summary-workbench">
@@ -170,27 +203,37 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                 <div className="summary-workbench-header">
                     <div className="summary-workbench-icon">🤖</div>
                     <div>
-                        <div className="summary-workbench-title">智能总结</div>
+                        <div className="summary-workbench-title">{translate("summary.create.title")}</div>
                         <div className="summary-workbench-desc">
-                            邀请同事一起总结信息，并根据聊天等内容自动总结
+                            {translate("summary.create.desc")}
                         </div>
                     </div>
                 </div>
 
                 {/* Main input */}
                 <div className="summary-workbench-input-area">
-                    <TextArea
-                        value={topic}
-                        onChange={(val) => this.setState({ topic: val.slice(0, 1000) })}
-                        placeholder="输入你想总结的主题，例如：总结本周项目进展、整理客户反馈要点..."
-                        rows={4}
-                        style={{ resize: "none", fontSize: 15 }}
-                        autosize={false}
-                        maxLength={1000}
-                    />
+                    <div style={{ position: "relative" }}>
+                        <textarea
+                            ref={this.textareaRef}
+                            className="summary-workbench-textarea"
+                            value={topic}
+                            onChange={(e) => this.setState({ topic: e.target.value.slice(0, 1000) })}
+                            placeholder={translate("summary.create.topicPlaceholder")}
+                            rows={4}
+                            maxLength={1000}
+                        />
+                        <VoiceInputButton
+                            inputRef={this.textareaRef}
+                            onTranscribed={this.handleVoiceTranscribed}
+                            getCurrentText={() => this.state.topic}
+                            showModeMenu
+                            size="sm"
+                            className="wk-vib--textarea-corner"
+                        />
+                    </div>
                     {topic.length >= 1000 && (
                         <div style={{ color: "var(--semi-color-warning)", fontSize: 12, marginTop: 4, padding: "0 12px 8px" }}>
-                            已达到 1000 字符上限
+                            {translate("summary.common.charLimitReached", { values: { count: 1000 } })}
                         </div>
                     )}
 
@@ -206,8 +249,8 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                                 style={{ color: selectedChats.length > 0 ? "var(--semi-color-primary)" : undefined }}
                             >
                                 {selectedChats.length > 0
-                                    ? `已选 ${selectedChats.length} 个聊天`
-                                    : "选择聊天"}
+                                    ? translate("summary.create.selectedChats", { values: { count: selectedChats.length } })
+                                    : translate("summary.create.selectChat")}
                             </Button>
                         </div>
 
@@ -218,7 +261,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                             disabled={!this.canSubmit()}
                             onClick={this.handleSubmit}
                         >
-                            开始总结
+                            {translate("summary.create.start")}
                         </Button>
                     </div>
                 </div>
@@ -269,7 +312,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                 {/* Template cards */}
                 {templates.length > 0 && (
                     <div className="summary-workbench-templates">
-                        <div className="summary-workbench-templates-title">试试这些总结模板</div>
+                        <div className="summary-workbench-templates-title">{translate("summary.create.templatesTitle")}</div>
                         <div className="summary-workbench-template-grid">
                             {templates.map((tpl) => (
                                 <div

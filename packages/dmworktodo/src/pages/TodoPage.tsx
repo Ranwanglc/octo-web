@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useLayoutEffect, useCallback } from "react";
-import { WKApp } from "@octo/base";
+import { WKApp, useI18n } from "@octo/base";
 import WKAvatar from "@octo/base/src/Components/WKAvatar";
 import { Channel, ChannelTypePerson } from "wukongimjssdk";
 import { Toast } from "@douyinfe/semi-ui";
@@ -27,12 +27,6 @@ import "./MatterPage.css";
 
 type NavTab = "mine" | "created" | "all";
 
-const TABS: Array<{ id: NavTab; label: string }> = [
-  { id: "mine", label: "我负责的" },
-  { id: "created", label: "我创建的" },
-  { id: "all", label: "全部" },
-];
-
 function buildParams(tab: NavTab, myUid: string): MatterListParams {
   if (tab === "mine") return { assignee_id: myUid };
   if (tab === "created") return { creator_id: myUid };
@@ -40,6 +34,7 @@ function buildParams(tab: NavTab, myUid: string): MatterListParams {
 }
 
 export default function MatterPage() {
+  const { t } = useI18n();
   const [activeTab, setActiveTab] = useState<NavTab>("mine");
   const [selectedMatterId, setSelectedMatterId] = useState<string | null>(null);
   const [archivedExpanded, setArchivedExpanded] = useState(false);
@@ -50,6 +45,11 @@ export default function MatterPage() {
   });
 
   const myUid = WKApp.loginInfo.uid ?? "";
+  const tabs = useMemo<Array<{ id: NavTab; label: string }>>(() => [
+    { id: "mine", label: t("todo.tabs.mine") },
+    { id: "created", label: t("todo.tabs.created") },
+    { id: "all", label: t("todo.tabs.all") },
+  ], [t]);
 
   // ── UI/数据分离: 为 ui/ 组件提供 renderAvatar / renderUserName ──
   const renderAvatar = useCallback(
@@ -174,44 +174,33 @@ export default function MatterPage() {
     <div className="wk-mp-page-sidebar">
       {/* Header */}
       <div className="wk-mp-page-sidebar__header">
-        <h2 className="wk-mp-page-sidebar__title">事项</h2>
-        {/* TODO(interaction): 点击打开 SmartCreateModal（blank 模式，PRD §3） */}
+        <h2 className="wk-mp-page-sidebar__title">{t("todo.menu.title")}</h2>
         <button
           type="button"
           className="wk-mp-page-sidebar__new-btn"
           onClick={() => setShowCreateModal(true)}
-          title="新建事项"
+          title={t("todo.action.new")}
+          aria-label={t("todo.action.new")}
         >
-          <svg
-            width="12"
-            height="12"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <line x1="12" y1="5" x2="12" y2="19" />
-            <line x1="5" y1="12" x2="19" y2="12" />
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M8 2.67v10.66M2.67 8h10.66" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
           </svg>
-          新建
         </button>
       </div>
 
       {/* Tabs */}
       <div className="wk-mp-page-sidebar__tabs">
-        {TABS.map((t) => (
+        {tabs.map((tab) => (
           <button
-            key={t.id}
+            key={tab.id}
             type="button"
-            className={`wk-mp-page-sidebar__tab${activeTab === t.id ? " is-active" : ""}`}
-            onClick={() => setActiveTab(t.id)}
+            className={`wk-mp-page-sidebar__tab${activeTab === tab.id ? " is-active" : ""}`}
+            onClick={() => setActiveTab(tab.id)}
           >
-            {t.label}
-            {tabCounts[t.id] > 0 && (
+            {tab.label}
+            {tabCounts[tab.id] > 0 && (
               <span className="wk-mp-page-sidebar__tab-count">
-                {tabCounts[t.id]}
+                {tabCounts[tab.id]}
               </span>
             )}
           </button>
@@ -220,9 +209,15 @@ export default function MatterPage() {
 
       {/* 列表 */}
       <div className="wk-mp-page-sidebar__list" ref={listRef}>
-        {loading && <div className="wk-mp-page-sidebar__empty">加载中...</div>}
+        {loading && <div className="wk-mp-page-sidebar__empty">{t("todo.state.loading")}</div>}
         {!loading && activeMatters.length === 0 && (
-          <div className="wk-mp-page-sidebar__empty">暂无事项</div>
+          <div className="wk-mp-page-sidebar__empty">{t("todo.state.empty")}</div>
+        )}
+        {!loading && activeMatters.length > 0 && (
+          <div className="wk-mp-page-sidebar__archived-toggle" style={{ cursor: 'default' }}>
+            <span className="wk-mp-page-sidebar__archived-bar" />
+            <span className="wk-mp-page-sidebar__nav-label">{t("todo.status.unarchived")}</span>
+          </div>
         )}
         {!loading &&
           activeMatters.map((matter) => (
@@ -244,12 +239,15 @@ export default function MatterPage() {
             className="wk-mp-page-sidebar__archived-toggle"
             onClick={() => setArchivedExpanded(!archivedExpanded)}
           >
+            <span className="wk-mp-page-sidebar__archived-bar" />
+            <span className="wk-mp-page-sidebar__nav-label">{t("todo.status.archivedCount", { values: { count: archivedMatters.length } })}</span>
             <span
               className={`wk-mp-page-sidebar__archived-chev${archivedExpanded ? " is-open" : ""}`}
             >
-              ▸
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path d="M6.29 4.27L9.71 8l-3.42 3.73" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
             </span>
-            已归档 ({archivedMatters.length})
           </button>
         )}
         {archivedExpanded &&
@@ -271,7 +269,7 @@ export default function MatterPage() {
             className="wk-mp-page-sidebar__loadmore"
             onClick={loadMore}
           >
-            加载更多
+            {t("todo.action.loadMore")}
           </button>
         )}
       </div>
@@ -283,7 +281,7 @@ export default function MatterPage() {
         onClose={() => setShowCreateModal(false)}
         onConfirm={async (req) => {
           await createMatter(req);
-          Toast.success("事项已创建");
+          Toast.success(t("todo.toast.created"));
         }}
       />
     </div>

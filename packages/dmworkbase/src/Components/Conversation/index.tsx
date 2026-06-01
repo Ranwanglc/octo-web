@@ -34,6 +34,10 @@ import {
 } from "../../Service/Const";
 import ConversationContext from "./context";
 import { subscriberDisplayName } from "../../Utils/displayName";
+import {
+  buildMessageMentions as buildMentionRenderInfo,
+  readMentionFlags,
+} from "../../Utils/mentionRender";
 import MessageInput, {
   MentionModel,
   MessageInputContext,
@@ -63,6 +67,8 @@ import {
   FileContent,
   formatFileSize,
   getFileIconInfo,
+  getExtension,
+  resolveSafeFileUrl,
 } from "../../Messages/File";
 import { ImageContent } from "../../Messages/Image";
 import { downloadFile } from "../../Utils/download";
@@ -71,6 +77,9 @@ import Download from "yet-another-react-lightbox/plugins/download";
 import { buildChatContext, ChatContextChannelInfo } from "./chatContext";
 import { parseThreadChannelId } from "../../Service/Thread";
 import FoldSessionExpandedList from "./FoldSessionExpandedList";
+import VoiceFeedback from "../../Service/VoiceFeedback";
+import { precheckUploadCredentials } from "../../Service/UploadCredentials";
+import { I18nContext, t } from "../../i18n";
 
 /**
  * 取消息的有效内容：如果消息被编辑过，返回编辑后的 contentEdit；否则返回原始 content
@@ -250,6 +259,10 @@ export interface ConversationProps {
     editOn: boolean;
     checkedCount: number;
   }) => void;
+  /** 展示在输入框上方的轻量提示。 */
+  inputNotice?: React.ReactNode;
+  /** 当前会话发送完成后的回调。 */
+  onMessageSent?: () => void;
   /** 当前正在预览的文件消息 ID（用于文件卡片激活态） */
   activePreviewMessageId?: string | null;
 }
@@ -277,6 +290,9 @@ export class Conversation
   extends Component<ConversationProps, ConversationState>
   implements ConversationContext
 {
+  static contextType = I18nContext;
+  declare context: React.ContextType<typeof I18nContext>;
+
   // 缓存各会话的引用/回复状态，切换会话时保留
   private static replyStateCache: Map<
     string,
@@ -796,7 +812,9 @@ export class Conversation
     for (const f of incoming) {
       const ext = f.name.substring(f.name.lastIndexOf(".") + 1).toLowerCase();
       if (BLOCKED_EXTENSIONS.includes(ext)) {
-        return `不允许发送 .${ext} 类型的文件`;
+        return t("base.conversation.upload.blockedExtension", {
+          values: { extension: ext },
+        });
       }
     }
 
@@ -1052,13 +1070,35 @@ export class Conversation
   }
 
   getMessageMentions(message: MessageWrap): MentionInfo[] {
-    return (
-      message.parts
-        ?.filter(
-          (part: Part) => part.type === PartType.mention && part.data?.uid,
-        )
-        .map((part: Part) => ({ name: part.text, uid: part.data.uid })) ?? []
-    );
+    // ── 三态 mention 高亮（render matrix） ───────────────────────────
+    // 在普通 @member 的 Parts 之外，额外注入以下三个虚拟 highlight token，
+    // 让 MarkdownContent 用现有 @member 高亮样式（uid='all' → mention-highlight）
+    // 标亮文本中的 "@所有人" / "@所有AI":
+    //   - mention.humans=1  → "@所有人"
+    //   - mention.ais=1     → "@所有AI"
+    //   - mention.humans=1 + mention.ais=1 → 两者都高亮
+    //   - mention.all=1 (legacy / server outbound 双写) → "@所有人"
+    // 不动 message.parts，避免影响 markdown 子节点分段；MarkdownContent
+    // 按 name 字符串匹配文本节点。复用同一份 highlight class 保持视觉一致。
+    //
+    // Edited messages render text from `message.remoteExtra.contentEdit`
+    // (see `getMessageTextContent` below). The mention flags must be read
+    // from the same content source — otherwise an edited message whose
+    // edit text now contains `@所有人` / `@所有AI` (or removes them) would
+    // disagree with the highlight overlay. Prefer the edited content's
+    // mention flags when present, falling back to the original message
+    // content for non-edited messages or edits that did not re-emit flags.
+    const editContent: any = message.remoteExtra?.isEdit
+      ? message.remoteExtra?.contentEdit
+      : undefined;
+    const flags =
+      readMentionFlags(editContent) ?? readMentionFlags(message.content);
+
+    return buildMentionRenderInfo(
+      message.parts as any,
+      flags,
+      PartType.mention as unknown as number,
+    ) as MentionInfo[];
   }
 
   getMessageEmojis(message: MessageWrap): EmojiInfo[] {
@@ -1166,13 +1206,22 @@ export class Conversation
       return (
         <div
           className="wk-fold-file"
-          onClick={async () => {
-            const rawUrl = content.url || content.remoteUrl || "";
-            if (!rawUrl) return;
-            const fileUrl =
-              WKApp.dataSource.commonDataSource.getFileURL(rawUrl);
+          title={t("base.messageFile.preview")}
+          onClick={() => {
+            const fileUrl = resolveSafeFileUrl(content);
             if (!fileUrl) return;
-            await downloadFile(fileUrl, content.name || "file");
+            WKApp.mittBus.emit("wk:file-preview", {
+              url: fileUrl,
+              name: content.name || t("base.messageFile.unknownFile"),
+              extension: getExtension(content.extension, content.name),
+              size: content.size,
+              sourceChannelId: message.channel.channelID,
+              sourceChannelType: message.channel.channelType,
+              messageId: message.messageID,
+              messageSeq: message.messageSeq,
+              fromUID: message.fromUID,
+              conversationDigest: content.conversationDigest,
+            });
           }}
         >
           <div
@@ -1183,13 +1232,22 @@ export class Conversation
           </div>
           <div className="wk-fold-file-info">
             <div className="wk-fold-file-name" title={content.name}>
-              {content.name || "未知文件"}
+              {content.name || t("base.conversation.file.unknown")}
             </div>
             <div className="wk-fold-file-size">
               {formatFileSize(content.size)}
             </div>
           </div>
-          <div className="wk-fold-file-dl" title="下载">
+          <div
+            className="wk-fold-file-dl"
+            title={t("base.conversation.file.download")}
+            onClick={async (e) => {
+              e.stopPropagation();
+              const fileUrl = resolveSafeFileUrl(content);
+              if (!fileUrl) return;
+              await downloadFile(fileUrl, content.name || "file");
+            }}
+          >
             <svg
               viewBox="0 0 24 24"
               width="14"
@@ -1266,7 +1324,9 @@ export class Conversation
 
     // 判断是单个还是多个 AI
     const isMultiAI = participants.length > 1;
-    const tagLabel = isMultiAI ? "AI协作" : "AI助手";
+    const tagLabel = isMultiAI
+      ? t("base.conversation.foldSession.aiCollaboration")
+      : t("base.conversation.foldSession.aiAssistant");
 
     // 折叠逻辑: 超过 5 个 AI 时折叠显示
     const shouldCollapse = participants.length > 5;
@@ -1275,7 +1335,9 @@ export class Conversation
     let participantNameDisplay: React.ReactNode;
     if (shouldCollapse) {
       // 折叠模式: 显示第一个名字 + "等X人"
-      const collapsedText = `${participants[0].name}等${participants.length}人`;
+      const collapsedText = t("base.conversation.foldSession.collapsedParticipants", {
+        values: { name: participants[0].name, count: participants.length },
+      });
       participantNameDisplay = (
         <span className="wk-fold-session-participants-collapsed">
           <span className="wk-fold-session-participant-name wk-fold-session-participant-name-ai">
@@ -1369,13 +1431,21 @@ export class Conversation
                 }}
                 aria-label={
                   session.isExpanded
-                    ? `收起${session.count}条讨论`
-                    : `展开${session.count}条讨论`
+                    ? t("base.conversation.foldSession.collapseDiscussions", {
+                        values: { count: session.count },
+                      })
+                    : t("base.conversation.foldSession.expandDiscussions", {
+                        values: { count: session.count },
+                      })
                 }
               >
                 {session.isExpanded
-                  ? `收起${session.count}条讨论`
-                  : `展开${session.count}条讨论`}
+                  ? t("base.conversation.foldSession.collapseDiscussions", {
+                      values: { count: session.count },
+                    })
+                  : t("base.conversation.foldSession.expandDiscussions", {
+                      values: { count: session.count },
+                    })}
               </button>
             </div>
             <FoldSessionCard
@@ -1874,14 +1944,27 @@ export class Conversation
                         onDrop={(event) => {
                           event.preventDefault();
                           this.dragEnd();
+                          const items = Array.from(event.dataTransfer.items);
                           const files = Array.from(event.dataTransfer.files);
                           if (files.length === 0) return;
+                          const hasDirectory = items.length
+                            ? items.some((it) => {
+                                const entry = it.webkitGetAsEntry?.();
+                                return entry ? entry.isDirectory : false;
+                              })
+                            : files.some((f) => f.type === "" && f.size === 0);
+                          if (hasDirectory) {
+                            Toast.error(t("base.conversation.upload.folderUnsupported"));
+                            return;
+                          }
                           const err = this.addPendingAttachments(files);
                           if (err) Toast.error(err);
                         }}
                       >
                         <div className="wk-conversation-content-fileupload-mask-content">
-                          发送给 &nbsp; {channelInfo?.title}
+                          {t("base.conversation.upload.sendTo", {
+                            values: { name: channelInfo?.title || "" },
+                          })}
                         </div>
                       </div>
                     ) : undefined}
@@ -1905,7 +1988,7 @@ export class Conversation
                     onForward={() => {
                       const messages = vm.getCheckedMessages();
                       if (!messages || messages.length === 0) {
-                        Toast.error("请先选择消息！");
+                        Toast.error(t("base.conversation.selection.selectMessageFirst"));
                         return;
                       }
                       WKApp.shared.baseContext.showConversationSelect(
@@ -1926,7 +2009,7 @@ export class Conversation
                     onMergeForward={() => {
                       const checkedMsgs = vm.getCheckedMessages();
                       if (!checkedMsgs || checkedMsgs.length === 0) {
-                        Toast.error("请先选择消息！");
+                        Toast.error(t("base.conversation.selection.selectMessageFirst"));
                         return;
                       }
                       WKApp.shared.baseContext.showConversationSelect(
@@ -1940,7 +2023,7 @@ export class Conversation
                     onDelete={() => {
                       const checkedMsgs = vm.getCheckedMessages();
                       if (!checkedMsgs || checkedMsgs.length === 0) {
-                        Toast.error("请先选择消息！");
+                        Toast.error(t("base.conversation.selection.selectMessageFirst"));
                         return;
                       }
                       this.setState({ showDeleteConfirm: true });
@@ -1948,7 +2031,7 @@ export class Conversation
                     onAddToMatter={(anchor) => {
                       const checkedMsgs = vm.getCheckedMessages();
                       if (!checkedMsgs || checkedMsgs.length === 0) {
-                        Toast.error("请先选择消息！");
+                        Toast.error(t("base.conversation.selection.selectMessageFirst"));
                         return;
                       }
                       // 传 channel 信息给 MatterLinkMenu，用于按 channel 查询关联的 Matter
@@ -1974,7 +2057,7 @@ export class Conversation
                     onCreateMatter={() => {
                       const checkedMsgs = vm.getCheckedMessages();
                       if (!checkedMsgs || checkedMsgs.length === 0) {
-                        Toast.error("请先选择消息！");
+                        Toast.error(t("base.conversation.selection.selectMessageFirst"));
                         return;
                       }
                       const ch = this.props.channel;
@@ -2048,7 +2131,7 @@ export class Conversation
                               color: "#1C1C23",
                             }}
                           >
-                            确认删除消息？
+                            {t("base.conversation.deleteConfirm.title")}
                           </span>
                         </div>
                         <button
@@ -2077,7 +2160,7 @@ export class Conversation
                           lineHeight: "22px",
                         }}
                       >
-                        删除的消息将从你的会话记录中消失，但仍然对会话内其他人可见。
+                        {t("base.conversation.deleteConfirm.content")}
                       </p>
                       {/* Footer */}
                       <div
@@ -2102,7 +2185,7 @@ export class Conversation
                             fontWeight: 500,
                           }}
                         >
-                          取消
+                          {t("base.common.cancel")}
                         </button>
                         <button
                           onClick={async () => {
@@ -2117,7 +2200,7 @@ export class Conversation
                               vm.editOn = false;
                               vm.unCheckAllMessages();
                             } catch (e) {
-                              Toast.error("删除失败，请重试");
+                              Toast.error(t("base.conversation.deleteConfirm.failed"));
                             }
                           }}
                           style={{
@@ -2131,7 +2214,7 @@ export class Conversation
                             fontWeight: 500,
                           }}
                         >
-                          确认
+                          {t("base.conversation.deleteConfirm.confirm")}
                         </button>
                       </div>
                     </div>
@@ -2165,6 +2248,13 @@ export class Conversation
                         : undefined
                     }
                   >
+                    {this.props.inputNotice && (
+                      <div className="wk-conversation-input-notice-wrap">
+                        <div className="wk-conversation-input-notice-bubble">
+                          {this.props.inputNotice}
+                        </div>
+                      </div>
+                    )}
                     <MessageInput
                       botCommands={botCommands}
                       onAddAttachment={(addFn: (files: File[]) => void) => {
@@ -2269,6 +2359,8 @@ export class Conversation
                         topFiles?: { id: string; file: File }[],
                         editorBlocks?: EditorContentBlock[],
                       ) => {
+                        VoiceFeedback.shared()?.submitAll(text);
+
                         // ── 回复/编辑处理 ──────────────
                         let reply: Reply | undefined;
                         if (vm.currentReplyMessage) {
@@ -2306,7 +2398,23 @@ export class Conversation
                         }
 
                         // ── 辅助：发送单张图片（读取预览+宽高） ──────────────
-                        const sendImageFile = async (file: File) => {
+                        // 返回 true 表示消息已入队 / 发送; false 表示被预检拒绝、
+                        // 调用方应据此决定是否继续后续流程 (例如不要再补一条
+                        // 空回复消息: octo-web#119 review by Jerry-Xin)。
+                        const sendImageFile = async (file: File): Promise<boolean> => {
+                          // 上传前预检：后端会对文件大小/类型做校验,失败时直接 Toast,
+                          // 不要让本地气泡先进聊天框再显示失败 (octo-web#119)。
+                          try {
+                            const dot = (file.name || "").lastIndexOf(".");
+                            const ext = dot > 0 ? file.name.substring(dot + 1) : "";
+                            await precheckUploadCredentials(file, this.channel(), ext);
+                          } catch (err) {
+                            const msg = (err as { msg?: string })?.msg || t("base.conversation.upload.failed");
+                            Toast.error(t("base.conversation.upload.imageFailed", {
+                              values: { name: file.name, message: msg },
+                            }));
+                            return false;
+                          }
                           const reader = new FileReader();
                           const previewUrl = await new Promise<string>(
                             (resolve) => {
@@ -2317,8 +2425,10 @@ export class Conversation
                             },
                           );
                           if (!previewUrl) {
-                            Toast.error(`图片「${file.name}」读取失败`);
-                            return;
+                            Toast.error(t("base.conversation.upload.imageReadFailed", {
+                              values: { name: file.name },
+                            }));
+                            return false;
                           }
                           const { width, height } = await new Promise<{
                             width: number;
@@ -2337,17 +2447,29 @@ export class Conversation
                           await this.sendMediaAndWait(
                             new ImageContent(file, previewUrl, width, height),
                           );
+                          return true;
                         };
 
                         // ── 辅助：发送单个非图片文件 ──────────────
-                        const sendFileAttachment = async (file: File) => {
+                        const sendFileAttachment = async (file: File): Promise<boolean> => {
                           const name = file.name || "unknown";
                           const dotIndex = name.lastIndexOf(".");
                           const ext =
                             dotIndex > 0 ? name.substring(dotIndex + 1) : "";
+                          // 上传前预检 (octo-web#119)。
+                          try {
+                            await precheckUploadCredentials(file, this.channel(), ext);
+                          } catch (err) {
+                            const msg = (err as { msg?: string })?.msg || t("base.conversation.upload.failed");
+                            Toast.error(t("base.conversation.upload.fileFailed", {
+                              values: { name, message: msg },
+                            }));
+                            return false;
+                          }
                           await this.sendMediaAndWait(
                             new FileContent(file, name, ext, file.size),
                           );
+                          return true;
                         };
 
                         // ── 辅助：构建带 mention 的文本 MessageContent ──────────────
@@ -2360,17 +2482,42 @@ export class Conversation
                             const mn = new Mention();
                             mn.all = blockMention.all;
                             mn.uids = blockMention.uids;
+                            // 三态 mention：SDK Mention 类型未声明 humans/ais，
+                            // 这里用 (mn as any) 把字段透传到 wire JSON。客户端
+                            // render 只读 contentObj.mention（下方 override 注入），
+                            // server 同时认 mn.humans/mn.ais（PR-A 已支持）。
+                            if (blockMention.humans) {
+                              (mn as any).humans = blockMention.humans;
+                            }
+                            if (blockMention.ais) {
+                              (mn as any).ais = blockMention.ais;
+                            }
                             msgContent.mention = mn;
-                            if (
+
+                            const hasEntities =
                               blockMention.entities &&
-                              blockMention.entities.length > 0
-                            ) {
+                              blockMention.entities.length > 0;
+                            const hasThreeState =
+                              !!(blockMention.humans || blockMention.ais);
+
+                            if (hasEntities || hasThreeState) {
                               const entities = blockMention.entities;
                               if (!msgContent.contentObj)
                                 msgContent.contentObj = {};
                               if (!msgContent.contentObj.mention)
                                 msgContent.contentObj.mention = {};
-                              msgContent.contentObj.mention.entities = entities;
+                              if (hasEntities) {
+                                msgContent.contentObj.mention.entities =
+                                  entities;
+                              }
+                              if (blockMention.humans) {
+                                msgContent.contentObj.mention.humans =
+                                  blockMention.humans;
+                              }
+                              if (blockMention.ais) {
+                                msgContent.contentObj.mention.ais =
+                                  blockMention.ais;
+                              }
                               const originalEncode =
                                 msgContent.encode.bind(msgContent);
                               msgContent.encode = () => {
@@ -2379,7 +2526,15 @@ export class Conversation
                                   const str = new TextDecoder().decode(bytes);
                                   const obj = JSON.parse(str);
                                   if (!obj.mention) obj.mention = {};
-                                  obj.mention.entities = entities;
+                                  if (hasEntities) {
+                                    obj.mention.entities = entities;
+                                  }
+                                  if (blockMention.humans) {
+                                    obj.mention.humans = blockMention.humans;
+                                  }
+                                  if (blockMention.ais) {
+                                    obj.mention.ais = blockMention.ais;
+                                  }
                                   return new TextEncoder().encode(
                                     JSON.stringify(obj),
                                   );
@@ -2397,16 +2552,24 @@ export class Conversation
                         };
 
                         // ── 第一阶段：发送顶部附件区的文件（优先级最高） ──────────────
+                        // anyMessageSent: 标记本次 onSend 是否实际入队过任何消息。
+                        // 若所有顶部附件 + 编辑器内容块都被预检拒绝,且没有文本块,
+                        // 则不应再补发空回复消息 (octo-web#119 review by Jerry-Xin)。
+                        let anyMessageSent = false;
                         const topFilesToSend = topFiles || [];
                         for (const { file } of topFilesToSend) {
                           try {
+                            let sent = false;
                             if (file.type && file.type.startsWith("image/")) {
-                              await sendImageFile(file);
+                              sent = await sendImageFile(file);
                             } else {
-                              await sendFileAttachment(file);
+                              sent = await sendFileAttachment(file);
                             }
+                            if (sent) anyMessageSent = true;
                           } catch (err) {
-                            Toast.error(`文件「${file.name}」发送失败`);
+                            Toast.error(t("base.conversation.upload.fileSendFailed", {
+                              values: { name: file.name },
+                            }));
                           }
                         }
 
@@ -2427,21 +2590,28 @@ export class Conversation
                                 }
                                 isFirstTextBlock = false;
                                 await this.sendTextAndWaitAck(msgContent);
+                                anyMessageSent = true;
                               } else if (block.type === "image") {
-                                await sendImageFile(block.file);
+                                if (await sendImageFile(block.file)) {
+                                  anyMessageSent = true;
+                                }
                               } else if (block.type === "file") {
-                                await sendFileAttachment(block.file);
+                                if (await sendFileAttachment(block.file)) {
+                                  anyMessageSent = true;
+                                }
                               }
                             } catch (err) {
                               console.error(
                                 "[Conversation] editorBlock send failed:",
                                 err,
                               );
-                              Toast.error("消息发送失败");
+                              Toast.error(t("base.conversation.message.sendFailed"));
                             }
                           }
-                          // 如果 reply 还没被消费（没有文本块），附加到一条空白消息
-                          if (reply) {
+                          // 如果 reply 还没被消费（没有文本块），附加到一条空白消息;
+                          // 但仅当本次确实发出了别的消息时,否则用户的所有附件都被
+                          // 预检拒绝、却仍收到一条孤立的空回复气泡 (#119 Jerry-Xin)。
+                          if (reply && anyMessageSent) {
                             const emptyContent = new MessageText("");
                             emptyContent.reply = reply;
                             await this.sendTextAndWaitAck(emptyContent);
@@ -2454,12 +2624,14 @@ export class Conversation
                               msgContent.reply = reply;
                             }
                             await this.sendTextAndWaitAck(msgContent);
-                          } else if (reply) {
+                          } else if (reply && anyMessageSent) {
+                            // 同上: 顶部附件全部被预检拒绝时不要补空回复
                             const emptyContent = new MessageText("");
                             emptyContent.reply = reply;
                             await this.sendTextAndWaitAck(emptyContent);
                           }
                         }
+                        this.props.onMessageSent?.();
                       }}
                     ></MessageInput>
                   </div>
@@ -2514,7 +2686,7 @@ export class Conversation
                     },
                   },
                   {
-                    title: "查看用户信息",
+                    title: t("base.conversation.avatarMenu.viewUserInfo"),
                     onClick: () => {
                       if (!this.vm.selectUID) {
                         return;
@@ -2712,7 +2884,9 @@ class ReplyView extends Component<ReplyViewProps> {
       new Channel(message.fromUID, ChannelTypePerson),
     );
     const isEdit = vm.currentHandlerType === 2;
-    const label = isEdit ? "编辑" : "回复";
+    const label = isEdit
+      ? t("base.conversation.replyView.edit")
+      : t("base.conversation.replyView.reply");
     const userName = fromChannelInfo?.title || "";
     const messageText = message.remoteExtra?.isEdit
       ? message.remoteExtra?.contentEdit?.conversationDigest
@@ -2774,11 +2948,11 @@ class MultiplePanel extends Component<MultiplePanelProps> {
     return (
       <div className="wk-multiplepanel">
         <button className="wk-multiplepanel-btn" onClick={onForward}>
-          逐条转发
+          {t("base.conversation.multiplePanel.forwardOneByOne")}
         </button>
         <div className="wk-multiplepanel-sep" />
         <button className="wk-multiplepanel-btn" onClick={onMergeForward}>
-          合并转发
+          {t("base.conversation.multiplePanel.mergeForward")}
         </button>
         <div className="wk-multiplepanel-sep" />
         {/* 创建新事项 — 从多选消息智能创建（PRD §3） */}
@@ -2787,9 +2961,9 @@ class MultiplePanel extends Component<MultiplePanelProps> {
           onClick={() => {
             if (onCreateMatter) onCreateMatter();
           }}
-          title="创建新事项"
+          title={t("base.conversation.multiplePanel.createMatter")}
         >
-          创建新事项
+          {t("base.conversation.multiplePanel.createMatter")}
         </button>
         <div className="wk-multiplepanel-sep" />
         {/* 同步到事项 — 点击由调用方弹出菜单（dmworktodo 模块接管） */}
@@ -2801,22 +2975,22 @@ class MultiplePanel extends Component<MultiplePanelProps> {
               onAddToMatter(this.matterBtnRef.current);
             }
           }}
-          title="同步到事项"
+          title={t("base.conversation.multiplePanel.syncToMatter")}
         >
-          同步到事项
+          {t("base.conversation.multiplePanel.syncToMatter")}
         </button>
         <div className="wk-multiplepanel-sep" />
         <button
           className="wk-multiplepanel-btn wk-multiplepanel-btn--danger"
           onClick={onDelete}
         >
-          删除
+          {t("base.conversation.multiplePanel.delete")}
         </button>
         <div className="wk-multiplepanel-sep" />
         <button
           className="wk-multiplepanel-close"
           onClick={onClose}
-          aria-label="取消多选"
+          aria-label={t("base.conversation.multiplePanel.cancelSelection")}
         >
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
             <path

@@ -7,6 +7,7 @@ import NavSpaceSwitcher from "./NavSpaceSwitcher";
 import NavItem from "./NavItem";
 import NavBottom from "./NavBottom";
 import NavSettingsPanel from "./NavSettingsPanel";
+import { t } from "../../i18n";
 import "./index.css";
 
 export type NavRailItem = "messages";
@@ -37,6 +38,7 @@ export interface NavRailVMProps {
     currentSpaceId?: string;
     onSpaceSelect: (spaceId: string) => void;
     onJoinSpace?: () => void;
+    onCreateSpace?: () => void;
     /** 是否在设置菜单中显示「空间管理」入口（仅 owner/admin 可见） */
     canManageSpace?: boolean;
     /** 用户关闭版本更新气泡时的回调 */
@@ -71,20 +73,21 @@ export default class NavRail extends Component<NavRailProps> {
             currentSpaceId,
             onSpaceSelect,
             onJoinSpace,
+            onCreateSpace,
             canManageSpace = false,
         } = this.props;
 
         return (
             <>
-                <nav className="wk-navrail" aria-label="主导航">
+                <nav className="wk-navrail" aria-label={t("base.navRail.ariaLabel")}>
                     {/* 顶部：用户头像（含在线状态点） */}
                     <div className="wk-navrail__top">
                         <div className="wk-navrail__user-wrap">
                             <button
                                 type="button"
                                 className="wk-navrail__user-avatar"
-                                title="我的信息"
-                                aria-label="我的信息"
+                                title={t("base.navRail.me")}
+                                aria-label={t("base.navRail.me")}
                                 onClick={onAvatarClick}
                                 style={{
                                     backgroundImage: `url(${WKApp.shared.avatarUser(WKApp.loginInfo.uid || "")})`,
@@ -120,6 +123,7 @@ export default class NavRail extends Component<NavRailProps> {
                         currentSpaceId={currentSpaceId}
                         onSpaceSelect={onSpaceSelect}
                         onJoinSpace={onJoinSpace}
+                        onCreateSpace={onCreateSpace}
                     />
                 </nav>
 
@@ -148,6 +152,7 @@ export default class NavRail extends Component<NavRailProps> {
 }
 
 export { NavSpaceSwitcher, NavItem, NavBottom };
+export { default as NavLanguageSwitcher } from "./NavLanguageSwitcher";
 export type { NavItemProps } from "./NavItem";
 export type { NavSpaceSwitcherProps } from "./NavSpaceSwitcher";
 export type { NavBottomProps } from "./NavBottom";

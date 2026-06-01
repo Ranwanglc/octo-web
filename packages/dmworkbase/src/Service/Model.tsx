@@ -5,6 +5,8 @@ import { MessageContentTypeConst, MessageReasonCode, OrderFactor } from "./Const
 import { DefaultEmojiService } from "./EmojiService"
 import { TypingManager } from "./TypingManager"
 import { getSpaceFilteredLastMessage, SYSTEM_BOTS } from "./SpaceService"
+import { isMessageContinuation } from "./messageContinuity"
+import { MENTION_LABEL_AIS, MENTION_LABEL_HUMANS } from "../Utils/mentionRender"
 
 export class ConversationWrap {
     conversation: Conversation
@@ -106,11 +108,21 @@ export class ConversationWrap {
     }
 
     public get isMentionMe(): boolean {
-        // 优先用 reminders（覆盖历史未读 @ 场景，含子区）
-        // 兜底用 SDK 的 isMentionMe（基于 lastMessage.mention）
+        // 权威来源：server-side reminders（Plan X 下 ais-only 不建 reminder，
+        // 且 filterChannelLevelByPublisher 已排除 sender 自通知）
         const hasReminderMention = (this.conversation.reminders?.length ?? 0) > 0
             && this.conversation.reminders!.some(r => r.reminderType === ReminderType.ReminderTypeMentionMe && !r.done)
-        return hasReminderMention || (this.conversation.isMentionMe ?? false)
+        if (hasReminderMention) return true
+
+        // 实时兜底：只信 per-uid mention（不信 SDK 的 broadcast 判断）
+        // Plan X: mention.all=1 不再代表人类通知，SDK 的 isMentionMe 对 broadcast 不可靠
+        const mention = this.conversation.lastMessage?.content?.mention
+        const myUid = WKSDK.shared().config.uid
+        if (mention?.uids && Array.isArray(mention.uids) && myUid && mention.uids.includes(myUid)) {
+            return true
+        }
+
+        return false
     }
 
     public set isMentionMe(isMentionMe: boolean | undefined) {
@@ -352,39 +364,28 @@ export class MessageWrap {
 
     public get bubblePosition(): BubblePosition {
 
-        if (!this.preIsSamePerson && this.nextIsSamePerson) {
+        if (!this.isContinueFromPrevious && this.isContinueToNext) {
             return BubblePosition.first
         }
-        if (this.preIsSamePerson && this.nextIsSamePerson) {
+        if (this.isContinueFromPrevious && this.isContinueToNext) {
             return BubblePosition.middle
         }
 
-        if (this.preIsSamePerson && !this.nextIsSamePerson) {
+        if (this.isContinueFromPrevious && !this.isContinueToNext) {
             return BubblePosition.last
         }
-        if (!this.preIsSamePerson && !this.nextIsSamePerson) {
+        if (!this.isContinueFromPrevious && !this.isContinueToNext) {
             return BubblePosition.single
         }
         return BubblePosition.unknown
     }
 
-    private get preIsSamePerson(): boolean {
-        if (this.preMessage?.content.contentType === MessageContentTypeConst.time) {
-            return false
-        }
-        if (this.preMessage?.revoke) {
-            return false
-        }
-        return this.preMessage?.fromUID === this.fromUID
+    public get isContinueFromPrevious(): boolean {
+        return isMessageContinuation(this.preMessage, this)
     }
-    private get nextIsSamePerson(): boolean {
-        if (this.nextMessage?.content.contentType === MessageContentTypeConst.time) {
-            return false
-        }
-        if (this.nextMessage?.revoke) {
-            return false
-        }
-        return this.nextMessage?.fromUID === this.fromUID
+
+    public get isContinueToNext(): boolean {
+        return isMessageContinuation(this, this.nextMessage)
     }
 
     // 解析@
@@ -500,9 +501,10 @@ export class MessageWrap {
                 continue
             }
 
-            // Defensive check: @all / @所有人 should not have personal entity
+            // Defensive check: broadcast tokens (@all / @所有人 / @所有AI)
+            // should not bind to personal entities.
             const mentionName = mentionText.slice(1)
-            if (mentionName.toLowerCase() === 'all' || mentionName === '所有人') {
+            if (mentionName.toLowerCase() === 'all' || mentionName === MENTION_LABEL_HUMANS || mentionName === MENTION_LABEL_AIS) {
                 parts.push(new Part(PartType.text, mentionText))
                 cursor = entity.offset + entity.length
                 continue
@@ -531,8 +533,12 @@ export class MessageWrap {
             const matchText = match[0]
             const mentionName = matchText.slice(1)
 
-            // Skip @all / @所有人 — these correspond to mentionAll, not individual uid
-            if (mentionName.toLowerCase() === 'all' || mentionName === '所有人') {
+            // Skip @all / @所有人 / @所有AI — these correspond to broadcast
+            // flags (mentionAll / humans / ais), not individual uid mentions.
+            // @所有AI was added for GH#100: client-side bot UID expansion puts
+            // routing UIDs into mention.uids, but the broadcast text token must
+            // not bind to any of them.
+            if (mentionName.toLowerCase() === 'all' || mentionName === MENTION_LABEL_HUMANS || mentionName === MENTION_LABEL_AIS) {
                 continue
             }
 

@@ -33,6 +33,12 @@ export type MittEvents = {
     fromUID?: string;
     /** 消息摘要（用于回复时显示） */
     conversationDigest?: string;
+    /**
+     * 来源事项 ID。从事项详情面板 (产出文件 tab / 时间线附件) 触发预览时传入。
+     * Chat 页面据此把事项面板暂时隐藏 (而不是卸掉), 关闭预览后 unhide 让用户
+     * 回到原样, 且不在文件预览头部显示 ← 返回箭头 (因为 X 已经能"回到事项")。
+     */
+    originMatterId?: string;
   } | null;
   'wk:open-create-matter-modal': { channelId: string; channelType: number; channelName?: string; prefillTitle?: string; prefillAssigneeUids?: string[]; clearOnConfirm?: boolean };
   /** After matter created from toolbar/Alt+Enter, send editor content then clear */
@@ -53,6 +59,12 @@ export type MittEvents = {
   /** Matter 被删除后广播, 接收方据此从列表移除 */
   'wk:matter-deleted': { matterId: string };
   "summary-space-changed": undefined;
+  /**
+   * Chat VM 完成 requestConversationList()（切 Space / 重连后会触发）后广播。
+   * 用于让那些一次性读取 WKSDK.conversationManager.conversations 缓存的消费者
+   * （如合并转发选择器）在缓存被回填后再 load 一次,避免读到清空中间态。
+   */
+  "conversation-list-refreshed": undefined;
   /**
    * 频道头像发生变化（上传/更新）时广播。订阅者（例如 WKAvatar）可依据 channelID +
    * channelType 匹配后刷新自身缓存的 avatar URL，避免整页刷新。
@@ -97,6 +109,7 @@ export enum ThemeMode {
 export class WKConfig {
   appName: string = "DMWork";
   appVersion: string = "0.0.0"; // app版本
+  locale: string = "zh-CN"; // 当前语言
   themeColor: string = "#1C1C23"; // 主题颜色
   secondColor: string = "rgba(232, 234, 237)";
   pageSize: number = 15; // 数据页大小
@@ -135,6 +148,7 @@ import {
   parseOidcProviders,
   type OidcProviderConfig,
 } from "./Service/OidcConfig";
+import { parseRemoteBool } from "./Utils/remoteConfig";
 export {
   sanitizeHttpUrl,
   parseOidcProviders,
@@ -144,6 +158,15 @@ export type { OidcProviderConfig } from "./Service/OidcConfig";
 export class WKRemoteConfig {
   revokeSecond: number = 2 * 60; // 撤回时间
   threadOn: boolean = false; // 子区功能开关，默认关闭
+  disableUserCreateSpace: boolean = false; // 是否关闭普通用户创建 Space 入口
+  /**
+   * 是否关闭 Web 登录页的前端临时迁移提示。
+   *
+   * 后端字段 suppress_login_migration_notice 为 true 时表示后端/其他端已接管提示，
+   * Web 端不再展示这套 Aegis 迁移说明。字段缺失或 false 时默认展示，是本轮
+   * Octo -> Aegis 迁移期的产品决策。
+   */
+  suppressLoginMigrationNotice: boolean = false;
   /**
    * OIDC provider 元数据数组, 由后端 /v1/common/appconfig 的 oidc_providers 字段下发。
    * OIDC 关闭时为空数组。前端不再硬编码具体 IdP, 部署 env 切 provider。
@@ -157,6 +180,7 @@ export class WKRemoteConfig {
   // 而其内容(SSO 按钮文案/可见性)依赖 appconfig 字段的组件去 re-render。
   // 不在每次失败重试上 fire, 避免重复刷新。
   private listeners: Array<() => void> = [];
+  private configChangeListeners: Array<() => void> = [];
 
   /**
    * addListener 订阅 appconfig **首次** 加载完成事件——只 fire 一次 (后续重连/手动 refetch 不再触发)。
@@ -197,6 +221,25 @@ export class WKRemoteConfig {
     }
   }
 
+  addConfigChangeListener(cb: () => void): () => void {
+    this.configChangeListeners.push(cb);
+    return () => {
+      const i = this.configChangeListeners.indexOf(cb);
+      if (i >= 0) this.configChangeListeners.splice(i, 1);
+    };
+  }
+
+  private notifyConfigChangeListeners() {
+    const snapshot = [...this.configChangeListeners];
+    for (const cb of snapshot) {
+      try {
+        cb();
+      } catch (e) {
+        console.error("[WKRemoteConfig] config change listener threw", e);
+      }
+    }
+  }
+
   async startRequestConfig() {
     // 吃掉 requestConfig 的 reject: 否则 await 直接抛出, 后面的 retry 分支根本到不了——
     // 网络错误下指数退避就成了死代码。requestSuccess 在出错时保持 false, retry 分支负责重排。
@@ -219,12 +262,28 @@ export class WKRemoteConfig {
   requestConfig() {
     return WKApp.apiClient.get("common/appconfig").then((result) => {
       const wasSuccessful = this.requestSuccess;
+      const previousDisableUserCreateSpace = this.disableUserCreateSpace;
+      const previousSuppressLoginMigrationNotice =
+        this.suppressLoginMigrationNotice;
       this.requestSuccess = true;
       this.revokeSecond = result["revoke_second"];
       this.threadOn = !!result["thread_on"];
+      this.disableUserCreateSpace = parseRemoteBool(
+        result["disable_user_create_space"]
+      );
+      this.suppressLoginMigrationNotice = parseRemoteBool(
+        result["suppress_login_migration_notice"]
+      );
       this.oidcProviders = parseOidcProviders(result["oidc_providers"]);
       // 仅首次成功通知, 后续重新拉取(重连/手动刷新)不重复打扰订阅方。
       if (!wasSuccessful) this.notifyListeners();
+      if (
+        previousDisableUserCreateSpace !== this.disableUserCreateSpace ||
+        previousSuppressLoginMigrationNotice !==
+          this.suppressLoginMigrationNotice
+      ) {
+        this.notifyConfigChangeListeners();
+      }
     });
   }
 }
@@ -550,9 +609,15 @@ export default class WKApp extends ProviderListener {
   deviceId: string = ""; // 设备ID
   currentSpaceId: string = ""; // 当前选中的 Space ID
   channelSpaceMap: Map<string, string> = new Map(); // channelID_channelType → spaceID 缓存
+  // channelID_channelType → my source_space_id 缓存（仅在我作为外部成员加入该群时有值）
+  // 由 conversation sync 响应（octo-server PR#154 起携带 my_source_space_id）预填，
+  // 用于在 subscriber.orgData 未加载完成时避免 shouldSkipChannelForSpace 误过滤外部群。
+  channelMySourceSpaceMap: Map<string, string> = new Map();
   spaceChecked: boolean = false; // Space 检查是否完成
   deviceName: string = ""; // 设备名称
   deviceModel: string = ""; // 设备型号
+  private remoteConfigForegroundRefreshStarted: boolean = false;
+  private lastRemoteConfigForegroundRefreshAt: number = 0;
 
   set notificationIsClose(v: boolean) {
     this._notificationIsClose = v;
@@ -630,6 +695,35 @@ export default class WKApp extends ProviderListener {
     }
 
     WKApp.remoteConfig.startRequestConfig();
+    this.setupRemoteConfigForegroundRefresh();
+  }
+
+  private setupRemoteConfigForegroundRefresh() {
+    if (
+      this.remoteConfigForegroundRefreshStarted ||
+      typeof window === "undefined" ||
+      typeof document === "undefined"
+    ) {
+      return;
+    }
+    this.remoteConfigForegroundRefreshStarted = true;
+
+    const refresh = () => {
+      this.refreshRemoteConfigOnForeground();
+    };
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) refresh();
+    });
+    window.addEventListener("focus", refresh);
+  }
+
+  private refreshRemoteConfigOnForeground() {
+    const now = Date.now();
+    if (now - this.lastRemoteConfigForegroundRefreshAt < 5000) return;
+    this.lastRemoteConfigForegroundRefreshAt = now;
+    WKApp.remoteConfig.requestConfig().catch((e) => {
+      console.warn("[WKRemoteConfig] foreground refresh failed", e);
+    });
   }
 
   getDeviceIdFromStorage() {
@@ -745,6 +839,8 @@ export default class WKApp extends ProviderListener {
     WKApp.loginInfo.logout();
     localStorage.removeItem("currentSpaceId");
     this.currentSpaceId = "";
+    this.channelSpaceMap.clear();
+    this.channelMySourceSpaceMap.clear();
     this.spaceChecked = false;
     window.location.reload();
   }

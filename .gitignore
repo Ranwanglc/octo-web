@@ -7,6 +7,9 @@ node_modules
 
 # testing
 coverage
+test-results
+playwright-report
+.local-browsers
 
 # next.js
 .next/
@@ -34,6 +37,9 @@ yarn-error.log*
 # turbo
 .turbo
 
+# generated i18n scan reports (baseline/config stay tracked)
+.i18n/reports/
+
 lib/
 out/
 build
@@ -54,6 +60,10 @@ AGENTS.config.local.json
 package-lock.json
 
 # AI/IDE 工件文件（不进仓库）
+.kiro/settings/mcp.json
+**/figma-spec.md
+**/rawdata.txt
+.kiro/handoff-*.md
 .claude/
 .zed/
 .ftre/memory/

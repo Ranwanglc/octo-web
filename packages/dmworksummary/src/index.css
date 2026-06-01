@@ -71,7 +71,23 @@
 .summary-list-toolbar {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
     margin-bottom: 16px;
+}
+
+.summary-list-search {
+    flex: 1 1 180px;
+    min-width: 0;
+}
+
+.summary-list-status-filter {
+    flex: 0 1 132px;
+    min-width: 112px;
+}
+
+.summary-list-refresh {
+    flex: 0 0 32px;
 }
 
 .summary-list-loading {
@@ -1223,6 +1239,21 @@
     border: none !important;
     box-shadow: none !important;
     border-radius: 0;
+}
+
+.summary-workbench-textarea {
+    display: block;
+    width: 100%;
+    border: none;
+    outline: none;
+    resize: none;
+    background: transparent;
+    padding: 12px 16px;
+    font-family: inherit;
+    font-size: 15px;
+    line-height: 1.6;
+    color: var(--semi-color-text-0);
+    box-sizing: border-box;
 }
 
 .summary-workbench-actions {

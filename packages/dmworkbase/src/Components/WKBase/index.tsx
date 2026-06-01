@@ -14,6 +14,7 @@ import {
   ExternalViewerGate,
   UserInfoRouter,
 } from "./userInfoRouter";
+import { I18nContext } from "../../i18n";
 import "./index.css";
 
 /**
@@ -88,6 +89,7 @@ export interface WKBaseState {
   showBotDetail?: boolean;
   showConversationSelect?: boolean;
   conversationSelectTitle?: string;
+  conversationSelectKey?: number;
   showAlert?: boolean;
   alertContent?: string;
   alertTitle?: string;
@@ -144,6 +146,9 @@ export default class WKBase
   extends Component<WKBaseProps, WKBaseState>
   implements WKBaseContext
 {
+  static contextType = I18nContext;
+  declare context: React.ContextType<typeof I18nContext>;
+
   // PR#1113 review: bot-vs-human routing + stale-request guard are
   // delegated to a React-free production helper (UserInfoRouter). The helper
   // tracks a monotonically-increasing token so that a late-resolving async
@@ -219,11 +224,14 @@ export default class WKBase
     onFinished?: (channels: Channel[]) => void,
     title?: string
   ) {
-    this.setState({
+    this.setState((prev) => ({
       showConversationSelect: true,
       conversationSelectFinished: onFinished,
       conversationSelectTitle: title,
-    });
+      // 每次打开递增 key，强制 ConversationSelect 重新挂载，
+      // 让 useForwardModal 用当前 spaceId 重新拉数据，避免切 Space 后列表陈旧。
+      conversationSelectKey: (prev.conversationSelectKey ?? 0) + 1,
+    }));
   }
 
   hideUserInfo() {
@@ -292,6 +300,7 @@ export default class WKBase
       vercode,
       showConversationSelect,
       conversationSelectTitle,
+      conversationSelectKey,
       conversationSelectFinished,
       onAlertOk,
       alertContent,
@@ -366,6 +375,7 @@ export default class WKBase
           }}
         >
           <ConversationSelect
+            key={conversationSelectKey}
             onFinished={(channels: Channel[]) => {
               this.setState({
                 showConversationSelect: false,
@@ -410,7 +420,7 @@ export default class WKBase
         {/* 加入组织 */}
         <WKModal
           visible={showJoinOrgInfo}
-          title="加入组织"
+          title={this.context.t("base.wkBase.joinOrganization")}
           className="wk-base-modal-join-org"
           options={{ mask: false }}
           onCancel={() => {

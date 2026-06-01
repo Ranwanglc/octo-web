@@ -11,11 +11,17 @@ export interface VoiceConfig {
   local_timeout_ms?: number;
   local_probe_url?: string;
   local_transcribe_url?: string;
+  feedback_url?: string;
+  feedback_privacy_url?: string;
+  feedback_user_agreement_url?: string;
+  engine?: string;
+  edit_mode?: string;
 }
 
 export interface TranscribeResult {
   text: string;
   m: string; // shortened model name from backend
+  request_id?: string;
 }
 
 export interface VoiceContextResponse {
@@ -58,6 +64,7 @@ export default class VoiceService {
     mode?: VoiceMode,
     skipLocal?: boolean,
     channelType?: number,
+    allowFeedback?: boolean,
   ): Promise<TranscribeResult> {
     if (!skipLocal) {
       const localResult = await LocalModelService.shared.transcribe(audio, contextText, chatContext, personalContext, memberContext, mode);
@@ -86,6 +93,9 @@ export default class VoiceService {
     }
     if (channelType !== undefined) {
       formData.append("channel_type", String(channelType));
+    }
+    if (allowFeedback !== undefined) {
+      formData.append("allow_feedback", String(allowFeedback));
     }
     return APIClient.shared.post("/voice/transcribe", formData);
   }
@@ -132,6 +142,33 @@ export default class VoiceService {
 
     this._voiceContextInflight.set(spaceId, request);
     return request;
+  }
+
+  async putLocalConfig(config: {
+    enabled: boolean;
+    timeout_ms?: number;
+    probe_url?: string;
+    transcribe_url?: string;
+  }): Promise<void> {
+    await APIClient.shared.put("/voice/local-config", config);
+  }
+
+  async getLocalConfig(): Promise<{
+    status: number;
+    enabled: boolean;
+    timeout_ms: number | null;
+    probe_url: string | null;
+    transcribe_url: string | null;
+  }> {
+    return APIClient.shared.get("/voice/local-config");
+  }
+
+  async deleteLocalConfig(): Promise<void> {
+    await APIClient.shared.delete("/voice/local-config");
+  }
+
+  async resetLocalConfig(config: { enabled: boolean }): Promise<void> {
+    await APIClient.shared.post("/voice/local-config/reset", config);
   }
 
   clearVoiceContextCache(spaceId?: string): void {

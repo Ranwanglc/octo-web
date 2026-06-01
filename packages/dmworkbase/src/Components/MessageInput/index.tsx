@@ -32,6 +32,7 @@ import {
   formatFileSize,
   videoPlayIcon,
 } from "./AttachmentNode";
+import { t as translate, useI18n } from "../../i18n";
 
 const MAX_MESSAGE_LENGTH = 5000;
 
@@ -39,11 +40,15 @@ const MAX_MESSAGE_LENGTH = 5000;
 const ALT_KEY = /Mac|iPhone|iPad/i.test(navigator.userAgent) ? '⌥' : 'Alt';
 
 /** 根据频道类型和名称生成 placeholder 文本 */
-function buildPlaceholder(channel: Channel, name: string): string {
+function buildPlaceholder(channel: Channel, name: string, t: typeof translate): string {
   if (channel.channelType === ChannelTypePerson) {
-    return name ? `对 ${name} 发送消息` : "发送消息";
+    return name
+      ? t("base.messageInput.placeholder.directWithName", { values: { name } })
+      : t("base.messageInput.placeholder.direct");
   } else {
-    return name ? `在 ${name} 中回复...  ${ALT_KEY}+↵ 创建任务` : `输入消息...  ${ALT_KEY}+↵ 创建任务`;
+    return name
+      ? t("base.messageInput.placeholder.replyWithName", { values: { name, shortcut: ALT_KEY } })
+      : t("base.messageInput.placeholder.reply", { values: { shortcut: ALT_KEY } });
   }
 }
 
@@ -77,11 +82,13 @@ export type EditorContentBlock =
   | { type: "image"; id: string; file: File }
   | { type: "file"; id: string; file: File };
 
-/**
- * 从编辑器 JSON 中按文档顺序提取有序内容块。
- * attachment 是 inline 节点（嵌套在 paragraph 内部），会把前后文本切割成独立文本段。
- * 连续的纯文本段落合并为一个 text block（用 \n 分隔）。
- */
+const TIPTAP_BLOCK_TYPES = new Set([
+  'paragraph', 'heading', 'blockquote', 'codeBlock',
+  'orderedList', 'bulletList', 'listItem',
+  'table', 'tableRow', 'tableCell', 'tableHeader',
+  'horizontalRule',
+]);
+
 function extractOrderedBlocks(
   editorInstance: any,
   attachmentFilesMap: Map<string, File>
@@ -91,21 +98,8 @@ function extractOrderedBlocks(
   if (!json.content) return [];
 
   const blocks: EditorContentBlock[] = [];
-  let pendingTextParts: string[] = []; // 当前累积的文本片段（跨行用 \n 连接）
+  let pendingTextParts: string[] = [];
 
-  // 从 inline 节点中提取文本（text / mention / hardBreak）
-  function inlineToText(node: any): string {
-    if (node.type === "text") {
-      return node.text || "";
-    } else if (node.type === "mention") {
-      return `@[${node.attrs.id}:${node.attrs.label}]`;
-    } else if (node.type === "hardBreak") {
-      return "\n";
-    }
-    return "";
-  }
-
-  // 把累积的 pendingTextParts 冲刷为一个 text block
   function flushText() {
     const joined = stripInvisibleChars(pendingTextParts.join(""));
     if (joined.trim() !== "") {
@@ -115,60 +109,48 @@ function extractOrderedBlocks(
     pendingTextParts = [];
   }
 
-  for (let blockIdx = 0; blockIdx < json.content.length; blockIdx++) {
-    const topNode = json.content[blockIdx];
-
-    // 顶层如果直接是 attachment（理论上不会，但防御性处理）
-    if (topNode.type === "attachment" && topNode.attrs) {
-      const file = attachmentFilesMap.get(topNode.attrs.id);
+  function processNode(node: any): void {
+    if (node.type === "attachment" && node.attrs) {
+      const file = attachmentFilesMap.get(node.attrs.id);
       if (file) {
         flushText();
         const blockType = file.type.startsWith("image/") ? "image" : "file";
-        blocks.push({ type: blockType, id: topNode.attrs.id, file });
+        blocks.push({ type: blockType, id: node.attrs.id, file });
       }
-      continue;
+      return;
     }
 
-    // paragraph / heading 等块级节点：遍历其 inline content
-    const children = topNode.content || [];
-    const hasAttachment = children.some((c: any) => c.type === "attachment");
+    if (node.type === "text") {
+      pendingTextParts.push(node.text || "");
+      return;
+    }
+    if (node.type === "mention") {
+      pendingTextParts.push(`@[${node.attrs.id}:${node.attrs.label}]`);
+      return;
+    }
+    if (node.type === "hardBreak") {
+      pendingTextParts.push("\n");
+      return;
+    }
 
-    if (!hasAttachment) {
-      // 整段都是纯文本，累积
-      let lineText = "";
-      for (const child of children) {
-        lineText += inlineToText(child);
-      }
-      // 段落间用 \n 分隔
-      if (pendingTextParts.length > 0) {
-        pendingTextParts.push("\n");
-      }
-      pendingTextParts.push(lineText);
-    } else {
-      // 段落内有 attachment，需要拆分：text...attachment...text...
-      // 先加段落换行分隔（如果前面有累积文本）
-      if (pendingTextParts.length > 0) {
-        pendingTextParts.push("\n");
-      }
-
-      for (const child of children) {
-        if (child.type === "attachment" && child.attrs) {
-          const file = attachmentFilesMap.get(child.attrs.id);
-          if (file) {
-            // 遇到 attachment，先冲刷前面累积的文本
-            flushText();
-            const blockType = file.type.startsWith("image/") ? "image" : "file";
-            blocks.push({ type: blockType, id: child.attrs.id, file });
-          }
-        } else {
-          // 普通 inline 节点（text / mention / hardBreak）
-          pendingTextParts.push(inlineToText(child));
+    if (node.content) {
+      for (let i = 0; i < node.content.length; i++) {
+        const child = node.content[i];
+        if (i > 0 && TIPTAP_BLOCK_TYPES.has(child.type)) {
+          pendingTextParts.push("\n");
         }
+        processNode(child);
       }
     }
   }
 
-  // 冲刷最后残余的文本
+  for (let blockIdx = 0; blockIdx < json.content.length; blockIdx++) {
+    if (blockIdx > 0) {
+      pendingTextParts.push("\n");
+    }
+    processNode(json.content[blockIdx]);
+  }
+
   flushText();
 
   return blocks;
@@ -233,7 +215,33 @@ export class MentionModel {
   all: boolean = false;
   uids?: Array<string>;
   entities?: MentionEntity[];
+  /**
+   * Three-state mention flags. Sent to server alongside literal "@所有人" / "@所有AI"
+   * text. Server normalizes legacy `all=1` into `humans=1` outbound, so renderers
+   * may see either field set; both must be honored.
+   *
+   * - humans: 1 → "@所有人" should be highlighted on receivers
+   * - ais:    1 → "@所有AI"  should be highlighted on receivers
+   *
+   * Stored as 0|1 to match the wire protocol (RFC: mention-three-state v1).
+   */
+  humans?: number;
+  ais?: number;
 }
+
+// Sentinel uids used by the @-dropdown sticky top items + voice transcription.
+// `-1` is the legacy "@所有人" (all=1). `-2` / `-3` are the new three-state items.
+// The canonical definitions live in Utils/mentionRender so the shared
+// dropdown helper (`buildMentionDropdownItems`) and unit tests can reuse
+// them without an import cycle through this large editor module.
+import {
+  MENTION_UID_LEGACY_ALL,
+  MENTION_UID_HUMANS,
+  MENTION_UID_AIS,
+  MENTION_LABEL_HUMANS,
+  MENTION_LABEL_AIS,
+  buildMentionDropdownItems,
+} from "../../Utils/mentionRender";
 
 // 解析 @[uid:name] 格式的 mention
 function formatMentionTextV2(text: string): {
@@ -245,6 +253,8 @@ function formatMentionTextV2(text: string): {
   let result = "";
   let cursor = 0;
   let all = false;
+  let humans = false;
+  let ais = false;
 
   const placeholderPattern = /@\[([^:]+):([^\]]+)\]/g;
   let match;
@@ -256,19 +266,24 @@ function formatMentionTextV2(text: string): {
     // 添加 match 之前的普通文本
     result += text.slice(cursor, match.index);
 
-    // 计算当前 @ 符号的实际位置
-    const atName =
-      uid === "-1"
-        ? "@所有人"
-        : membersRef.current?.find((m) => m.uid === uid)?.name
+    if (uid === MENTION_UID_LEGACY_ALL) {
+      // 老的 @所有人 输入路径继续走 mention.all=1（server 端会 rewrite 成 humans=1）
+      all = true;
+      result += `@${MENTION_LABEL_HUMANS}`;
+    } else if (uid === MENTION_UID_HUMANS) {
+      // 新的三态：humans=1，文本插入 @所有人，不进 entities 列表
+      humans = true;
+      result += `@${MENTION_LABEL_HUMANS}`;
+    } else if (uid === MENTION_UID_AIS) {
+      // 新的三态：ais=1，文本插入 @所有AI，不进 entities 列表
+      ais = true;
+      result += `@${MENTION_LABEL_AIS}`;
+    } else {
+      // 普通成员：以最新的 member.name 优先（avoid stale display label），fallback to label。
+      const atName = membersRef.current?.find((m) => m.uid === uid)?.name
         ? `@${membersRef.current.find((m) => m.uid === uid)!.name}`
         : `@${name}`;
-    const offset = result.length;
-
-    if (uid === "-1") {
-      all = true;
-      result += "@所有人";
-    } else {
+      const offset = result.length;
       uids.push(uid);
       entities.push({
         uid,
@@ -284,11 +299,27 @@ function formatMentionTextV2(text: string): {
   // 添加剩余文本
   result += text.slice(cursor);
 
-  if (all || entities.length > 0) {
+  if (all || humans || ais || entities.length > 0) {
     const mention = new MentionModel();
     mention.all = all;
     mention.uids = uids.length > 0 ? uids : undefined;
     mention.entities = entities.length > 0 ? entities : undefined;
+    if (humans) mention.humans = 1;
+    if (ais) {
+      mention.ais = 1;
+      // GH#100: expand bot member UIDs into mention.uids so legacy adapter
+      // bots (which only check mention.uids, not mention.ais) still recognise
+      // the @所有AI broadcast. Messages go via WuKongIM SDK direct — they
+      // never hit the server REST API, so server-side expansion (octo-server
+      // PR#145) does not apply to client-sent messages.
+      const botUids = (membersRef.current ?? [])
+        .filter((m: any) => m.orgData?.robot === 1)
+        .map((m: any) => m.uid)
+        .filter((uid: string) => !uids.includes(uid));
+      if (botUids.length > 0) {
+        mention.uids = [...(mention.uids ?? []), ...botUids];
+      }
+    }
     return { content: result, mention };
   }
 
@@ -323,7 +354,7 @@ function escapeRegExp(s: string): string {
 // Build a dynamic regex that matches @name for all known members.
 // Names are sorted longest-first so "Cindy Che" matches before "Cindy".
 function buildMentionRegex(members: MemberInfo[]): RegExp {
-  const specialNames = ["所有人", "all", "everyone"];
+  const specialNames = [MENTION_LABEL_HUMANS, "all", "everyone", MENTION_LABEL_AIS, "All AIs"];
   const allNames = [...specialNames, ...members.map((m) => m.name)];
   // Deduplicate and sort by length descending (longest match first)
   const unique = [...new Set(allNames)];
@@ -359,18 +390,26 @@ function parseMentionMarkers(
       result.push({ type: "text", text: text.slice(lastIndex, matchStart) });
     }
 
-    const isAll =
-      name === "所有人" ||
+    const isHumans =
+      name === MENTION_LABEL_HUMANS ||
       name.toLowerCase() === "all" ||
       name.toLowerCase() === "everyone";
+    const isAis =
+      name === MENTION_LABEL_AIS || name.toLowerCase() === "all ais";
     const member = members.find(
       (m) => m.name.toLowerCase() === name.toLowerCase()
     );
 
-    if (isAll) {
+    if (isHumans) {
       result.push({
         type: "mention",
-        attrs: { id: "-1", label: "所有人" },
+        attrs: { id: MENTION_UID_HUMANS, label: MENTION_LABEL_HUMANS },
+      });
+      result.push({ type: "text", text: " " });
+    } else if (isAis) {
+      result.push({
+        type: "mention",
+        attrs: { id: MENTION_UID_AIS, label: MENTION_LABEL_AIS },
       });
       result.push({ type: "text", text: " " });
     } else if (member) {
@@ -385,7 +424,7 @@ function parseMentionMarkers(
     }
 
     lastIndex = match.index + match[0].length;
-    if (isAll || member) {
+    if (isHumans || isAis || member) {
       if (lastIndex < text.length && /\s/.test(text[lastIndex])) {
         lastIndex++;
       }
@@ -402,7 +441,6 @@ function parseMentionMarkers(
 // 保持 membersRef 在模块级别供 formatMentionTextV2 使用
 let membersRef: React.MutableRefObject<Array<Subscriber> | undefined>;
 
-// 从 Tiptap JSON 提取 mentions
 function extractMentionsFromEditor(editor: any): string {
   const json = editor.getJSON();
   let result = "";
@@ -411,13 +449,16 @@ function extractMentionsFromEditor(editor: any): string {
     if (node.type === "text") {
       result += node.text;
     } else if (node.type === "mention") {
-      const uid = node.attrs.id;
-      const label = node.attrs.label;
-      result += `@[${uid}:${label}]`;
+      result += `@[${node.attrs.id}:${node.attrs.label}]`;
     } else if (node.type === "hardBreak") {
       result += "\n";
     } else if (node.content) {
-      node.content.forEach(traverse);
+      node.content.forEach((child: any, idx: number) => {
+        if (idx > 0 && TIPTAP_BLOCK_TYPES.has(child.type)) {
+          result += "\n";
+        }
+        traverse(child);
+      });
     }
   }
 
@@ -500,6 +541,7 @@ function isVideoFileType(file: File): boolean {
 }
 
 const MessageInput: React.FC<MessageInputProps> = (props) => {
+  const { t } = useI18n();
   const [slashMenuVisible, setSlashMenuVisible] = useState(false);
   const [slashFilter, setSlashFilter] = useState("");
   const [slashActiveIndex, setSlashActiveIndex] = useState(0);
@@ -515,7 +557,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
   const [placeholder, setPlaceholder] = useState(() => {
     const channel = props.context.channel();
     const channelInfo = WKSDK.shared().channelManager.getChannelInfo(channel);
-    return buildPlaceholder(channel, channelInfo?.title || "");
+    return buildPlaceholder(channel, channelInfo?.title || "", t);
   });
 
   useEffect(() => {
@@ -524,7 +566,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
 
     const updateName = (name: string) => {
       if (aborted) return;
-      setPlaceholder(buildPlaceholder(channel, name));
+      setPlaceholder(buildPlaceholder(channel, name, t));
     };
 
     // 监听 channelInfo 更新（SDK fetch 完成后会通知）
@@ -547,7 +589,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
       aborted = true;
       WKSDK.shared().channelManager.removeListener(listener);
     };
-  }, [props.context]);
+  }, [props.context, t]);
 
   const memberInfos = useMemo<MemberInfo[]>(() => {
     const infos: MemberInfo[] = props.members
@@ -612,49 +654,27 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
         },
         suggestion: createMentionSuggestion(
           ({ query }) => {
-            if (!localMembersRef.current)
-              return [
-                {
-                  uid: "-1",
-                  name: "所有人",
-                  icon: mentionAllIcon,
-                  isBot: false,
-                  sourceSpaceName: "",
-                },
-              ];
-
-            const items = localMembersRef.current.map((member) => {
-              // @选人弹窗按当前查看 Space 相对显示「@SpaceName」。
-              // 同 Space / 自己 / legacy 非外部 → 不显示 sourceSpaceName。
-              const ext = resolveExternalForViewer({
-                homeSpaceId: member.orgData?.home_space_id,
-                homeSpaceName: member.orgData?.home_space_name,
-                isExternalLegacy: member.orgData?.is_external,
-                sourceSpaceNameLegacy: member.orgData?.source_space_name,
-              });
-              return {
-                uid: member.uid,
-                name: member.name,
-                icon: WKApp.shared.avatarChannel(
-                  new Channel(member.uid, ChannelTypePerson)
+            // 三态 mention 顶部两个固定项：
+            //   - @所有人  → mention.humans=1
+            //   - @所有AI → mention.ais=1
+            // 只在 query 为空时置顶展示；query 非空时隐藏，避免 Enter
+            // 错误地把 @Bob 这种 query 选成 sticky @所有人（PR #59 回归）。
+            return buildMentionDropdownItems({
+              query,
+              members: localMembersRef.current,
+              iconResolver: (member) =>
+                WKApp.shared.avatarChannel(
+                  new Channel(member.uid, ChannelTypePerson),
                 ),
-                // 直接从 Subscriber.orgData 取，不依赖 channelInfo 缓存是否已热
-                isBot: member.orgData?.robot === 1,
-                sourceSpaceName: ext.isExternal ? ext.sourceSpaceName : "",
-              };
+              externalResolver: (member) =>
+                resolveExternalForViewer({
+                  homeSpaceId: member.orgData?.home_space_id,
+                  homeSpaceName: member.orgData?.home_space_name,
+                  isExternalLegacy: member.orgData?.is_external,
+                  sourceSpaceNameLegacy: member.orgData?.source_space_name,
+                }),
+              stickyIcon: mentionAllIcon,
             });
-
-            items.unshift({
-              uid: "-1",
-              name: "所有人",
-              icon: mentionAllIcon,
-              isBot: false,
-              sourceSpaceName: "",
-            });
-
-            return items.filter((item) =>
-              item.name.toLowerCase().includes(query.toLowerCase())
-            );
           },
           (active) => {
             mentionActiveRef.current = active;
@@ -991,7 +1011,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     const text = editor.getText();
     if (text.length > MAX_MESSAGE_LENGTH) {
       Notification.error({
-        content: `输入内容长度不能大于${MAX_MESSAGE_LENGTH}字符！`,
+        content: t("base.messageInput.validation.maxLength", { values: { max: MAX_MESSAGE_LENGTH } }),
       });
       return;
     }
@@ -1060,7 +1080,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
       setExpanded(false);
       props.onExpandChange?.(false);
     }
-  }, [editor, expanded, topAttachments, props.onSend, props.onExpandChange]);
+  }, [editor, expanded, topAttachments, props.onSend, props.onExpandChange, t]);
 
   // 更新 sendRef
   useEffect(() => {
@@ -1255,7 +1275,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
                             className="wk-attachment-node-remove"
                             onClick={() => removeTopAttachment(item.id)}
                             type="button"
-                            title="移除"
+                            title={t("base.messageInput.attachment.remove")}
                           >
                             <X size={16} />
                           </button>
@@ -1307,7 +1327,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
               <div
                 className="wk-messageinput-menu-btn"
                 onClick={handleMenuButtonClick}
-                title="斜杠命令"
+                title={t("base.messageInput.slashCommand")}
               >
                 /
               </div>
@@ -1334,7 +1354,6 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
 
                 // Use dynamic regex built from member names to detect mentions
                 const hasMention =
-                  memberInfos.length > 0 &&
                   buildMentionRegex(memberInfos).test(text);
 
                 // Find text position in current doc (handles mention atom nodes)
@@ -1455,7 +1474,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
             {/* 展开/收起按钮 */}
             <IconClick
               size="sm"
-              title={expanded ? "收起" : "展开输入框"}
+              title={expanded ? t("base.messageInput.collapse") : t("base.messageInput.expand")}
               onClick={toggleExpand}
               icon={
                 expanded ? <Minimize2 size={18} /> : <Maximize2 size={18} />

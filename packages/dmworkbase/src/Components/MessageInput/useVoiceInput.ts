@@ -5,9 +5,19 @@ import VoiceService, {
   VoiceContextResponse,
   VoiceMode,
 } from "../../Service/VoiceService";
+import VoiceFeedback, { type AsrParams } from "../../Service/VoiceFeedback";
 import LocalModelService, { LocalModelConfig } from "../../Service/LocalModelService";
 import WKApp from "../../App";
 import { ChatContextResult } from "../Conversation/chatContext";
+import { t } from "../../i18n";
+import {
+  fetchAndApplySpaceSetting,
+  resetSharedSpaceSetting,
+  setSharedVoiceConfig,
+  getSharedSpaceFeedbackState,
+  getSharedVoiceConfig,
+  subscribe as subscribeSpaceFeedback,
+} from "./useSpaceFeedbackSetting";
 
 export interface UseVoiceInputOptions {
   maxDuration?: number;
@@ -16,6 +26,7 @@ export interface UseVoiceInputOptions {
   onRecordingFailed?: () => void;
   getChatContext?: () => ChatContextResult | Promise<ChatContextResult>;
   mode?: VoiceMode;
+  scene?: string;
 }
 
 export interface UseVoiceInputReturn {
@@ -27,6 +38,7 @@ export interface UseVoiceInputReturn {
   isVoiceEnabled: boolean;
   currentMode: VoiceMode;
   localAvailable: boolean;
+  currentUtteranceId: string;
 }
 
 function getSupportedMimeType(): string {
@@ -43,12 +55,13 @@ export default function useVoiceInput(
   options: UseVoiceInputOptions = {}
 ): UseVoiceInputReturn {
   const {
-    maxDuration = 60, // PRD: 最长录音时长 60秒
+    maxDuration = 60,
     onTranscribed,
     onError,
     onRecordingFailed,
     getChatContext,
     mode = "smart",
+    scene = "chat",
   } = options;
 
   const [isRecording, setIsRecording] = useState(false);
@@ -66,6 +79,7 @@ export default function useVoiceInput(
   const startTimeRef = useRef<number>(0);
   const contextTextRef = useRef<string | undefined>(undefined);
   const recordingModeRef = useRef<VoiceMode>(mode);
+  const utteranceIdRef = useRef("");
 
   const getChatContextRef = useRef(getChatContext);
   getChatContextRef.current = getChatContext;
@@ -78,58 +92,51 @@ export default function useVoiceInput(
   const maxFileSizeRef = useRef<number>(0);
   const backendMaxDurationRef = useRef<number | null>(null);
   const backendEnabledRef = useRef(false);
+  const feedbackUrlRef = useRef<string | undefined>(undefined);
+  const voiceFeedbackOnRef = useRef<number>(0);
+  const spaceSeqRef = useRef(0);
 
-  // Load local model config from localStorage on mount, then fetch voice config
   useEffect(() => {
     let cancelled = false;
 
     LocalModelService.shared.loadConfig(localStorage);
     LocalModelService.shared.updateConfig({ enabled: false }, localStorage);
 
-    const LOCAL_DEFAULT_TIMEOUT_MS = 10000;
-
     VoiceService.shared
       .getConfig()
       .then((config: VoiceConfig) => {
         if (cancelled) return;
-        const localAllowed = config.local_enabled === true;
-        setIsVoiceEnabled(config.enabled || localAllowed);
+        setIsVoiceEnabled(config.enabled || config.local_enabled === true);
         backendEnabledRef.current = config.enabled;
         maxFileSizeRef.current = config.max_file_size || 0;
         if (config.max_duration != null) {
           backendMaxDurationRef.current = config.max_duration;
         }
-        const localTimeout = config.local_timeout_ms ?? LOCAL_DEFAULT_TIMEOUT_MS;
+        feedbackUrlRef.current = config.feedback_url;
+        setSharedVoiceConfig(config);
 
-        if (localAllowed) {
-          const updateFields: Partial<LocalModelConfig> = {
-            enabled: true,
-            requestTimeoutMs: localTimeout,
-          };
-          // Backend-provided URLs take priority
-          if (config.local_probe_url) {
-            updateFields.probeUrl = config.local_probe_url;
-          }
-          if (config.local_transcribe_url) {
-            updateFields.transcribeUrl = config.local_transcribe_url;
-          }
-          LocalModelService.shared.updateConfig(updateFields, localStorage);
-          // Probe immediately so status becomes "available" before first recording
-          LocalModelService.shared.probe().then((available) => {
-            if (!cancelled) setLocalAvailable(available);
+        const spaceId = WKApp.shared.currentSpaceId;
+        if (spaceId) {
+          const seq = ++spaceSeqRef.current;
+          fetchAndApplySpaceSetting(spaceId, config.feedback_url).then(() => {
+            if (cancelled || spaceSeqRef.current !== seq) return;
+            const st = getSharedSpaceFeedbackState();
+            voiceFeedbackOnRef.current = (st.spaceSetting?.voice_input_enabled === 1 && st.spaceSetting?.voice_feedback_on === 1) ? 1 : 0;
           });
+        } else {
+          VoiceFeedback.init(undefined);
         }
+
       })
       .catch(() => {
         if (cancelled) return;
-        // Backend unreachable: keep local disabled (safety-first, require backend confirmation)
         setIsVoiceEnabled(false);
       });
 
     return () => { cancelled = true; };
   }, []);
 
-  // Listen for space changes to clear stale cache
+  // Listen for space changes: destroy + reinit VoiceFeedback
   useEffect(() => {
     const handler = () => {
       const prevSpaceId = voiceContextSpaceIdRef.current;
@@ -139,11 +146,71 @@ export default function useVoiceInput(
       voiceContextRef.current = null;
       voiceContextPromiseRef.current = null;
       voiceContextSpaceIdRef.current = "";
+
+      VoiceFeedback.destroy();
+      resetSharedSpaceSetting();
+      voiceFeedbackOnRef.current = 0;
+
+      const newSpaceId = WKApp.shared.currentSpaceId;
+      const url = feedbackUrlRef.current;
+      if (newSpaceId) {
+        const seq = ++spaceSeqRef.current;
+        fetchAndApplySpaceSetting(newSpaceId, url).then(() => {
+          if (spaceSeqRef.current !== seq) return;
+          const st = getSharedSpaceFeedbackState();
+          voiceFeedbackOnRef.current = (st.spaceSetting?.voice_input_enabled === 1 && st.spaceSetting?.voice_feedback_on === 1) ? 1 : 0;
+        });
+      }
     };
     WKApp.mittBus.on("space-changed", handler);
     return () => {
       WKApp.mittBus.off("space-changed", handler);
     };
+  }, []);
+
+  useEffect(() => {
+    return subscribeSpaceFeedback(() => {
+      const st = getSharedSpaceFeedbackState();
+      voiceFeedbackOnRef.current = (st.spaceSetting?.voice_input_enabled === 1 && st.spaceSetting?.voice_feedback_on === 1) ? 1 : 0;
+    });
+  }, []);
+
+  useEffect(() => {
+    const prevRef = { enabled: false, probeUrl: '', transcribeUrl: '', timeoutMs: 0 };
+    return subscribeSpaceFeedback(() => {
+      const config = getSharedVoiceConfig();
+      if (!config) return;
+
+      const next = {
+        enabled: config.local_enabled === true,
+        probeUrl: config.local_probe_url ?? '',
+        transcribeUrl: config.local_transcribe_url ?? '',
+        timeoutMs: config.local_timeout_ms ?? 10000,
+      };
+
+      const changed = next.enabled !== prevRef.enabled
+        || next.probeUrl !== prevRef.probeUrl
+        || next.transcribeUrl !== prevRef.transcribeUrl
+        || next.timeoutMs !== prevRef.timeoutMs;
+
+      if (!changed) return;
+      Object.assign(prevRef, next);
+
+      // Assumption: fetchAndApplySpaceSetting does not mutate local_* fields.
+      if (next.enabled) {
+        const updateFields: Partial<LocalModelConfig> = {
+          enabled: true,
+          requestTimeoutMs: next.timeoutMs,
+        };
+        if (next.probeUrl) updateFields.probeUrl = next.probeUrl;
+        if (next.transcribeUrl) updateFields.transcribeUrl = next.transcribeUrl;
+        LocalModelService.shared.updateConfig(updateFields, localStorage);
+        LocalModelService.shared.probe().then(setLocalAvailable);
+      } else {
+        LocalModelService.shared.updateConfig({ enabled: false }, localStorage);
+        setLocalAvailable(false);
+      }
+    });
   }, []);
 
   const cleanup = useCallback(() => {
@@ -165,9 +232,12 @@ export default function useVoiceInput(
         return;
       }
 
-      // 保存本次录音使用的 mode
       recordingModeRef.current = overrideMode ?? mode;
       setCurrentMode(recordingModeRef.current);
+
+      utteranceIdRef.current =
+        crypto.randomUUID?.() ??
+        Math.random().toString(36).slice(2) + Date.now().toString(36);
 
       voiceContextRef.current = null;
 
@@ -211,10 +281,8 @@ export default function useVoiceInput(
         recorder.start();
         setIsRecording(true);
 
-        // 记录开始时间
         startTimeRef.current = Date.now();
 
-        // 使用 setTimeout 替代 setInterval 处理 maxDuration 自动停止
         const effectiveDuration = Math.max(
           5,
           backendMaxDurationRef.current ?? maxDuration
@@ -245,7 +313,6 @@ export default function useVoiceInput(
         return;
       }
 
-      // 捕获开始时间到局部变量，避免竞态问题
       const capturedStartTime = startTimeRef.current;
 
       recorder.onstop = async () => {
@@ -254,20 +321,39 @@ export default function useVoiceInput(
         cleanup();
         setIsRecording(false);
 
-        // PRD: 录音时长不足 1 秒，Toast「未检测到语音」
         const recordingDurationMs = Date.now() - capturedStartTime;
         if (recordingDurationMs < 1000) {
-          Toast.warning("未检测到语音");
+          Toast.warning(t("base.voiceInput.error.noSpeech"));
           return;
         }
 
         if (maxFileSizeRef.current > 0 && blob.size > maxFileSizeRef.current) {
-          Toast.error("录音文件过大");
+          Toast.error(t("base.voiceInput.error.fileTooLarge"));
           if (onError) onError(new Error("Recording file size exceeds limit"));
           return;
         }
 
         setIsTranscribing(true);
+        const notifyFeedback = (
+          text: string,
+          source: "local" | "remote",
+          requestId?: string,
+          asrParams?: AsrParams,
+        ) => {
+          if (voiceFeedbackOnRef.current !== 1) return;
+          VoiceFeedback.shared()?.onTranscribeResult({
+            utteranceId: utteranceIdRef.current,
+            modelText: text,
+            source,
+            requestId,
+            scene,
+            audioBlob: source === "local" ? blob : undefined,
+            asrParams,
+          });
+        };
+
+        const allowFeedback = voiceFeedbackOnRef.current === 1;
+
         try {
           const localConfig = LocalModelService.shared.config;
           const useLocalFirst =
@@ -286,7 +372,6 @@ export default function useVoiceInput(
             const chatCtxPromise =
               getChatContextRef.current?.() ?? Promise.resolve({});
 
-            // Await context before passing to local model
             await contextPromise;
             voiceContextPromiseRef.current = null;
 
@@ -310,14 +395,24 @@ export default function useVoiceInput(
                 recordingModeRef.current,
               );
             if (localResult) {
-              if (localResult.text && onTranscribed) {
-                onTranscribed(localResult.text);
+              if (localResult.text) {
+                notifyFeedback(localResult.text, "local", undefined, {
+                  contextText: contextTextRef.current,
+                  chatContext,
+                  personalContext,
+                  memberContext,
+                  mode: recordingModeRef.current,
+                  channelType: chatCtxResult.channelType,
+                  model: localResult.m,
+                  allowFeedback,
+                });
+                if (onTranscribed) onTranscribed(localResult.text);
               }
               return;
             }
 
             if (!backendEnabledRef.current) {
-              Toast.error("本地转写失败");
+              Toast.error(t("base.voiceInput.error.localTranscriptionFailed"));
               if (onError) onError(new Error("Transcription failed"));
               return;
             }
@@ -331,9 +426,11 @@ export default function useVoiceInput(
               recordingModeRef.current,
               true,
               chatCtxResult.channelType,
+              allowFeedback,
             );
-            if (result.text && onTranscribed) {
-              onTranscribed(result.text);
+            if (result.text) {
+              notifyFeedback(result.text, "remote", result.request_id);
+              if (onTranscribed) onTranscribed(result.text);
             }
             return;
           }
@@ -343,20 +440,18 @@ export default function useVoiceInput(
             voiceContextPromiseRef.current = null;
           }
 
-          // 个人纠错上下文
           let personalContext: string | undefined;
           const voiceCtx = voiceContextRef.current;
           if (voiceCtx && voiceCtx.has_context === true && voiceCtx.context) {
             personalContext = voiceCtx.context;
           }
 
-          // 群成员名 + 聊天消息上下文
           const chatCtxResult = (await getChatContextRef.current?.()) ?? {};
           const memberContext = chatCtxResult.memberContext;
           const chatContext = chatCtxResult.chatContext;
 
           if (!backendEnabledRef.current) {
-            Toast.error("语音功能不可用");
+            Toast.error(t("base.voiceInput.error.unavailable"));
             if (onError) onError(new Error("Transcription failed"));
             return;
           }
@@ -370,14 +465,14 @@ export default function useVoiceInput(
             recordingModeRef.current,
             true,
             chatCtxResult.channelType,
+            allowFeedback,
           );
-          if (result.text && onTranscribed) {
-            onTranscribed(result.text);
+          if (result.text) {
+            notifyFeedback(result.text, "remote", result.request_id);
+            if (onTranscribed) onTranscribed(result.text);
           }
         } catch (err) {
-          // PRD: 转写失败时 Toast「转写失败，请重试」
-          Toast.error("转写失败，请重试");
-          // 统一使用 "Transcription failed" 确保 VoiceInputIndicator 能正确过滤，避免双重 Toast
+          Toast.error(t("base.voiceInput.error.transcriptionFailedRetry"));
           if (onError) onError(new Error("Transcription failed"));
         } finally {
           setIsTranscribing(false);
@@ -428,5 +523,6 @@ export default function useVoiceInput(
     isVoiceEnabled,
     currentMode,
     localAvailable,
+    currentUtteranceId: utteranceIdRef.current,
   };
 }

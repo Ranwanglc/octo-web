@@ -1,18 +1,115 @@
 import React, { Component, useState, useEffect, useRef } from "react";
-import { Button, Spin, Toast } from '@douyinfe/semi-ui';
-import { IconLock } from '@douyinfe/semi-icons';
+import { IconInfoCircle, IconLanguage, IconTick } from '@douyinfe/semi-icons';
+import { Button, Modal, Spin, Toast } from '@douyinfe/semi-ui';
+// 不引入特定渠道 icon (Mail / Phone 都不准确, Aegis 同时支持邮箱和手机号).
+// 主按钮纯文字, 避免锁定到任意一种登录方式让用户产生 "我没邮箱不能登" 的误判.
 import './login.css'
 import { QRCodeSVG } from 'qrcode.react';
-import { WKApp, Provider } from "@octo/base"
+import { WKApp, Provider, apiFetchJson, useI18n } from "@octo/base"
+import type { Locale } from "@octo/base"
 import { LoginStatus, LoginType, LoginVM } from "./login_vm";
 import classNames from "classnames";
 import { PasswordStrengthIndicator } from "./PasswordStrengthIndicator";
 import { validatePassword } from "./passwordStrength";
 import { getSSOProviders } from "./oidc";
+import type { SSOProvider } from "./oidc";
 import { IOSDownloadButton } from "./IOSDownloadButton";
+import { loginT as t, serverErrorKeyFromMessage } from "./i18n";
+import { resolveAegisRegisterUrl } from "./loginMigrationNoticeUrl";
 
 const ENTERPRISE_SSO_ENABLED =
     import.meta.env.VITE_ENABLE_ENTERPRISE_SSO === 'true'
+const LOGIN_MIGRATION_NOTICE_ACK_KEY = 'octo-login-migration-notice-v1-ack'
+// 当前登录迁移只面向 Octo -> Aegis 统一认证切换, 默认展示是产品决策。
+// register URL 从当前 provider 的 accountUrl 派生, 避免把 test/prod 用户带到
+// 错误的 IdP 环境。如果后续接入新的 OIDC provider 或非 Aegis 登录方式, 文案 /
+// provider gate 应改为由 appconfig 下发, 避免把 Aegis 迁移说明展示给无关部署。
+
+function getNextLocale(locale: Locale): Locale {
+    return locale === "zh-CN" ? "en-US" : "zh-CN";
+}
+
+function hasAcknowledgedMigrationNotice(): boolean {
+    if (typeof window === 'undefined') return false
+    try {
+        return window.localStorage.getItem(LOGIN_MIGRATION_NOTICE_ACK_KEY) === '1'
+    } catch {
+        return false
+    }
+}
+
+function acknowledgeMigrationNotice() {
+    if (typeof window === 'undefined') return
+    try {
+        window.localStorage.setItem(LOGIN_MIGRATION_NOTICE_ACK_KEY, '1')
+    } catch {
+        /* noop */
+    }
+}
+
+function openAegisRegister(registerUrl: string | undefined) {
+    if (!registerUrl) return
+    if (typeof window === 'undefined') return
+    const nextWindow = window.open(registerUrl, '_blank', 'noopener,noreferrer')
+    if (nextWindow) nextWindow.opener = null
+}
+
+const LoginLanguageSwitcher: React.FC = () => {
+    const [open, setOpen] = useState(false)
+    const { locale, setLocale, t } = useI18n()
+    const nextLocale = getNextLocale(locale)
+    const title = t(nextLocale === "en-US"
+        ? "base.navRail.language.switchToEnglish"
+        : "base.navRail.language.switchToChinese")
+    const locales: Array<{ locale: Locale; labelKey: string }> = [
+        { locale: "zh-CN", labelKey: "base.navRail.language.name.zh" },
+        { locale: "en-US", labelKey: "base.navRail.language.name.en" },
+    ]
+
+    const handleSelect = (next: Locale) => {
+        setLocale(next)
+        setOpen(false)
+    }
+
+    return (
+        <div className="wk-login-language">
+            <button
+                type="button"
+                className={`wk-login-language-button${open ? " wk-login-language-button--open" : ""}`}
+                title={title}
+                aria-label={title}
+                aria-haspopup="menu"
+                aria-expanded={open}
+                onClick={() => setOpen((value) => !value)}
+            >
+                <IconLanguage aria-hidden="true" />
+            </button>
+            {open && (
+                <>
+                    <div className="wk-login-language-mask" onClick={() => setOpen(false)} />
+                    <div className="wk-login-language-menu" role="menu">
+                        {locales.map((item) => {
+                            const active = item.locale === locale
+                            return (
+                                <button
+                                    key={item.locale}
+                                    type="button"
+                                    className={`wk-login-language-menu-item${active ? " wk-login-language-menu-item--active" : ""}`}
+                                    role="menuitemradio"
+                                    aria-checked={active}
+                                    onClick={() => handleSelect(item.locale)}
+                                >
+                                    <span className="wk-login-language-menu-label">{t(item.labelKey)}</span>
+                                    {active && <IconTick aria-hidden="true" />}
+                                </button>
+                            )
+                        })}
+                    </div>
+                </>
+            )}
+        </div>
+    )
+}
 
 const OidcResumeEffect: React.FC<{ vm: LoginVM }> = ({ vm }) => {
     const ranRef = useRef(false)
@@ -36,7 +133,15 @@ const OidcResumeEffect: React.FC<{ vm: LoginVM }> = ({ vm }) => {
         })()
         return () => {
             unmounted = true
-            vm.cancelOidcLogin()
+            // 不在 cleanup 里调 vm.cancelOidcLogin(): React 18 StrictMode 在 dev
+            // 下会 mount → cleanup → mount, 这里清掉 sessionStorage 的 pending +
+            // abort 会让第二次 mount 拿不到 pending, 整个 SSO 落地直接哑火.
+            //
+            // 真正需要取消的两条路径都被保留:
+            //   1) 用户点 OidcResumingOverlay 的"取消"按钮 → 直接调 cancelOidcLogin
+            //   2) 用户离开 /login (真正的 unmount, 比如关页面/导航走) → 浏览器
+            //      会自动中断 in-flight fetch, JS 上下文销毁, poll 自然停
+            // 5min TTL 是兜底, 不会无限循环.
         }
     }, [vm])
     return null
@@ -49,18 +154,307 @@ const OidcResumingOverlay: React.FC<{ vm: LoginVM }> = ({ vm }) => {
         <div className="wk-login-content-oidc-overlay">
             <Spin />
             <div className="wk-login-content-oidc-overlay-text">
-                {`正在完成 ${providerName} 登录…`}
+                {t('oidc.resuming', { values: { provider: providerName } })}
             </div>
             <Button
                 onClick={() => vm.cancelOidcLogin()}
                 className="wk-login-content-oidc-overlay-cancel"
             >
-                取消
+                {t('common.cancel')}
             </Button>
         </div>
     )
 }
 
+const LoginMigrationNoticeModal: React.FC<{
+    visible: boolean
+    registerUrl?: string
+    onCancel: () => void
+    onContinueLogin: () => void
+}> = ({ visible, registerUrl, onCancel, onContinueLogin }) => {
+    return (
+        <Modal
+            className="wk-login-migration-modal"
+            title={t('migration.title')}
+            visible={visible}
+            onCancel={onCancel}
+            width={560}
+            footer={
+                <div className="wk-login-migration-modal-footer">
+                    {registerUrl && (
+                        <Button onClick={() => openAegisRegister(registerUrl)}>
+                            {t('migration.registerAegis')}
+                        </Button>
+                    )}
+                    <Button theme="solid" type="primary" onClick={onContinueLogin}>
+                        {t('migration.continueLogin')}
+                    </Button>
+                </div>
+            }
+        >
+            <div className="wk-login-migration">
+                <div className="wk-login-migration-summary">
+                    <div className="wk-login-migration-kicker">{t('migration.kicker')}</div>
+                    <div className="wk-login-migration-title">{t('migration.summaryTitle')}</div>
+                    <div className="wk-login-migration-subtitle">{t('migration.summaryBody')}</div>
+                </div>
+                <div className="wk-login-migration-important">
+                    <IconInfoCircle aria-hidden="true" />
+                    <div>
+                        <strong>{t('migration.importantTitle')}</strong>
+                        <span>{t('migration.importantBody')}</span>
+                    </div>
+                </div>
+                <div className="wk-login-migration-section-title">
+                    {t('migration.stepsTitle')}
+                </div>
+                <div className="wk-login-migration-flow">
+                    <div className="wk-login-migration-step">
+                        <div className="wk-login-migration-step-index">1</div>
+                        <div>
+                            <strong>{t('migration.step1Label')}</strong>
+                            <p>{t('migration.step1')}</p>
+                            {registerUrl && (
+                                <button
+                                    type="button"
+                                    className="wk-login-migration-inline-link"
+                                    onClick={() => openAegisRegister(registerUrl)}
+                                >
+                                    {registerUrl}
+                                </button>
+                            )}
+                            <div className="wk-login-migration-step-hint">{t('migration.step1Hint')}</div>
+                        </div>
+                    </div>
+                    <div className="wk-login-migration-step">
+                        <div className="wk-login-migration-step-index">2</div>
+                        <div>
+                            <strong>{t('migration.step2Label')}</strong>
+                            <p>{t('migration.step2')}</p>
+                        </div>
+                    </div>
+                    <div className="wk-login-migration-step">
+                        <div className="wk-login-migration-step-index">3</div>
+                        <div>
+                            <strong>{t('migration.step3Label')}</strong>
+                            <p>{t('migration.step3')}</p>
+                            <div className="wk-login-migration-cases">
+                                <div className="wk-login-migration-case wk-login-migration-case--success">
+                                    <span className="wk-login-migration-case-tag">{t('migration.sameEmailBadge')}</span>
+                                    <div>
+                                        <strong>{t('migration.sameEmailLabel')}</strong>
+                                        <span>{t('migration.sameEmail')}</span>
+                                    </div>
+                                </div>
+                                <div className="wk-login-migration-case wk-login-migration-case--warning">
+                                    <span className="wk-login-migration-case-tag">{t('migration.differentEmailBadge')}</span>
+                                    <div>
+                                        <strong>{t('migration.differentEmailLabel')}</strong>
+                                        <span>{t('migration.differentEmail')}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div className="wk-login-migration-warning">
+                    <strong>{t('migration.bindWarningTitle')}</strong>
+                    <span>{t('migration.bindWarning')}</span>
+                </div>
+            </div>
+        </Modal>
+    )
+}
+
+const SsoLoginPanel: React.FC<{
+    vm: LoginVM
+    ssoProvider: SSOProvider
+    startSsoLogin: () => void
+    handleLogin: () => void
+    showMigrationNotice: boolean
+}> = ({ vm, ssoProvider, startSsoLogin, handleLogin, showMigrationNotice }) => {
+    const [migrationNoticeVisible, setMigrationNoticeVisible] = useState(false)
+    const aegisRegisterUrl = resolveAegisRegisterUrl(ssoProvider.accountUrl)
+
+    const closeMigrationNotice = () => {
+        setMigrationNoticeVisible(false)
+    }
+
+    const handleSsoLoginClick = () => {
+        if (!showMigrationNotice || hasAcknowledgedMigrationNotice()) {
+            startSsoLogin()
+            return
+        }
+        setMigrationNoticeVisible(true)
+    }
+
+    const handleContinueLogin = () => {
+        acknowledgeMigrationNotice()
+        setMigrationNoticeVisible(false)
+        startSsoLogin()
+    }
+
+    return (
+        <div className="wk-login-content-form">
+            <Button
+                className="wk-login-content-sso-primary"
+                loading={vm.oidcLoading}
+                disabled={vm.oidcLoading || vm.oidcResuming}
+                onClick={handleSsoLoginClick}
+            >
+                <span className="wk-login-content-sso-primary-inner">
+                    <svg className="wk-login-content-sso-primary-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="M12 2 4 5v6c0 5 3.5 9.4 8 11 4.5-1.6 8-6 8-11V5l-8-3z" />
+                        <path d="m9 12 2 2 4-4" />
+                    </svg>
+                    <span>{t('login.ssoButton')}</span>
+                </span>
+            </Button>
+            {/* 主按钮下方信任锚: shield 图标 + "身份认证由 X 提供 · 企业级安全".
+                紫色文案 + IdP 名加粗, 强化"这是企业统一身份, 不是普通登录"的
+                视觉信号; 鼠标悬停 trust 段弹出 IdP 完整解释 (借浏览器 title). */}
+            <div
+                className="wk-login-content-sso-meta"
+                title={t('login.ssoMetaBrandTitle', { values: { provider: ssoProvider.name } })}
+            >
+                <svg className="wk-login-content-sso-meta-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M12 2 4 5v6c0 5 3.5 9.4 8 11 4.5-1.6 8-6 8-11V5l-8-3z" />
+                </svg>
+                <span>{t('login.ssoMetaPrefix')}</span>
+                <strong className="wk-login-content-sso-meta-brand">{ssoProvider.name}</strong>
+                <span>{t('login.ssoMetaSuffix')}</span>
+                <span className="wk-login-content-sso-meta-sep">·</span>
+                <span>{t('login.ssoMetaTrust')}</span>
+                {showMigrationNotice && (
+                    <>
+                        <span className="wk-login-content-sso-meta-sep">·</span>
+                        <button
+                            type="button"
+                            className="wk-login-content-sso-notice-link"
+                            onClick={() => setMigrationNoticeVisible(true)}
+                        >
+                            <IconInfoCircle aria-hidden="true" />
+                            <span>{t('migration.link')}</span>
+                        </button>
+                    </>
+                )}
+            </div>
+            <LoginMigrationNoticeModal
+                visible={showMigrationNotice && migrationNoticeVisible}
+                registerUrl={aegisRegisterUrl}
+                onCancel={closeMigrationNotice}
+                onContinueLogin={handleContinueLogin}
+            />
+            {/* TODO(legacy-login-flag): 暂时隐藏本地密码登录入口, 等
+                后端 PR 在 /v1/common/appconfig 暴露 legacy_password_login_off
+                (或类似字段) 后, 改成读 WKApp.remoteConfig 字段动态切换.
+                当前: SSO 启用 + 有 provider 时, 整块隐藏看效果. */}
+            {false && (
+                <LegacyPasswordSection
+                    vm={vm}
+                    startSsoLogin={startSsoLogin}
+                    handleLogin={handleLogin}
+                />
+            )}
+            {/* 下载入口前的分隔线: 两侧细线 + 中间文案,
+                从"主登录区"过渡到"也提供移动版"的次级 CTA. */}
+            <div className="wk-login-content-download-divider">
+                <span>{t('download.mobile')}</span>
+            </div>
+            <div className="wk-login-content-download">
+                <AndroidDownloadButton />
+                <IOSDownloadButton />
+            </div>
+        </div>
+    )
+}
+
+
+// 本地密码登录区域. SSO 启用时这一段默认折叠 (P0 反馈): 外部用户大多
+// 没有 Octo 本地账号, 默认显示 SSO 主按钮 + 一行"使用密码登录"链接, 比
+// 把表单常态展开干净.
+//
+// 触发自动展开的两种情况:
+//   1) 用户主动点击 "使用密码登录" 链接
+//   2) 用户尝试登录失败 (vm.loginAttemptFailed) — 此时多半已经把账号密码
+//      填进去, 不能在失败一刻反过来把表单收起
+//
+// 折叠/展开切换是纯 UI 状态, 与 LoginVM 业务无关, 用本地 useState 持有.
+const LegacyPasswordSection: React.FC<{
+    vm: LoginVM
+    startSsoLogin: () => void
+    handleLogin: () => void
+}> = ({ vm, startSsoLogin, handleLogin }) => {
+    const [expanded, setExpanded] = useState(false)
+    const open = expanded || vm.loginAttemptFailed
+
+    if (!open) {
+        return (
+            <div className="wk-login-content-legacy-toggle">
+                <a onClick={() => setExpanded(true)}>{t('login.passwordToggle')}</a>
+            </div>
+        )
+    }
+    return (
+        <>
+            <div className="wk-login-content-legacy-divider">
+                <span>{t('login.passwordDivider')}</span>
+            </div>
+            <div className="wk-login-content-legacy-form">
+                <input
+                    type="text"
+                    name="username"
+                    autoComplete="username"
+                    placeholder={t('form.email')}
+                    onChange={(v) => { vm.username = v.target.value }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleLogin() }}
+                />
+                <input
+                    type="password"
+                    name="password"
+                    autoComplete="current-password"
+                    placeholder={t('form.password')}
+                    onChange={(v) => { vm.password = v.target.value }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleLogin() }}
+                />
+                <div className="wk-login-content-form-buttons">
+                    <Button
+                        loading={vm.loginLoading}
+                        className="wk-login-content-form-ok"
+                        type="primary"
+                        theme="solid"
+                        onMouseDown={(e: React.MouseEvent) => { e.preventDefault() }}
+                        onClick={handleLogin}
+                    >
+                        {t('login.button')}
+                    </Button>
+                </div>
+                {vm.loginAttemptFailed && (
+                    <div className="wk-login-content-form-error-cta">
+                        {t('login.passwordCta')}{' '}
+                        <a onClick={(e) => { e.preventDefault(); startSsoLogin() }}>
+                            {t('login.passwordCtaLink')}
+                        </a>
+                    </div>
+                )}
+                <div className="wk-login-content-form-others">
+                    <div
+                        className="wk-login-content-form-scanlogin"
+                        onClick={() => { vm.loginType = LoginType.qrcode }}
+                    >
+                        {t('login.scanLogin')}
+                    </div>
+                    <div
+                        className="wk-login-content-form-switch"
+                        onClick={() => { vm.loginType = LoginType.forgetPassword }}
+                    >
+                        {t('login.forgotPassword')}
+                    </div>
+                </div>
+            </div>
+        </>
+    )
+}
 
 // Android APK 下载按钮：动态从接口获取最新下载链接
 const AndroidDownloadButton: React.FC = () => {
@@ -68,8 +462,7 @@ const AndroidDownloadButton: React.FC = () => {
 
     useEffect(() => {
         const baseURL = WKApp.apiClient.config.apiURL || ""
-        fetch(`${baseURL}common/updater/android/1.0`)
-            .then(r => r.json())
+        apiFetchJson<{ url?: string }>(`${baseURL}common/updater/android/1.0`)
             .then(data => {
                 if (data?.url) setApkUrl(data.url)
             })
@@ -81,7 +474,7 @@ const AndroidDownloadButton: React.FC = () => {
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                 <path d="M6 18c0 .55.45 1 1 1h1v3.5c0 .83.67 1.5 1.5 1.5s1.5-.67 1.5-1.5V19h2v3.5c0 .83.67 1.5 1.5 1.5s1.5-.67 1.5-1.5V19h1c.55 0 1-.45 1-1V8H6v10zM3.5 8C2.67 8 2 8.67 2 9.5v7c0 .83.67 1.5 1.5 1.5S5 17.33 5 16.5v-7C5 8.67 4.33 8 3.5 8zm17 0c-.83 0-1.5.67-1.5 1.5v7c0 .83.67 1.5 1.5 1.5s1.5-.67 1.5-1.5v-7c0-.83-.67-1.5-1.5-1.5zm-4.97-5.84l1.3-1.3c.2-.2.2-.51 0-.71-.2-.2-.51-.2-.71 0l-1.48 1.48C14.15 1.23 13.1 1 12 1c-1.1 0-2.15.23-3.12.63L7.4.15c-.2-.2-.51-.2-.71 0-.2.2-.2.51 0 .71l1.31 1.31C6.97 3.26 6 5.01 6 7h12c0-1.99-.97-3.75-2.47-4.84zM10 5H9V4h1v1zm5 0h-1V4h1v1z" />
             </svg>
-            <span>下载 Android 客户端</span>
+            <span>{t('download.android')}</span>
         </a>
     )
 }
@@ -90,30 +483,20 @@ const AndroidDownloadButton: React.FC = () => {
 // 实现见 ./IOSDownloadButton.tsx（抽成独立模块便于单测）
 
 // Known safe error messages from the server that can be shown to users
-const KNOWN_ERROR_MESSAGES: Record<string, string> = {
-    "用户名或密码错误": "用户名或密码错误",
-    "验证码错误": "验证码错误",
-    "验证码已过期": "验证码已过期",
-    "该邮箱已注册": "该邮箱已注册",
-    "该用户名已存在": "该用户名已存在",
-    "账号已被禁用": "账号已被禁用",
-    "发送过于频繁": "发送过于频繁，请稍后再试",
-};
-
 /**
  * Sanitize server error messages to prevent information leakage.
  * Only known safe messages are shown; unknown errors get a generic message.
  */
 function sanitizeErrorMessage(msg: string): string {
-    if (!msg || typeof msg !== "string") return "操作失败，请稍后重试";
-    const known = KNOWN_ERROR_MESSAGES[msg];
-    if (known) return known;
+    if (!msg || typeof msg !== "string") return t('validation.genericError');
+    const knownKey = serverErrorKeyFromMessage(msg);
+    if (knownKey) return t(`serverErrorDisplays.${knownKey}`);
     // Check if message looks safe (short, no HTML, no stack trace)
     if (msg.length <= 50 && !/[<>{}]|Error:|at /.test(msg)) {
         return msg;
     }
     console.warn("Suppressed raw server error:", msg);
-    return "操作失败，请稍后重试";
+    return t('validation.genericError');
 }
 
 const isValidEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
@@ -145,7 +528,7 @@ function SendCodeButton({ onSend, countdown, className }: SendCodeButtonProps) {
     }, [countdown])
 
     const disabled = countdown > 0 || loading
-    const label = countdown > 0 ? `${countdown}s` : '发送验证码'
+    const label = countdown > 0 ? `${countdown}s` : t('sendCode')
     return (
         <Button
             className={className}
@@ -181,18 +564,23 @@ class Login extends Component<any, LoginState> {
     // SSO 按钮就不会显示。订阅 remoteConfig 的一次性「加载完成」事件触发 forceUpdate,
     // 让按钮在 appconfig 后到时自动出现, 用户无需手动刷新。
     private _unsubscribeRemoteConfig?: () => void
+    private _unsubscribeRemoteConfigChange?: () => void
 
     componentDidMount() {
-        if (WKApp.remoteConfig.requestSuccess) return
-        this._unsubscribeRemoteConfig = WKApp.remoteConfig.addListener(() => {
+        const forceUpdate = () => {
             // 仓库里 React class 组件的 @types 解析有历史问题, this.forceUpdate / setState
             // 都识别不到 (NavSettingsPanel 等处同样如此)。这里同样走 cast 跟既有写法一致。
             ; (this as unknown as { forceUpdate(): void }).forceUpdate()
-        })
+        }
+        if (!WKApp.remoteConfig.requestSuccess) {
+            this._unsubscribeRemoteConfig = WKApp.remoteConfig.addListener(forceUpdate)
+        }
+        this._unsubscribeRemoteConfigChange = WKApp.remoteConfig.addConfigChangeListener(forceUpdate)
     }
 
     componentWillUnmount() {
         this._unsubscribeRemoteConfig?.()
+        this._unsubscribeRemoteConfigChange?.()
     }
 
     render() {
@@ -208,11 +596,11 @@ class Login extends Component<any, LoginState> {
                 if (passwordEl?.value && !vm.password) vm.password = passwordEl.value
 
                 if (!vm.username) {
-                    Toast.error("邮箱或用户名不能为空！")
+                    Toast.error(t('validation.usernameRequired'))
                     return
                 }
                 if (!vm.password) {
-                    Toast.error("密码不能为空！")
+                    Toast.error(t('validation.passwordRequired'))
                     return
                 }
                 vm.loginAttemptFailed = false
@@ -241,7 +629,7 @@ class Login extends Component<any, LoginState> {
                 if (!ssoProvider) return
                 vm.startOidcLogin(ssoProvider.id).catch((err: unknown) => {
                     console.error('OIDC login start failed:', err)
-                    Toast.error('无法启动 ' + ssoProvider.name + ' 登录')
+                    Toast.error(t('login.ssoStartFailed', { values: { provider: ssoProvider.name } }))
                 })
             }
 
@@ -255,33 +643,23 @@ class Login extends Component<any, LoginState> {
                     </div>
                     <div className="wk-login-brand-inner">
                         <div className="wk-login-brand-headline">
-                            AI Agent 时代的<br />即时通讯平台
+                            {t('welcome.headline').split('\n').map((line, index) => (
+                                <React.Fragment key={line}>
+                                    {index > 0 && <br />}
+                                    {line}
+                                </React.Fragment>
+                            ))}
                         </div>
                         <div className="wk-login-brand-subline">
-                            连接人与 AI，让协作更高效。<br />
-                            支持 Web、Mac、Windows、Linux 全平台。
+                            {t('welcome.subline').split('\n').map((line, index) => (
+                                <React.Fragment key={line}>
+                                    {index > 0 && <br />}
+                                    {line}
+                                </React.Fragment>
+                            ))}
                         </div>
-                        <div className="wk-login-brand-features">
-                            <div className="wk-login-brand-feature">
-                                <div className="wk-login-brand-feature-icon">
-                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.9)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="M12 8v4l3 3" /></svg>
-                                </div>
-                                <div className="wk-login-brand-feature-text">内置 AI，智能回复与自动化</div>
-                            </div>
-                            <div className="wk-login-brand-feature">
-                                <div className="wk-login-brand-feature-icon">
-                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.9)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
-                                </div>
-                                <div className="wk-login-brand-feature-text">端到端加密，数据安全可控</div>
-                            </div>
-                            <div className="wk-login-brand-feature">
-                                <div className="wk-login-brand-feature-icon">
-                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.9)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
-                                </div>
-                                <div className="wk-login-brand-feature-text">实时消息，毫秒级响应</div>
-                            </div>
-                        </div>
-
+                        {/* 3 个功能点已下线 (P1 反馈): 登录页不是营销页, 把 hero 留给左侧
+                            chat 卡片预览即可. */}
                     </div>{/* end brand-inner */}
 
                     {/* Chat bubble decoration - absolute bottom */}
@@ -292,12 +670,12 @@ class Login extends Component<any, LoginState> {
                             </div>
                             <div className="wk-login-brand-chat-content">
                                 <div className="wk-login-brand-chat-name">Octo AI</div>
-                                <div className="wk-login-brand-chat-text">你好！我可以帮你整理今天的会议纪要 📝</div>
+                                <div className="wk-login-brand-chat-text">{t('welcome.chat1')}</div>
                             </div>
                         </div>
                         <div className="wk-login-brand-chat-bubble wk-login-brand-chat-bubble--right">
                             <div className="wk-login-brand-chat-content">
-                                <div className="wk-login-brand-chat-text">好的，会议录音已发给你</div>
+                                <div className="wk-login-brand-chat-text">{t('welcome.chat2')}</div>
                             </div>
                         </div>
                         <div className="wk-login-brand-chat-bubble wk-login-brand-chat-bubble--left">
@@ -306,7 +684,7 @@ class Login extends Component<any, LoginState> {
                             </div>
                             <div className="wk-login-brand-chat-content">
                                 <div className="wk-login-brand-chat-name">Octo AI</div>
-                                <div className="wk-login-brand-chat-text">收到，正在生成摘要，稍等片刻 ⚡</div>
+                                <div className="wk-login-brand-chat-text">{t('welcome.chat3')}</div>
                             </div>
                         </div>
                     </div>
@@ -316,111 +694,86 @@ class Login extends Component<any, LoginState> {
                 <div className="wk-login-panel">
                     {ENTERPRISE_SSO_ENABLED && <OidcResumeEffect vm={vm} />}
                     {ENTERPRISE_SSO_ENABLED && <OidcResumingOverlay vm={vm} />}
+                    {/* 顶部小面包屑: 紫色圆点 + 当前登录目标. 给到达 /login 的人一个
+                        "我在哪 / 这个表单会把我送去哪" 的轻确认, 不抢主标题视觉权重. */}
+                    <div className="wk-login-panel-breadcrumb">
+                        <span className="wk-login-panel-breadcrumb-dot" />
+                        <span className="wk-login-panel-breadcrumb-text">
+                            {t('login.breadcrumb', { values: { appName: WKApp.config.appName || 'Octo' } })}
+                        </span>
+                    </div>
+                    <LoginLanguageSwitcher />
                     <div className="wk-login-content">
-                        {/* Mobile logo fallback */}
-                        <div className="wk-login-content-logo">
-                            <img src={`/logo.png`} alt="logo" height={56} style={{ width: 'auto', display: 'inline-block', marginBottom: -10 }} />
-                        </div>
-
                         {vm.inviteInfo && (
                             <div className="wk-login-invite-banner">
-                                <div>你被邀请加入 <strong>{vm.inviteInfo.space_name}</strong></div>
-                                <div>{vm.inviteInfo.max_users > 0 ? `${vm.inviteInfo.member_count}/${vm.inviteInfo.max_users} 人` : `${vm.inviteInfo.member_count} 位成员`}</div>
+                                <div>{t('login.invite')} <strong>{vm.inviteInfo.space_name}</strong></div>
+                                <div>{vm.inviteInfo.max_users > 0
+                                    ? t('login.memberCountWithMax', { values: { count: vm.inviteInfo.member_count, max: vm.inviteInfo.max_users } })
+                                    : t('login.memberCount', { values: { count: vm.inviteInfo.member_count } })}</div>
                             </div>
                         )}
                         <div className="wk-login-content-phonelogin" style={{ "display": vm.loginType === LoginType.phone ? "block" : "none" }}>
-                            <div className="wk-login-content-slogan">欢迎回来</div>
+                            <div className="wk-login-content-slogan">{t('login.welcome')}</div>
+                            {/* hero 到 CTA 之间两行过渡. SSO 启用时显式说明渠道 + 新用户行为,
+                                两行小字避免用户在主按钮前还需要猜 "点了会发生什么". */}
                             <div className="wk-login-content-slogan-sub">
-                                {ENTERPRISE_SSO_ENABLED && hasSsoProvider
-                                    ? `使用 ${ssoProvider!.name} 登录，已有 ${WKApp.config.appName || 'Octo'} 账号可继续使用`
-                                    : '登录你的账号以继续'}
+                                {ENTERPRISE_SSO_ENABLED && hasSsoProvider ? (
+                                    <>
+                                        <div>{t('login.ssoSub', { values: { provider: ssoProvider!.name, appName: WKApp.config.appName || 'Octo' } })}</div>
+                                        <div>{t('login.ssoAutoCreate')}</div>
+                                    </>
+                                ) : (
+                                    t('login.defaultSub')
+                                )}
                             </div>
                             {ENTERPRISE_SSO_ENABLED && hasSsoProvider ? (
-                                // SSO 启用：OIDC provider 作为主 CTA，本地账号下沉为遗留路径
-                                <div className="wk-login-content-form">
-                                    <Button
-                                        className="wk-login-content-sso-primary"
-                                        loading={vm.oidcLoading}
-                                        disabled={vm.oidcLoading || vm.oidcResuming}
-                                        onClick={startSsoLogin}
-                                    >
-                                        <IconLock className="wk-login-content-sso-btn-icon" />
-                                        使用 {ssoProvider!.name} 登录或注册
-                                    </Button>
-                                    <div className="wk-login-content-sso-helper">
-                                        新用户首次点击将自动创建 {ssoProvider!.name} 账号
-                                    </div>
-                                    <div className="wk-login-content-legacy-divider">
-                                        <span>已有 {WKApp.config.appName || 'Octo'} 账号</span>
-                                    </div>
-                                    <div className="wk-login-content-legacy-form">
-                                        <input type="text" name="username" autoComplete="username" placeholder="邮箱 / 用户名" onChange={(v) => {
-                                            vm.username = v.target.value
-                                        }} onKeyDown={(e) => { if (e.key === 'Enter') handleLogin() }}></input>
-                                        <input type="password" name="password" autoComplete="current-password" placeholder="密码" onChange={(v) => {
-                                            vm.password = v.target.value
-                                        }} onKeyDown={(e) => { if (e.key === 'Enter') handleLogin() }}></input>
-                                        <div className="wk-login-content-form-buttons">
-                                            <Button loading={vm.loginLoading} className="wk-login-content-form-ok" type='primary' theme='solid'
-                                                onMouseDown={(e: React.MouseEvent) => { e.preventDefault() }}
-                                                onClick={handleLogin}>登录</Button>
-                                        </div>
-                                        {vm.loginAttemptFailed && (
-                                            <div className="wk-login-content-form-error-cta">
-                                                登录不上？企业账号或新用户请
-                                                <a onClick={(e) => { e.preventDefault(); startSsoLogin() }}>
-                                                    使用 {ssoProvider!.name} 登录或注册
-                                                </a>
-                                            </div>
-                                        )}
-                                        <div className="wk-login-content-form-others">
-                                            <div className="wk-login-content-form-scanlogin" onClick={() => {
-                                                vm.loginType = LoginType.qrcode
-                                            }}>
-                                                扫码登录
-                                            </div>
-                                            <div className="wk-login-content-form-switch" onClick={() => {
-                                                vm.loginType = LoginType.forgetPassword
-                                            }}>
-                                                忘记密码
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div className="wk-login-content-download">
-                                        <AndroidDownloadButton />
-                                        <IOSDownloadButton />
-                                    </div>
-                                </div>
+                                // SSO 启用：OIDC provider 作为主 CTA. Aegis 等 IdP 品牌名
+                                // 作为信任锚点放在主按钮下面小字 + tooltip, 而不是塞进主
+                                // 按钮文案 — 平衡"外部用户认知零负担"与"老用户/警觉用户能
+                                // 在跳转前预读 IdP 名字防钓鱼"两个诉求.
+                                <SsoLoginPanel
+                                    vm={vm}
+                                    ssoProvider={ssoProvider!}
+                                    startSsoLogin={startSsoLogin}
+                                    handleLogin={handleLogin}
+                                    showMigrationNotice={!WKApp.remoteConfig.suppressLoginMigrationNotice}
+                                />
                             ) : (
                                 // 未启用 SSO：保持原有布局（含本地注册入口）
                                 <div className="wk-login-content-form">
-                                    <input type="text" name="username" autoComplete="username" placeholder="邮箱 / 用户名" onChange={(v) => {
+                                    <input type="text" name="username" autoComplete="username" placeholder={t('form.email')} onChange={(v) => {
                                         vm.username = v.target.value
                                     }} onKeyDown={(e) => { if (e.key === 'Enter') handleLogin() }}></input>
-                                    <input type="password" name="password" autoComplete="current-password" placeholder="密码" onChange={(v) => {
+                                    <input type="password" name="password" autoComplete="current-password" placeholder={t('form.password')} onChange={(v) => {
                                         vm.password = v.target.value
                                     }} onKeyDown={(e) => { if (e.key === 'Enter') handleLogin() }}></input>
                                     <div className="wk-login-content-form-buttons">
                                         <Button loading={vm.loginLoading} className="wk-login-content-form-ok" type='primary' theme='solid'
                                             onMouseDown={(e: React.MouseEvent) => { e.preventDefault() }}
-                                            onClick={handleLogin}>登录</Button>
+                                            onClick={handleLogin}>{t('login.button')}</Button>
                                     </div>
                                     <div className="wk-login-content-form-others">
                                         <div className="wk-login-content-form-scanlogin" onClick={() => {
                                             vm.loginType = LoginType.qrcode
                                         }}>
-                                            扫码登录
+                                            {t('login.scanLogin')}
                                         </div>
                                         <div className="wk-login-content-form-switch" onClick={() => {
                                             vm.loginType = LoginType.register
                                         }}>
-                                            没有账号？注册
+                                            {t('login.noAccountRegister')}
                                         </div>
                                         <div className="wk-login-content-form-switch" onClick={() => {
                                             vm.loginType = LoginType.forgetPassword
                                         }}>
-                                            忘记密码
+                                            {t('login.forgotPassword')}
                                         </div>
+                                    </div>
+                                    {/* 与 SSO 分支一致: 下载入口前一条带文案的分隔线,
+                                        把"主登录区"和"也提供移动版"次级 CTA 分开,
+                                        避免按钮区 → 链接行 → 下载按钮 全部贴在一起. */}
+                                    <div className="wk-login-content-download-divider">
+                                        <span>{t('download.mobile')}</span>
                                     </div>
                                     <div className="wk-login-content-download">
                                         <AndroidDownloadButton />
@@ -430,14 +783,14 @@ class Login extends Component<any, LoginState> {
                             )}
                         </div>
                         <div className="wk-login-content-phonelogin" style={{ "display": vm.loginType === LoginType.register ? "block" : "none" }}>
-                            <div className="wk-login-content-slogan">创建账号</div>
-                            <div className="wk-login-content-slogan-sub">加入 {WKApp.config.appName || 'Octo'}，开始高效协作</div>
+                            <div className="wk-login-content-slogan">{t('register.title')}</div>
+                            <div className="wk-login-content-slogan-sub">{t('register.sub', { values: { appName: WKApp.config.appName || 'Octo' } })}</div>
                             <div className="wk-login-content-form">
-                                <input type="email" name="reg-email" autoComplete="email" placeholder="邮箱" onChange={(v) => {
+                                <input type="email" name="reg-email" autoComplete="email" placeholder={t('form.email')} onChange={(v) => {
                                     vm.registerEmail = v.target.value
                                 }}></input>
                                 <div className="wk-login-content-form-code-row">
-                                    <input type="text" name="reg-code" autoComplete="one-time-code" placeholder="邮箱验证码" onChange={(v) => {
+                                    <input type="text" name="reg-code" autoComplete="one-time-code" placeholder={t('form.emailCode')} onChange={(v) => {
                                         vm.registerEmailCode = v.target.value
                                     }}></input>
                                     <SendCodeButton
@@ -447,7 +800,7 @@ class Login extends Component<any, LoginState> {
                                             const regEmailEl = document.querySelector<HTMLInputElement>('input[name="reg-email"]')
                                             if (regEmailEl?.value && !vm.registerEmail) vm.registerEmail = regEmailEl.value
                                             if (!vm.registerEmail || !isValidEmail(vm.registerEmail)) {
-                                                Toast.error("请先输入正确的邮箱地址！")
+                                                Toast.error(t('validation.emailInvalidBeforeSend'))
                                                 return
                                             }
                                             await vm.requestRegisterSendCode(vm.registerEmail).catch((err: any) => {
@@ -456,15 +809,15 @@ class Login extends Component<any, LoginState> {
                                         }}
                                     />
                                 </div>
-                                <input type="text" name="reg-name" autoComplete="name" placeholder="昵称" onChange={(v) => {
+                                <input type="text" name="reg-name" autoComplete="name" placeholder={t('form.nickname')} onChange={(v) => {
                                     vm.registerEmailName = v.target.value
                                 }}></input>
-                                <input type="password" name="reg-password" autoComplete="off" placeholder="密码" onChange={(v) => {
+                                <input type="password" name="reg-password" autoComplete="off" placeholder={t('form.password')} onChange={(v) => {
                                     vm.registerEmailPassword = v.target.value
                                     vm.notifyListener()
                                 }}></input>
                                 <PasswordStrengthIndicator password={vm.registerEmailPassword || ''} />
-                                <input type="password" name="reg-confirm-password" autoComplete="off" placeholder="确认密码" onChange={(v) => {
+                                <input type="password" name="reg-confirm-password" autoComplete="off" placeholder={t('form.confirmPassword')} onChange={(v) => {
                                     vm.registerEmailConfirmPassword = v.target.value
                                 }}></input>
                                 <div className="wk-login-content-form-buttons">
@@ -482,15 +835,15 @@ class Login extends Component<any, LoginState> {
                                         if (regConfirmEl?.value && !vm.registerEmailConfirmPassword) vm.registerEmailConfirmPassword = regConfirmEl.value
 
                                         if (!vm.registerEmail || !isValidEmail(vm.registerEmail)) {
-                                            Toast.error("请输入正确的邮箱地址！")
+                                            Toast.error(t('validation.emailInvalid'))
                                             return
                                         }
                                         if (!vm.registerEmailCode) {
-                                            Toast.error("请输入邮箱验证码！")
+                                            Toast.error(t('validation.emailCodeRequired'))
                                             return
                                         }
                                         if (!vm.registerEmailName) {
-                                            Toast.error("昵称不能为空！")
+                                            Toast.error(t('validation.nicknameRequired'))
                                             return
                                         }
                                         const passwordError = validatePassword(vm.registerEmailPassword || '');
@@ -499,45 +852,45 @@ class Login extends Component<any, LoginState> {
                                             return
                                         }
                                         if (vm.registerEmailPassword !== vm.registerEmailConfirmPassword) {
-                                            Toast.error("两次密码输入不一致！")
+                                            Toast.error(t('validation.passwordMismatch'))
                                             return
                                         }
                                         vm.requestEmailRegister(vm.registerEmail!, vm.registerEmailPassword!, vm.registerEmailName!, vm.registerEmailCode!).catch((err) => {
                                             Toast.error(sanitizeErrorMessage(err.msg))
                                         })
-                                    }}>注册</Button>
+                                    }}>{t('register.button')}</Button>
                                 </div>
                                 <div className="wk-login-content-form-others">
                                     <div className="wk-login-content-form-switch" onClick={() => {
                                         vm.loginType = LoginType.phone
                                     }}>
-                                        已有账号？登录
+                                        {t('register.hasAccount')}
                                     </div>
                                 </div>
                             </div>
                         </div>
                         <div className="wk-login-content-phonelogin" style={{ "display": vm.loginType === LoginType.forgetPassword ? "block" : "none" }}>
-                            <div className="wk-login-content-slogan">重置密码</div>
-                            <div className="wk-login-content-slogan-sub">输入注册邮箱，我们将发送验证码</div>
+                            <div className="wk-login-content-slogan">{t('reset.title')}</div>
+                            <div className="wk-login-content-slogan-sub">{t('reset.sub')}</div>
                             {ENTERPRISE_SSO_ENABLED && ssoProvider?.resetPasswordUrl && (
                                 <div className="wk-login-content-form-oidc-hint">
-                                    企业统一认证账号请前往
+                                    {t('reset.oidcHintPrefix')}
                                     <a
                                         href={ssoProvider.resetPasswordUrl}
                                         target="_blank"
                                         rel="noopener noreferrer"
                                     >
-                                        {ssoProvider.name} 账户中心
+                                        {t('reset.accountCenter', { values: { provider: ssoProvider.name } })}
                                     </a>
-                                    修改密码。
+                                    {t('reset.oidcHintSuffix')}
                                 </div>
                             )}
                             <div className="wk-login-content-form">
-                                <input type="email" name="forget-email" autoComplete="email" placeholder="注册邮箱" onChange={(v) => {
+                                <input type="email" name="forget-email" autoComplete="email" placeholder={t('form.registeredEmail')} onChange={(v) => {
                                     vm.forgetEmail = v.target.value
                                 }}></input>
                                 <div className="wk-login-content-form-code-row">
-                                    <input type="text" name="forget-code" autoComplete="one-time-code" placeholder="验证码" onChange={(v) => {
+                                    <input type="text" name="forget-code" autoComplete="one-time-code" placeholder={t('form.code')} onChange={(v) => {
                                         vm.forgetCode = v.target.value
                                     }}></input>
                                     <SendCodeButton
@@ -545,7 +898,7 @@ class Login extends Component<any, LoginState> {
                                         countdown={vm.emailCodeCountdown}
                                         onSend={async () => {
                                             if (!vm.forgetEmail || !isValidEmail(vm.forgetEmail)) {
-                                                Toast.error("请输入正确的邮箱地址！")
+                                                Toast.error(t('validation.emailInvalid'))
                                                 return
                                             }
                                             await vm.requestEmailSendCode(vm.forgetEmail!, 2).catch((err: any) => {
@@ -553,22 +906,22 @@ class Login extends Component<any, LoginState> {
                                             })
                                         }}
                                     />                                </div>
-                                <input type="password" name="forget-new-pwd" autoComplete="off" placeholder="新密码" onChange={(v) => {
+                                <input type="password" name="forget-new-pwd" autoComplete="off" placeholder={t('form.newPassword')} onChange={(v) => {
                                     vm.forgetNewPassword = v.target.value
                                     vm.notifyListener()
                                 }}></input>
                                 <PasswordStrengthIndicator password={vm.forgetNewPassword || ''} />
-                                <input type="password" name="forget-confirm-pwd" autoComplete="off" placeholder="确认新密码" onChange={(v) => {
+                                <input type="password" name="forget-confirm-pwd" autoComplete="off" placeholder={t('form.confirmNewPassword')} onChange={(v) => {
                                     vm.forgetConfirmPassword = v.target.value
                                 }}></input>
                                 <div className="wk-login-content-form-buttons">
                                     <Button loading={vm.forgetLoading} className="wk-login-content-form-ok" type='primary' theme='solid' onClick={async () => {
                                         if (!vm.forgetEmail || !isValidEmail(vm.forgetEmail)) {
-                                            Toast.error("请输入正确的邮箱地址！")
+                                            Toast.error(t('validation.emailInvalid'))
                                             return
                                         }
                                         if (!vm.forgetCode) {
-                                            Toast.error("验证码不能为空！")
+                                            Toast.error(t('validation.codeRequired'))
                                             return
                                         }
                                         const newPasswordError = validatePassword(vm.forgetNewPassword || '');
@@ -577,29 +930,29 @@ class Login extends Component<any, LoginState> {
                                             return
                                         }
                                         if (vm.forgetNewPassword !== vm.forgetConfirmPassword) {
-                                            Toast.error("两次密码输入不一致！")
+                                            Toast.error(t('validation.passwordMismatch'))
                                             return
                                         }
                                         vm.requestForgetPassword(vm.forgetEmail!, vm.forgetCode!, vm.forgetNewPassword!).then(() => {
-                                            Toast.success("密码重置成功，请登录")
+                                            Toast.success(t('validation.resetSuccess'))
                                             vm.loginType = LoginType.phone
                                         }).catch((err) => {
                                             Toast.error(sanitizeErrorMessage(err.msg))
                                         })
-                                    }}>重置密码</Button>
+                                    }}>{t('reset.button')}</Button>
                                 </div>
                                 <div className="wk-login-content-form-others">
                                     <div className="wk-login-content-form-switch" onClick={() => {
                                         vm.loginType = LoginType.phone
                                     }}>
-                                        返回登录
+                                        {t('common.backLogin')}
                                     </div>
                                 </div>
                             </div>
                         </div>
                         <div className={classNames("wk-login-content-scanlogin", vm.loginType === LoginType.qrcode ? "wk-login-content-scanlogin-show" : undefined)}>
-                            <div className="wk-login-content-scanlogin-qrcode-title">扫码登录</div>
-                            <div className="wk-login-content-scanlogin-qrcode-subtitle">更安全、更快速的登录方式</div>
+                            <div className="wk-login-content-scanlogin-qrcode-title">{t('qr.title')}</div>
+                            <div className="wk-login-content-scanlogin-qrcode-subtitle">{t('qr.subtitle')}</div>
 
                             {/* QR code card */}
                             <div className="wk-login-qr-card">
@@ -611,13 +964,13 @@ class Login extends Component<any, LoginState> {
                                                 {vm.showAvatar() ? <img src={WKApp.shared.avatarUser(vm.uid!)}></img> : undefined}
                                             </div>
                                             {!vm.autoRefresh ? <div className="wk-login-content-scanlogin-qrcode-expire">
-                                                <p>二维码已失效，点击刷新</p>
+                                                <p>{t('qr.expired')}</p>
                                                 <img onClick={() => { vm.reStartAdvance() }} src={require("./assets/refresh.png")}></img>
                                             </div> : undefined}
                                         </div>
                                     </div>
                                 </Spin>
-                                <div className="wk-login-qr-tip">打开 {WKApp.config.appName || 'Octo'} 扫描二维码</div>
+                                <div className="wk-login-qr-tip">{t('qr.tip', { values: { appName: WKApp.config.appName || 'Octo' } })}</div>
                             </div>
 
                             {/* Steps - horizontal */}
@@ -629,8 +982,8 @@ class Login extends Component<any, LoginState> {
                                             <circle cx="12" cy="17" r="1" fill="currentColor" />
                                         </svg>
                                     </div>
-                                    <div className="wk-login-qr-step-title">打开 App</div>
-                                    <div className="wk-login-qr-step-desc">手机打开 {WKApp.config.appName || 'Octo'}</div>
+                                    <div className="wk-login-qr-step-title">{t('qr.appStepTitle')}</div>
+                                    <div className="wk-login-qr-step-desc">{t('qr.appStepDesc', { values: { appName: WKApp.config.appName || 'Octo' } })}</div>
                                 </div>
                                 <div className="wk-login-qr-step-divider">
                                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#c8cce0" strokeWidth="2" strokeLinecap="round"><polyline points="9 18 15 12 9 6" /></svg>
@@ -643,8 +996,8 @@ class Login extends Component<any, LoginState> {
                                             <circle cx="12" cy="12" r="2.5" />
                                         </svg>
                                     </div>
-                                    <div className="wk-login-qr-step-title">扫描二维码</div>
-                                    <div className="wk-login-qr-step-desc">聊天 → + → 扫一扫</div>
+                                    <div className="wk-login-qr-step-title">{t('qr.scanStepTitle')}</div>
+                                    <div className="wk-login-qr-step-desc">{t('qr.scanStepDesc')}</div>
                                 </div>
                                 <div className="wk-login-qr-step-divider">
                                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#c8cce0" strokeWidth="2" strokeLinecap="round"><polyline points="9 18 15 12 9 6" /></svg>
@@ -656,15 +1009,19 @@ class Login extends Component<any, LoginState> {
                                             <polyline points="22 4 12 14.01 9 11.01" />
                                         </svg>
                                     </div>
-                                    <div className="wk-login-qr-step-title">确认登录</div>
-                                    <div className="wk-login-qr-step-desc">手机端点击确认</div>
+                                    <div className="wk-login-qr-step-title">{t('qr.confirmStepTitle')}</div>
+                                    <div className="wk-login-qr-step-desc">{t('qr.confirmStepDesc')}</div>
                                 </div>
                             </div>
 
                             <div className="wk-login-footer-buttons">
-                                <button onClick={() => { vm.loginType = LoginType.phone }}>使用账号密码登录</button>
+                                <button onClick={() => { vm.loginType = LoginType.phone }}>{t('qr.accountPassword')}</button>
                             </div>
                         </div>
+                    </div>
+                    {/* 右下底栏: 版权, 固定在 panel 底部居中. */}
+                    <div className="wk-login-panel-footer">
+                        <span>© {new Date().getFullYear()} {WKApp.config.appName || 'Octo'}</span>
                     </div>
                 </div>{/* end wk-login-panel */}
             </div>
