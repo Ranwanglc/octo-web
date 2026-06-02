@@ -6,6 +6,7 @@ describe("shouldClearDraftAfterSend", () => {
         expect(shouldClearDraftAfterSend({
             sentDraftSnapshot: "hello",
             remoteDraft: "hello",
+            remoteDraftAtSend: "hello",
             draftSavedAfterSend: false,
         })).toBe(true)
     })
@@ -15,6 +16,7 @@ describe("shouldClearDraftAfterSend", () => {
             sentDraftSnapshot: "hello",
             liveDraft: "new draft",
             remoteDraft: "hello",
+            remoteDraftAtSend: "hello",
             draftSavedAfterSend: false,
         })).toBe(false)
     })
@@ -23,6 +25,7 @@ describe("shouldClearDraftAfterSend", () => {
         expect(shouldClearDraftAfterSend({
             sentDraftSnapshot: "hello",
             remoteDraft: "hello",
+            remoteDraftAtSend: "hello",
             draftSavedAfterSend: true,
             latestSavedDraft: "new draft",
         })).toBe(false)
@@ -32,6 +35,7 @@ describe("shouldClearDraftAfterSend", () => {
         expect(shouldClearDraftAfterSend({
             sentDraftSnapshot: "hello",
             remoteDraft: "hello",
+            remoteDraftAtSend: "hello",
             draftSavedAfterSend: true,
             latestSavedDraft: "",
         })).toBe(true)
@@ -41,8 +45,19 @@ describe("shouldClearDraftAfterSend", () => {
         expect(shouldClearDraftAfterSend({
             sentDraftSnapshot: "hello!",
             remoteDraft: "hello",
+            remoteDraftAtSend: "hello",
             liveDraft: "",
             draftSavedAfterSend: false,
         })).toBe(true)
+    })
+
+    it("does not clear a remote draft updated while the send is pending", () => {
+        expect(shouldClearDraftAfterSend({
+            sentDraftSnapshot: "hello",
+            remoteDraft: "remote new draft",
+            remoteDraftAtSend: "hello",
+            liveDraft: "",
+            draftSavedAfterSend: false,
+        })).toBe(false)
     })
 })

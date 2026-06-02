@@ -1059,12 +1059,17 @@ export class Conversation
     });
   }
 
-  async clearDraftAfterSend(sentDraftSnapshot: string, sendDraftGeneration: number) {
+  async clearDraftAfterSend(
+    sentDraftSnapshot: string,
+    sendDraftGeneration: number,
+    remoteDraftAtSend: string,
+  ) {
     const remoteExtra = this.vm.currentConversation?.remoteExtra;
     if (!shouldClearDraftAfterSend({
       sentDraftSnapshot,
       liveDraft: this.messageInputContext()?.text() || "",
       remoteDraft: remoteExtra?.draft || "",
+      remoteDraftAtSend,
       draftSavedAfterSend: this.draftSaveGeneration !== sendDraftGeneration,
       latestSavedDraft: this.latestSavedDraft,
     })) {
@@ -2398,6 +2403,8 @@ export class Conversation
                         draftSnapshot?: string,
                       ) => {
                         const sendDraftGeneration = this.draftSaveGeneration;
+                        const remoteDraftAtSend =
+                          this.vm.currentConversation?.remoteExtra?.draft || "";
                         VoiceFeedback.shared()?.submitAll(text);
 
                         // ── 回复/编辑处理 ──────────────
@@ -2675,6 +2682,7 @@ export class Conversation
                           await this.clearDraftAfterSend(
                             draftSnapshot || "",
                             sendDraftGeneration,
+                            remoteDraftAtSend,
                           );
                         }
                         this.props.onMessageSent?.();
