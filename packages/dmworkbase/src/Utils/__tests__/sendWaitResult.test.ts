@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest"
-import { isSuccessfulSendAck, messageStatusWaitResult } from "../sendWaitResult"
+import {
+    isSuccessfulSendAck,
+    messageStatusWaitResult,
+    taskStatusWaitResult,
+} from "../sendWaitResult"
 
 describe("send wait result helpers", () => {
     it("treats only successful ack reason code as sent", () => {
@@ -13,5 +17,11 @@ describe("send wait result helpers", () => {
         expect(messageStatusWaitResult("normal", "normal", "fail")).toBe(true)
         expect(messageStatusWaitResult("fail", "normal", "fail")).toBe(false)
         expect(messageStatusWaitResult("wait", "normal", "fail")).toBeUndefined()
+    })
+
+    it("maps successful and failed upload task status to explicit wait results", () => {
+        expect(taskStatusWaitResult("success", "success", "fail")).toBe(true)
+        expect(taskStatusWaitResult("fail", "success", "fail")).toBe(false)
+        expect(taskStatusWaitResult("processing", "success", "fail")).toBeUndefined()
     })
 })

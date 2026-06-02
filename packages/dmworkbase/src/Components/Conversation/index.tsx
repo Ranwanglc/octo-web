@@ -79,6 +79,7 @@ import { shouldClearDraftAfterSend } from "../../Utils/draftLifecycle";
 import {
   isSuccessfulSendAck,
   messageStatusWaitResult,
+  taskStatusWaitResult,
 } from "../../Utils/sendWaitResult";
 import { parseThreadChannelId } from "../../Service/Thread";
 import FoldSessionExpandedList from "./FoldSessionExpandedList";
@@ -498,6 +499,13 @@ export class Conversation
 
     // ── 所有 listener 在 sendMessage 之前注册，避免快速完成时错过事件 ──
 
+    const markUploadSuccess = () => {
+      uploadSucceeded = true;
+      if (ackSucceeded) {
+        done(true);
+      }
+    };
+
     const taskListener = (task: any) => {
       if (settled) return;
       if (
@@ -510,10 +518,7 @@ export class Conversation
           done(false);
           return;
         }
-        uploadSucceeded = true;
-        if (ackSucceeded) {
-          done(true);
-        }
+        markUploadSuccess();
       }
     };
     WKSDK.shared().taskManager.addListener(taskListener);
@@ -550,6 +555,22 @@ export class Conversation
 
     // sendMessage 返回后主动检查
     if (!settled) {
+      const taskMap = (WKSDK.shared().taskManager as any).taskMap as
+        | Map<string, { status: TaskStatus }>
+        | undefined;
+      const task = taskMap?.get(message.clientMsgNo);
+      const taskResult = taskStatusWaitResult(
+        task?.status,
+        TaskStatus.success,
+        TaskStatus.fail,
+      );
+      if (taskResult === false) {
+        done(false);
+      }
+      if (!settled && taskResult === true) {
+        markUploadSuccess();
+      }
+
       // 检查暂存的 ack（ack 在 clientSeq 赋值前到达的情况）
       const found = pendingAcks.some((p) => p.clientSeq === clientSeq);
       const matchedAck = pendingAcks.find((p) => p.clientSeq === clientSeq);
@@ -575,9 +596,7 @@ export class Conversation
       }
       if (!settled && statusResult === true) {
         ackSucceeded = true;
-        if (uploadSucceeded) {
-          done(true);
-        }
+        if (uploadSucceeded) done(true);
       }
     }
 

@@ -11,3 +11,13 @@ export function messageStatusWaitResult(
     if (status === failStatus) return false
     return undefined
 }
+
+export function taskStatusWaitResult(
+    status: unknown,
+    successStatus: unknown,
+    failStatus: unknown,
+): boolean | undefined {
+    if (status === successStatus) return true
+    if (status === failStatus) return false
+    return undefined
+}
