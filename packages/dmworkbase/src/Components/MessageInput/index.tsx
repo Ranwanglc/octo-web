@@ -1442,7 +1442,13 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
                   0,
                   editor.state.doc.content.size,
                   " ",
-                  (node) => (node.type.name === "attachment" ? "" : undefined)
+                  (node) => {
+                    if (node.type.name === "attachment") return "";
+                    if (node.type.name === "mention") {
+                      return `@${node.attrs.label ?? node.attrs.id}`;
+                    }
+                    return "";
+                  }
                 );
               }}
               getSelectedText={() => {
@@ -1454,7 +1460,13 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
                   from,
                   to,
                   " ",
-                  (node) => (node.type.name === "attachment" ? "" : undefined)
+                  (node) => {
+                    if (node.type.name === "attachment") return "";
+                    if (node.type.name === "mention") {
+                      return `@${node.attrs.label ?? node.attrs.id}`;
+                    }
+                    return "";
+                  }
                 );
                 return text || undefined;
               }}
