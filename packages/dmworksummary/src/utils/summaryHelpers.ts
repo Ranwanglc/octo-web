@@ -145,15 +145,8 @@ export function canRegenerate(status: TaskStatusType): boolean {
     );
 }
 
-/** 预设 cron 表达式选项（仅留给高级自定义 cron 入口） */
-export function getCronPresetOptions() {
-    return [
-        { value: "0 9 * * *", label: t("summary.cron.everyDayAt") },
-        { value: "0 9 * * 1-5", label: t("summary.cron.workdaysAt") },
-        { value: "0 9 * * 1", label: t("summary.cron.weeklyMondayAt") },
-        { value: "0 9 1 * *", label: t("summary.cron.monthlyFirstAt") },
-    ];
-}
+/** 删除：自定义 cron 新建/编辑入口已彻底下线，interval(天/周/月) 为唯一对外口径。
+ *  cron 仅保留遗留任务的展示(describeCron/cronToLabel)与执行，不再有预设/新建入口。 */
 
 export function getWeekdayName(dayOfWeek: number): string {
     const key = isoWeekdayKeys[dayOfWeek] || "mon";
