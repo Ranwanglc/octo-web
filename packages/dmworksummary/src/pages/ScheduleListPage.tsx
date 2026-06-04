@@ -95,6 +95,8 @@ export default class ScheduleListPage extends Component<{}, ScheduleListPageStat
                 summary_mode: params.summary_mode,
                 cron_expr: params.cron_expr,
                 interval_days: params.interval_days ?? 0,
+                interval_months: params.interval_months ?? 0,
+                run_time: params.run_time ?? "",
                 time_range_type: params.time_range_type,
                 sources: params.sources,
             };
@@ -192,7 +194,7 @@ export default class ScheduleListPage extends Component<{}, ScheduleListPageStat
                                 </div>
                                 <div className="summary-schedule-card-meta">
                                     <Tag size="small" color="blue">{getModeLabel(item.summary_mode)}</Tag>
-                                    <span style={{ marginLeft: 8 }}>{describeSchedule(item.cron_expr, item.interval_days)}</span>
+                                    <span style={{ marginLeft: 8 }}>{describeSchedule(item.cron_expr, item.interval_days, item.interval_months, item.run_time)}</span>
                                     <span style={{ marginLeft: 8, color: "var(--semi-color-text-2)" }}>
                                         {getTimeRangeTypeLabel(item.time_range_type)}
                                     </span>
@@ -256,6 +258,8 @@ export default class ScheduleListPage extends Component<{}, ScheduleListPageStat
                                 summary_mode: editingSchedule.summary_mode,
                                 cron_expr: editingSchedule.cron_expr,
                                 interval_days: editingSchedule.interval_days ?? 0,
+                                interval_months: editingSchedule.interval_months ?? 0,
+                                run_time: editingSchedule.run_time ?? "",
                                 time_range_type: editingSchedule.time_range_type,
                                 sources: editingSchedule.sources ?? [],
                             }}

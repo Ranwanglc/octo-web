@@ -1,13 +1,19 @@
 import React, { useState, useCallback } from "react";
-import { Button, Select, Input } from "@douyinfe/semi-ui";
+import { Button, Select, Input, InputNumber } from "@douyinfe/semi-ui";
 import { useI18n } from "@octo/base";
 import { SummaryMode } from "../types/summary";
 import type {
     CreateScheduleParams,
     SourceItem,
     SummaryModeType,
+    ScheduleUnit,
 } from "../types/summary";
-import { getCronPresetOptions, getTimeRangeTypeOptions, BIWEEKLY_INTERVAL_DAYS } from "../utils/summaryHelpers";
+import {
+    getTimeRangeTypeOptions,
+    scheduleToParams,
+    scheduleItemToConfig,
+    validateScheduleConfig,
+} from "../utils/summaryHelpers";
 import SourceSelector from "./SourceSelector";
 
 interface ScheduleFormProps {
@@ -16,6 +22,13 @@ interface ScheduleFormProps {
     onCancel?: () => void;
     loading?: boolean;
 }
+
+const timeOptions = Array.from({ length: 48 }, (_, i) => {
+    const h = Math.floor(i / 2);
+    const m = i % 2 === 0 ? "00" : "30";
+    const val = `${String(h).padStart(2, "0")}:${m}`;
+    return { value: val, label: val };
+});
 
 const ScheduleForm: React.FC<ScheduleFormProps> = ({
     initialValues,
@@ -28,36 +41,53 @@ const ScheduleForm: React.FC<ScheduleFormProps> = ({
     const [summaryMode, setSummaryMode] = useState<SummaryModeType>(
         initialValues?.summary_mode || SummaryMode.BY_GROUP,
     );
-    const initialBiweekly = (initialValues?.interval_days ?? 0) === BIWEEKLY_INTERVAL_DAYS;
-    const [cronExpr, setCronExpr] = useState(
-        initialBiweekly ? "biweekly" : (initialValues?.cron_expr || "0 9 * * 1"),
-    );
-    const [customCron, setCustomCron] = useState("");
-    const [useCustomCron, setUseCustomCron] = useState(false);
+
+    // 通用「数量 × 单位 + 时间」配置；从既有值回填（interval 优先，cron 降级）
+    const initialConfig = scheduleItemToConfig({
+        cron_expr: initialValues?.cron_expr || "",
+        interval_days: initialValues?.interval_days,
+        interval_months: initialValues?.interval_months,
+        run_time: initialValues?.run_time,
+    });
+    const [every, setEvery] = useState<number>(initialConfig.every);
+    const [unit, setUnit] = useState<ScheduleUnit>(initialConfig.unit);
+    const [runTime, setRunTime] = useState<string>(initialConfig.time);
+
     const [timeRangeType, setTimeRangeType] = useState<1 | 2 | 3 | 4>(
         initialValues?.time_range_type || 2,
     );
     const [sources, setSources] = useState<SourceItem[]>(initialValues?.sources || []);
-    const cronPresets = getCronPresetOptions();
+    const [errMsg, setErrMsg] = useState<string | null>(null);
     const timeRangeTypeOptions = getTimeRangeTypeOptions();
 
-    const handleSubmit = useCallback(() => {
-        const finalCron = useCustomCron ? customCron : cronExpr;
-        if (!finalCron.trim()) return;
-        if (sources.length === 0) return;
+    const unitOptions: { value: ScheduleUnit; label: string }[] = [
+        { value: "day", label: t("summary.schedule.config.unitDay") },
+        { value: "week", label: t("summary.schedule.config.unitWeek") },
+        { value: "month", label: t("summary.schedule.config.unitMonth") },
+    ];
 
-        // "biweekly" 预设 → 走 interval_days=14，cron 留空
-        const isBiweekly = !useCustomCron && finalCron === "biweekly";
+    const handleSubmit = useCallback(() => {
+        if (sources.length === 0) return;
+        const config = { unit, every: Math.max(1, Math.floor(every || 1)), time: runTime };
+        const verr = validateScheduleConfig(config);
+        if (verr) {
+            setErrMsg(verr);
+            return;
+        }
+        setErrMsg(null);
+        const { cron_expr, interval_days, interval_months, run_time } = scheduleToParams(config);
 
         onSubmit({
             title: title.trim(),
             summary_mode: summaryMode,
-            cron_expr: isBiweekly ? "" : finalCron.trim(),
-            interval_days: isBiweekly ? BIWEEKLY_INTERVAL_DAYS : 0,
+            cron_expr,
+            interval_days,
+            interval_months,
+            run_time,
             time_range_type: timeRangeType,
             sources,
         });
-    }, [title, summaryMode, cronExpr, customCron, useCustomCron, timeRangeType, sources, onSubmit]);
+    }, [title, summaryMode, unit, every, runTime, timeRangeType, sources, onSubmit]);
 
     return (
         <div className="summary-schedule-form">
@@ -86,39 +116,37 @@ const ScheduleForm: React.FC<ScheduleFormProps> = ({
 
             <div className="summary-form-field">
                 <label>{t("summary.schedule.form.frequency")}</label>
-                {!useCustomCron ? (
-                    <div>
-                        <Select value={cronExpr} onChange={(v) => setCronExpr(v as string)} style={{ width: "100%" }}>
-                            {cronPresets.map((p) => (
-                                <Select.Option key={p.value} value={p.value}>
-                                    {p.label}
-                                </Select.Option>
-                            ))}
-                        </Select>
-                        <Button
-                            size="small"
-                            theme="borderless"
-                            onClick={() => setUseCustomCron(true)}
-                            style={{ marginTop: 4 }}
-                        >
-                            {t("summary.schedule.form.customCron")}
-                        </Button>
-                    </div>
-                ) : (
-                    <div>
-                        <Input
-                            value={customCron}
-                            onChange={setCustomCron}
-                            placeholder={t("summary.schedule.form.customCronPlaceholder")}
-                        />
-                        <Button
-                            size="small"
-                            theme="borderless"
-                            onClick={() => setUseCustomCron(false)}
-                            style={{ marginTop: 4 }}
-                        >
-                            {t("summary.schedule.form.usePreset")}
-                        </Button>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <span style={{ color: "var(--semi-color-text-2)", fontSize: 14 }}>
+                        {t("summary.schedule.config.everyPrefix")}
+                    </span>
+                    <InputNumber
+                        min={1}
+                        max={9999}
+                        precision={0}
+                        value={every}
+                        onChange={(v) => setEvery(typeof v === "number" ? v : 1)}
+                        style={{ width: 96 }}
+                    />
+                    <Select
+                        value={unit}
+                        onChange={(v) => setUnit(v as ScheduleUnit)}
+                        style={{ width: 110 }}
+                        optionList={unitOptions}
+                    />
+                    <span style={{ color: "var(--semi-color-text-2)", fontSize: 14 }}>
+                        {t("summary.schedule.config.atPrefix")}
+                    </span>
+                    <Select
+                        value={runTime}
+                        onChange={(v) => setRunTime(v as string)}
+                        style={{ width: 120 }}
+                        optionList={timeOptions}
+                    />
+                </div>
+                {errMsg && (
+                    <div style={{ color: "var(--semi-color-danger)", fontSize: 12, marginTop: 4 }}>
+                        {errMsg}
                     </div>
                 )}
             </div>

@@ -27,9 +27,8 @@ import {
     formatDate,
     canCancel,
     canRegenerate,
-    cronToScheduleConfig,
+    scheduleItemToConfig,
     scheduleToParams,
-    BIWEEKLY_INTERVAL_DAYS,
 } from "../utils/summaryHelpers";
 import SummaryContent from "../components/SummaryContent";
 import CitationText from "../components/CitationText";
@@ -391,14 +390,12 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         const { scheduleItem } = this.state;
         if (scheduleItem) {
             this.setState({
-                scheduleConfig: (scheduleItem.interval_days ?? 0) === BIWEEKLY_INTERVAL_DAYS
-                    ? { period: "biweekly", time: "09:00" }
-                    : cronToScheduleConfig(scheduleItem.cron_expr),
+                scheduleConfig: scheduleItemToConfig(scheduleItem),
                 showScheduleConfig: true,
             });
         } else {
             this.setState({
-                scheduleConfig: { period: "daily", time: "09:00" },
+                scheduleConfig: { unit: "week", every: 1, time: "09:00" },
                 showScheduleConfig: true,
             });
         }
@@ -408,11 +405,11 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         const { detail, scheduleItem } = this.state;
         if (!detail) return;
 
-        const { cron_expr, interval_days } = scheduleToParams(config);
+        const { cron_expr, interval_days, interval_months, run_time } = scheduleToParams(config);
 
         try {
             if (scheduleItem) {
-                await api.updateSchedule(scheduleItem.schedule_id, { cron_expr, interval_days });
+                await api.updateSchedule(scheduleItem.schedule_id, { cron_expr, interval_days, interval_months, run_time });
                 Toast.success(t("summary.detail.scheduleSaved"));
                 this.loadSchedule(scheduleItem.schedule_id);
             } else {
@@ -421,6 +418,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     summary_mode: detail.summary_mode,
                     cron_expr,
                     interval_days,
+                    interval_months,
+                    run_time,
                     time_range_type: 2,
                     sources: detail.sources,
                 });
@@ -978,7 +977,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
 
                 <ScheduleConfigModal
                     visible={showScheduleConfig}
-                    value={scheduleConfig || { period: "daily", time: "09:00" }}
+                    value={scheduleConfig || { unit: "week", every: 1, time: "09:00" }}
                     onConfirm={this.handleScheduleSave}
                     onCancel={() => this.setState({ showScheduleConfig: false })}
                 />

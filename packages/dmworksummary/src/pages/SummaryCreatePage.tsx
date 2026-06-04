@@ -24,7 +24,7 @@ import type {
     ScheduleConfig,
 } from "../types/summary";
 import { SummaryMode, SourceType } from "../types/summary";
-import { getWeekdayName, scheduleToParams } from "../utils/summaryHelpers";
+import { describeSchedule, scheduleToParams } from "../utils/summaryHelpers";
 
 const { Text } = Typography;
 
@@ -94,20 +94,8 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
     };
 
     getScheduleLabel(cfg: ScheduleConfig): string {
-        if (cfg.period === "daily") {
-            return t("summary.create.scheduleDaily", { values: { time: cfg.time } });
-        }
-        if (cfg.period === "weekly") {
-            return t("summary.create.scheduleWeekly", {
-                values: { day: getWeekdayName(cfg.dayOfWeek ?? 1), time: cfg.time },
-            });
-        }
-        if (cfg.period === "biweekly") {
-            return t("summary.cron.biweekly");
-        }
-        return t("summary.create.scheduleMonthly", {
-            values: { day: cfg.dayOfMonth ?? 1, time: cfg.time },
-        });
+        const { cron_expr, interval_days, interval_months, run_time } = scheduleToParams(cfg);
+        return describeSchedule(cron_expr, interval_days, interval_months, run_time);
     }
 
     canSubmit(): boolean {
@@ -163,13 +151,15 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
 
             // If schedule is configured, create schedule too
             if (scheduleConfig !== null) {
-                const { cron_expr, interval_days } = scheduleToParams(scheduleConfig);
+                const { cron_expr, interval_days, interval_months, run_time } = scheduleToParams(scheduleConfig);
                 try {
                     await api.createSchedule({
                         title: topic.trim(),
                         summary_mode: params.summary_mode || SummaryMode.BY_PERSON,
                         cron_expr,
                         interval_days,
+                        interval_months,
+                        run_time,
                         time_range_type: 2,
                         sources: params.sources || [],
                         participants: params.participants,
@@ -362,7 +352,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                 />
                 <ScheduleConfigModal
                     visible={showScheduleConfig}
-                    value={scheduleConfig ?? { period: "daily", time: "09:00" }}
+                    value={scheduleConfig ?? { unit: "week", every: 1, time: "09:00" }}
                     onConfirm={(cfg) => this.setState({ scheduleConfig: cfg, showScheduleConfig: false })}
                     onCancel={() => this.setState({ showScheduleConfig: false })}
                 />

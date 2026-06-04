@@ -195,6 +195,8 @@ export interface ScheduleItem {
     summary_mode: SummaryModeType;
     cron_expr: string;
     interval_days?: number;
+    interval_months?: number;
+    run_time?: string;
     time_range_type: 1 | 2 | 3 | 4;
     sources: SourceItem[];
     participants: { user_id: string }[];
@@ -209,6 +211,8 @@ export interface CreateScheduleParams {
     summary_mode: SummaryModeType;
     cron_expr: string;
     interval_days?: number;
+    interval_months?: number;
+    run_time?: string;
     time_range_type: 1 | 2 | 3 | 4;
     sources: SourceItem[];
     participants?: { user_id: string }[];
@@ -219,6 +223,8 @@ export interface UpdateScheduleParams {
     summary_mode?: SummaryModeType;
     cron_expr?: string;
     interval_days?: number;
+    interval_months?: number;
+    run_time?: string;
     time_range_type?: 1 | 2 | 3 | 4;
     sources?: SourceItem[];
     participants?: { user_id: string }[];
@@ -278,10 +284,11 @@ export interface MemberCandidate {
     department: string;
 }
 
-/** 定时配置（内部状态用） */
+/** 定时配置（内部状态用）：通用「数量 × 单位」组合 */
+export type ScheduleUnit = "day" | "week" | "month";
+
 export interface ScheduleConfig {
-    period: "daily" | "weekly" | "biweekly" | "monthly";
-    dayOfWeek?: number;   // 1=Mon, 2=Tue, ..., 7=Sun (ISO weekday)
-    dayOfMonth?: number;  // 1..28
-    time: string;         // "HH:MM"
+    unit: ScheduleUnit;   // 天 / 周 / 月
+    every: number;        // 正整数数量，如 every=2 + unit="week" => 每 2 周
+    time: string;         // "HH:MM" — 运行时刻，始终保留
 }

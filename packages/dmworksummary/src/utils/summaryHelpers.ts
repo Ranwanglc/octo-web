@@ -10,8 +10,12 @@ import {
 } from "../types/summary";
 import { t } from "@octo/base";
 
-/** 每两周对应的间隔天数 */
-export const BIWEEKLY_INTERVAL_DAYS = 14;
+/** 周对应天数 */
+export const DAYS_PER_WEEK = 7;
+/** interval_days 上界（与后端 MaxIntervalDays 对齐） */
+export const MAX_INTERVAL_DAYS = 3650;
+/** interval_months 上界（与后端 MaxIntervalMonths 对齐） */
+export const MAX_INTERVAL_MONTHS = 120;
 
 const weekdayKeys = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
 const isoWeekdayKeys = ["", "mon", "tue", "wed", "thu", "fri", "sat", "sun"] as const;
@@ -141,13 +145,12 @@ export function canRegenerate(status: TaskStatusType): boolean {
     );
 }
 
-/** 预设 cron 表达式选项 */
+/** 预设 cron 表达式选项（仅留给高级自定义 cron 入口） */
 export function getCronPresetOptions() {
     return [
         { value: "0 9 * * *", label: t("summary.cron.everyDayAt") },
         { value: "0 9 * * 1-5", label: t("summary.cron.workdaysAt") },
         { value: "0 9 * * 1", label: t("summary.cron.weeklyMondayAt") },
-        { value: "biweekly", label: t("summary.cron.biweekly") },
         { value: "0 9 1 * *", label: t("summary.cron.monthlyFirstAt") },
     ];
 }
@@ -185,61 +188,91 @@ export function cronToLabel(cron_expr: string): string {
     return t("summary.cron.dailyAt", { values: { time: timeStr } });
 }
 
-/** ScheduleConfig → cron 表达式（与 cronToScheduleConfig 对称） */
-export function scheduleToCron(config: ScheduleConfig): string {
-    const [hourStr, minStr] = config.time.split(":");
-    const hour = parseInt(hourStr, 10);
-    const min = parseInt(minStr, 10);
-    if (config.period === "daily") {
-        return `${min} ${hour} * * *`;
+/** ScheduleConfig → 提交后端的调度参数（数量×单位 → interval_days / interval_months）
+ *  三者互斥：天/周走 interval_days，月走 interval_months，cron_expr 始终置空。
+ *  run_time 携带用户选择的 HH:MM，后端据此锁定运行时刻。 */
+export function scheduleToParams(config: ScheduleConfig): {
+    cron_expr: string;
+    interval_days: number;
+    interval_months: number;
+    run_time: string;
+} {
+    const every = Math.max(1, Math.floor(config.every || 1));
+    if (config.unit === "month") {
+        return { cron_expr: "", interval_days: 0, interval_months: every, run_time: config.time };
     }
-    if (config.period === "weekly") {
-        const cronDow = (config.dayOfWeek ?? 1) % 7;
-        return `${min} ${hour} * * ${cronDow}`;
-    }
-    if (config.period === "biweekly") {
-        // biweekly 走 interval_days，不用 cron。返回空串。
-        return "";
-    }
-    return `${min} ${hour} ${config.dayOfMonth ?? 1} * *`;
+    const days = config.unit === "week" ? every * DAYS_PER_WEEK : every;
+    return { cron_expr: "", interval_days: days, interval_months: 0, run_time: config.time };
 }
 
-/** ScheduleConfig → 提交后端的调度参数（cron_expr + interval_days 互斥） */
-export function scheduleToParams(config: ScheduleConfig): { cron_expr: string; interval_days: number } {
-    if (config.period === "biweekly") {
-        return { cron_expr: "", interval_days: BIWEEKLY_INTERVAL_DAYS };
+/** 校验数量是否在合理范围（返回错误文案或 null） */
+export function validateScheduleConfig(config: ScheduleConfig): string | null {
+    const every = Math.floor(config.every);
+    if (!Number.isFinite(every) || every < 1) {
+        return t("summary.schedule.config.everyMin");
     }
-    return { cron_expr: scheduleToCron(config), interval_days: 0 };
-}
-
-/** 调度展示：interval_days>0 优先按间隔展示，否则解析 cron */
-export function describeSchedule(cron_expr: string, interval_days?: number): string {
-    if (interval_days && interval_days > 0) {
-        if (interval_days === BIWEEKLY_INTERVAL_DAYS) {
-            return t("summary.cron.biweekly");
+    if (config.unit === "month") {
+        if (every > MAX_INTERVAL_MONTHS) {
+            return t("summary.schedule.config.everyMaxMonths", { values: { max: MAX_INTERVAL_MONTHS } });
         }
-        return t("summary.cron.everyNDays", { values: { days: interval_days } });
+    } else {
+        const days = config.unit === "week" ? every * DAYS_PER_WEEK : every;
+        if (days > MAX_INTERVAL_DAYS) {
+            return t("summary.schedule.config.everyMaxDays", { values: { max: MAX_INTERVAL_DAYS } });
+        }
+    }
+    return null;
+}
+
+/** 调度展示：interval_months > 0 按月，interval_days > 0 按天/周，否则解析 cron(遗留) */
+export function describeSchedule(
+    cron_expr: string,
+    interval_days?: number,
+    interval_months?: number,
+    run_time?: string,
+): string {
+    const at = run_time ? ` ${run_time}` : "";
+    if (interval_months && interval_months > 0) {
+        return t("summary.cron.everyNMonths", { values: { months: interval_months, at } });
+    }
+    if (interval_days && interval_days > 0) {
+        if (interval_days % DAYS_PER_WEEK === 0) {
+            return t("summary.cron.everyNWeeks", { values: { weeks: interval_days / DAYS_PER_WEEK, at } });
+        }
+        return t("summary.cron.everyNDays", { values: { days: interval_days, at } });
     }
     return describeCron(cron_expr);
 }
 
-/** cron 表达式 → ScheduleConfig（用于回填弹窗） */
-export function cronToScheduleConfig(cron_expr: string): ScheduleConfig {
-    const parts = cron_expr.trim().split(/\s+/);
-    if (parts.length !== 5) return { period: "daily", time: "09:00" };
-    const [minStr, hourStr, dom, , dow] = parts;
-    const time = `${hourStr.padStart(2, "0")}:${minStr.padStart(2, "0")}`;
+/** ScheduleItem → ScheduleConfig（用于回填弹窗）。优先 interval，遗留 cron 降级为默认。 */
+export function scheduleItemToConfig(item: {
+    cron_expr: string;
+    interval_days?: number;
+    interval_months?: number;
+    run_time?: string;
+}): ScheduleConfig {
+    if (item.interval_months && item.interval_months > 0) {
+        return { unit: "month", every: item.interval_months, time: item.run_time || "09:00" };
+    }
+    if (item.interval_days && item.interval_days > 0) {
+        if (item.interval_days % DAYS_PER_WEEK === 0) {
+            return { unit: "week", every: item.interval_days / DAYS_PER_WEEK, time: item.run_time || "09:00" };
+        }
+        return { unit: "day", every: item.interval_days, time: item.run_time || "09:00" };
+    }
+    // 遗留 cron：尽量从 cron 提取时刻，默认每 1 天
+    return { unit: "day", every: 1, time: cronToTime(item.cron_expr) };
+}
 
-    if (dom !== "*") {
-        return { period: "monthly", dayOfMonth: parseInt(dom, 10), time };
-    }
-    if (dow !== "*") {
-        // cron dow: 0=Sun,1=Mon,...,6=Sat  → ISO: 1=Mon,...,7=Sun
-        const cronDow = parseInt(dow, 10);
-        const isoDow = cronDow === 0 ? 7 : cronDow;
-        return { period: "weekly", dayOfWeek: isoDow, time };
-    }
-    return { period: "daily", time };
+/** 从标准 5 段 cron 提取 HH:MM，解析失败返回 09:00 */
+function cronToTime(cron_expr: string): string {
+    const parts = (cron_expr || "").trim().split(/\s+/);
+    if (parts.length !== 5) return "09:00";
+    const [minStr, hourStr] = parts;
+    const h = parseInt(hourStr, 10);
+    const m = parseInt(minStr, 10);
+    if (isNaN(h) || isNaN(m)) return "09:00";
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 
 /** 简单 cron 表达式可视化 */
