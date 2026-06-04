@@ -55,7 +55,8 @@ export default class ScheduleConfigModal extends Component<Props, State> {
             next.dayOfWeek = this.state.local.dayOfWeek ?? 1;
         } else if (period === "monthly") {
             next.dayOfMonth = this.state.local.dayOfMonth ?? 1;
-        }        this.setState({ local: next });
+        }
+        this.setState({ local: next });
     };
 
     renderTimeRow() {

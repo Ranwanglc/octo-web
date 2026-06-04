@@ -102,6 +102,9 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                 values: { day: getWeekdayName(cfg.dayOfWeek ?? 1), time: cfg.time },
             });
         }
+        if (cfg.period === "biweekly") {
+            return t("summary.cron.biweekly");
+        }
         return t("summary.create.scheduleMonthly", {
             values: { day: cfg.dayOfMonth ?? 1, time: cfg.time },
         });
