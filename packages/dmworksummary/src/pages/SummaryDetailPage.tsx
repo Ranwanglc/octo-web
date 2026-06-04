@@ -616,6 +616,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                 {t("summary.common.edit")}
                             </Button>
                         )}
+                        {this.renderScheduleButton()}
                         {personalResult.worker_status === 2 && !personalResult.submitted_at && this.state.members.length > 1 && (
                             <Button size="small" theme="solid" onClick={this.handleSubmitPersonal}>
                                 {t("summary.detail.submitToAll")}
@@ -788,6 +789,27 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         this.setState({ isEditing: false });
     };
 
+    renderScheduleButton() {
+        const { detail, scheduleItem, scheduleLoading, isEditing } = this.state;
+        const { t } = this.context;
+        if (!detail?.permissions?.can_edit || isEditing) return null;
+
+        const hasSchedule = !!scheduleItem || !!(detail.schedule_id && detail.schedule_id > 0);
+
+        return (
+            <Button
+                size="small"
+                theme="borderless"
+                icon={<IconClock />}
+                onClick={this.openScheduleModal}
+                disabled={scheduleLoading}
+                loading={scheduleLoading}
+            >
+                {t(hasSchedule ? "summary.detail.editSchedule" : "summary.detail.setSchedule")}
+            </Button>
+        );
+    }
+
     renderHeader() {
         const { detail } = this.state;
         const { t } = this.context;
@@ -808,6 +830,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         {detail?.title || t("summary.detail.defaultTitle")}
                     </OverflowTooltip>
                     <div className="summary-detail-header-actions">
+                        {(detail?.summary_mode !== SummaryMode.BY_PERSON || !this.state.personalResult || this.state.personalLoading) && this.renderScheduleButton()}
                         {detail && detail.status === TaskStatus.COMPLETED && (
                             <Button
                                 theme="borderless"

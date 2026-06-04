@@ -232,6 +232,8 @@
         "cancelSuccess": "Task cancelled",
         "scheduleSaved": "Scheduled update saved",
         "scheduleCreated": "Scheduled update created",
+        "setSchedule": "Set schedule",
+        "editSchedule": "Edit schedule",
         "forwardFailed": "Failed to forward",
         "partialForwardFailed": "Failed to forward to some channels ({{failed}}/{{total}})",
         "forwarded": "Forwarded",

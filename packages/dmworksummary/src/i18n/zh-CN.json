@@ -232,6 +232,8 @@
         "cancelSuccess": "任务已取消",
         "scheduleSaved": "定时更新已保存",
         "scheduleCreated": "定时更新已创建",
+        "setSchedule": "设置定时更新",
+        "editSchedule": "修改定时更新",
         "forwardFailed": "转发失败",
         "partialForwardFailed": "部分频道转发失败 ({{failed}}/{{total}})",
         "forwarded": "已转发",
