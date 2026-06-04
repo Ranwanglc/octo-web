@@ -193,7 +193,24 @@
             "unitMonth": "month(s)",
             "everyMin": "Count must be an integer >= 1",
             "everyMaxDays": "Interval too large; cannot exceed {{max}} days",
-            "everyMaxMonths": "Interval too large; at most {{max}} months"
+            "everyMaxMonths": "Interval too large; at most {{max}} months",
+            "onWeekdayPrefix": "on",
+            "onDayOfMonthPrefix": "on day",
+            "weekdayLabel": "Day of week",
+            "dayOfMonthFieldLabel": "Day of month",
+            "weekdayPlaceholder": "Select a day",
+            "dayOfMonthPlaceholder": "Select a date",
+            "dayOfMonthLabel": "Day {{day}}",
+            "dayOfMonthHint": "For day 29/30/31, short months automatically roll over to the last day of the month",
+            "weekday": {
+                "mon": "Monday",
+                "tue": "Tuesday",
+                "wed": "Wednesday",
+                "thu": "Thursday",
+                "fri": "Friday",
+                "sat": "Saturday",
+                "sun": "Sunday"
+            }
         }
     },
     "confirmPage": {

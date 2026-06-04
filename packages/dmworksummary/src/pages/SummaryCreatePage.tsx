@@ -151,7 +151,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
 
             // If schedule is configured, create schedule too
             if (scheduleConfig !== null) {
-                const { cron_expr, interval_days, interval_months, run_time } = scheduleToParams(scheduleConfig);
+                const { cron_expr, interval_days, interval_months, day_of_week, day_of_month, run_time } = scheduleToParams(scheduleConfig);
                 try {
                     await api.createSchedule({
                         title: topic.trim(),
@@ -159,6 +159,8 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                         cron_expr,
                         interval_days,
                         interval_months,
+                        day_of_week,
+                        day_of_month,
                         run_time,
                         time_range_type: 2,
                         sources: params.sources || [],

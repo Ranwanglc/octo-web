@@ -188,14 +188,30 @@ export function scheduleToParams(config: ScheduleConfig): {
     cron_expr: string;
     interval_days: number;
     interval_months: number;
+    day_of_week: number;
+    day_of_month: number;
     run_time: string;
 } {
     const every = Math.max(1, Math.floor(config.every || 1));
     if (config.unit === "month") {
-        return { cron_expr: "", interval_days: 0, interval_months: every, run_time: config.time };
+        return {
+            cron_expr: "",
+            interval_days: 0,
+            interval_months: every,
+            day_of_week: 0,
+            day_of_month: config.dayOfMonth || 0,
+            run_time: config.time,
+        };
     }
     const days = config.unit === "week" ? every * DAYS_PER_WEEK : every;
-    return { cron_expr: "", interval_days: days, interval_months: 0, run_time: config.time };
+    return {
+        cron_expr: "",
+        interval_days: days,
+        interval_months: 0,
+        day_of_week: config.unit === "week" ? (config.dayOfWeek || 0) : 0,
+        day_of_month: 0,
+        run_time: config.time,
+    };
 }
 
 /** 校验数量是否在合理范围（返回错误文案或 null） */
@@ -242,14 +258,26 @@ export function scheduleItemToConfig(item: {
     cron_expr: string;
     interval_days?: number;
     interval_months?: number;
+    day_of_week?: number;
+    day_of_month?: number;
     run_time?: string;
 }): ScheduleConfig {
     if (item.interval_months && item.interval_months > 0) {
-        return { unit: "month", every: item.interval_months, time: item.run_time || "09:00" };
+        return {
+            unit: "month",
+            every: item.interval_months,
+            time: item.run_time || "09:00",
+            dayOfMonth: item.day_of_month || 0,
+        };
     }
     if (item.interval_days && item.interval_days > 0) {
         if (item.interval_days % DAYS_PER_WEEK === 0) {
-            return { unit: "week", every: item.interval_days / DAYS_PER_WEEK, time: item.run_time || "09:00" };
+            return {
+                unit: "week",
+                every: item.interval_days / DAYS_PER_WEEK,
+                time: item.run_time || "09:00",
+                dayOfWeek: item.day_of_week || 0,
+            };
         }
         return { unit: "day", every: item.interval_days, time: item.run_time || "09:00" };
     }

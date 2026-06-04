@@ -24,6 +24,9 @@ const timeOptions = Array.from({ length: 48 }, (_, i) => {
 
 const DEFAULT_CONFIG: ScheduleConfig = { unit: "week", every: 1, time: "09:00" };
 
+// 周几选项：value 1..7 对齐后端（1=周一 .. 7=周日）
+const WEEKDAY_KEYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] as const;
+
 export default class ScheduleConfigModal extends Component<Props, State> {
     static contextType = I18nContext;
     declare context: React.ContextType<typeof I18nContext>;
@@ -92,6 +95,19 @@ export default class ScheduleConfigModal extends Component<Props, State> {
             { value: "month", label: t("summary.schedule.config.unitMonth") },
         ];
 
+        // 周几下拉选项：周一..周日，value 1..7
+        const weekdayOptions = WEEKDAY_KEYS.map((key, idx) => ({
+            value: idx + 1,
+            label: t(`summary.schedule.config.weekday.${key}`),
+        }));
+        // 几号下拉选项：1..31 号
+        const dayOfMonthOptions = Array.from({ length: 31 }, (_, i) => ({
+            value: i + 1,
+            label: t("summary.schedule.config.dayOfMonthLabel", { values: { day: i + 1 } }),
+        }));
+        const isWeekMode = local.unit === "week";
+        const isMonthMode = local.unit === "month";
+
         return (
             <Modal
                 title={t("summary.schedule.config.title")}
@@ -130,6 +146,41 @@ export default class ScheduleConfigModal extends Component<Props, State> {
                         />
                     </div>
                 </div>
+
+                {/* 周模式：周几下拉；月模式：几号下拉。均置于时间（run_time）选择之前 */}
+                {isWeekMode && (
+                    <div style={rowStyle}>
+                        <span style={labelStyle}>{t("summary.schedule.config.weekdayLabel")}</span>
+                        <div style={inlineStyle}>
+                            <Select
+                                value={local.dayOfWeek || undefined}
+                                onChange={(v) => this.updateLocal({ dayOfWeek: typeof v === "number" ? v : 0 })}
+                                style={{ flex: 1, minWidth: 120 }}
+                                placeholder={t("summary.schedule.config.weekdayPlaceholder")}
+                                optionList={weekdayOptions}
+                            />
+                        </div>
+                    </div>
+                )}
+                {isMonthMode && (
+                    <div style={rowStyle}>
+                        <span style={labelStyle}>{t("summary.schedule.config.dayOfMonthFieldLabel")}</span>
+                        <div style={inlineStyle}>
+                            <Select
+                                value={local.dayOfMonth || undefined}
+                                onChange={(v) => this.updateLocal({ dayOfMonth: typeof v === "number" ? v : 0 })}
+                                style={{ flex: 1, minWidth: 120 }}
+                                placeholder={t("summary.schedule.config.dayOfMonthPlaceholder")}
+                                optionList={dayOfMonthOptions}
+                            />
+                        </div>
+                    </div>
+                )}
+                {isMonthMode && (
+                    <div style={{ color: "var(--semi-color-text-2)", fontSize: 12, marginTop: -8, marginBottom: 16, marginLeft: 88 }}>
+                        {t("summary.schedule.config.dayOfMonthHint")}
+                    </div>
+                )}
 
                 {/* 时间：在 HH:MM 跑 */}
                 <div style={{ ...rowStyle, marginBottom: 0 }}>

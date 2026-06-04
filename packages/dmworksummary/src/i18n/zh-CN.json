@@ -193,7 +193,24 @@
             "unitMonth": "月",
             "everyMin": "数量必须为不小于 1 的整数",
             "everyMaxDays": "间隔过大，按天换算不能超过 {{max}} 天",
-            "everyMaxMonths": "间隔过大，最多 {{max}} 个月"
+            "everyMaxMonths": "间隔过大，最多 {{max}} 个月",
+            "onWeekdayPrefix": "周",
+            "onDayOfMonthPrefix": "每月",
+            "weekdayLabel": "周几",
+            "dayOfMonthFieldLabel": "几号",
+            "weekdayPlaceholder": "选择周几",
+            "dayOfMonthPlaceholder": "选择日期",
+            "dayOfMonthLabel": "{{day}} 号",
+            "dayOfMonthHint": "选 29/30/31 号时，遇到小月会自动顺延到当月最后一天",
+            "weekday": {
+                "mon": "周一",
+                "tue": "周二",
+                "wed": "周三",
+                "thu": "周四",
+                "fri": "周五",
+                "sat": "周六",
+                "sun": "周日"
+            }
         }
     },
     "confirmPage": {

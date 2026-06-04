@@ -196,6 +196,10 @@ export interface ScheduleItem {
     cron_expr: string;
     interval_days?: number;
     interval_months?: number;
+    /** 周模式：1=周一 .. 7=周日，0=不限 */
+    day_of_week?: number;
+    /** 月模式：1..31（月末自动钳位），0=不限 */
+    day_of_month?: number;
     run_time?: string;
     time_range_type: 1 | 2 | 3 | 4;
     sources: SourceItem[];
@@ -212,6 +216,10 @@ export interface CreateScheduleParams {
     cron_expr: string;
     interval_days?: number;
     interval_months?: number;
+    /** 周模式：1=周一 .. 7=周日，0=不限 */
+    day_of_week?: number;
+    /** 月模式：1..31（月末自动钳位），0=不限 */
+    day_of_month?: number;
     run_time?: string;
     time_range_type: 1 | 2 | 3 | 4;
     sources: SourceItem[];
@@ -224,6 +232,10 @@ export interface UpdateScheduleParams {
     cron_expr?: string;
     interval_days?: number;
     interval_months?: number;
+    /** 周模式：1=周一 .. 7=周日，0=不限 */
+    day_of_week?: number;
+    /** 月模式：1..31（月末自动钳位），0=不限 */
+    day_of_month?: number;
     run_time?: string;
     time_range_type?: 1 | 2 | 3 | 4;
     sources?: SourceItem[];
@@ -291,4 +303,6 @@ export interface ScheduleConfig {
     unit: ScheduleUnit;   // 天 / 周 / 月
     every: number;        // 正整数数量，如 every=2 + unit="week" => 每 2 周
     time: string;         // "HH:MM" — 运行时刻，始终保留
+    dayOfWeek?: number;   // 周模式：1=周一 .. 7=周日，0/undefined=不限
+    dayOfMonth?: number;  // 月模式：1..31，0/undefined=不限
 }

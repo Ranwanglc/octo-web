@@ -405,11 +405,11 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         const { detail, scheduleItem } = this.state;
         if (!detail) return;
 
-        const { cron_expr, interval_days, interval_months, run_time } = scheduleToParams(config);
+        const { cron_expr, interval_days, interval_months, day_of_week, day_of_month, run_time } = scheduleToParams(config);
 
         try {
             if (scheduleItem) {
-                await api.updateSchedule(scheduleItem.schedule_id, { cron_expr, interval_days, interval_months, run_time });
+                await api.updateSchedule(scheduleItem.schedule_id, { cron_expr, interval_days, interval_months, day_of_week, day_of_month, run_time });
                 Toast.success(t("summary.detail.scheduleSaved"));
                 this.loadSchedule(scheduleItem.schedule_id);
             } else {
@@ -419,6 +419,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     cron_expr,
                     interval_days,
                     interval_months,
+                    day_of_week,
+                    day_of_month,
                     run_time,
                     time_range_type: 2,
                     sources: detail.sources,
