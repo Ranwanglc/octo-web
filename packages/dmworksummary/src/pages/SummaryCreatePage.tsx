@@ -178,13 +178,29 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                                 task_id: result.task_id,
                             });
                         } catch {
-                            // 绑定失败不阻断主流程：定时已创建，但未绑定到 task。
-                            Toast.warning(t("summary.create.scheduleFailed"));
+                            // Blocking 2：绑定失败不能被吞。总结本身已创建成功（仍展示
+                            // create.success），但定时绑定失败 → 回滚删掉刚建的游离定时（避
+                            // 免孤儿），并明确报错（而非只记 warning 被忽略）。
+                            try {
+                                await api.deleteSchedule(newScheduleId);
+                                Toast.error(t("summary.create.scheduleBindFailed"));
+                            } catch {
+                                // 回滚也失败：提示可能残留孤儿定时，请去定时列表清理。
+                                Toast.error(t("summary.create.scheduleBindFailedOrphan"));
+                            }
                         }
+                    } else if (newScheduleId != null) {
+                        // 拿不到 task_id，无法绑定：同样回滚、报错。
+                        try {
+                            await api.deleteSchedule(newScheduleId);
+                        } catch {
+                            /* 回滚尽力而为 */
+                        }
+                        Toast.error(t("summary.create.scheduleBindFailed"));
                     }
                 } catch {
-                    // non-fatal: schedule creation failed
-                    Toast.warning(t("summary.create.scheduleFailed"));
+                    // 创建定时本身失败（尚未产生孤儿）：总结仍成功，仅提示定时未配置。
+                    Toast.error(t("summary.create.scheduleFailed"));
                 }
             }
 

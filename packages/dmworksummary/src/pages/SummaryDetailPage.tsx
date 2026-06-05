@@ -139,9 +139,14 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             const detail = await api.getSummaryDetail(this.taskId);
             this.setState({ detail, loading: false, lastKnownStatus: detail.status });
 
-            // Load schedule if associated
+            // Blocking 5（跨 task 串台）：scheduleItem 必须始终对应当前 detail。
+            // 从「有定时」总结导航到「无定时」总结时，若不显式清空，旧 scheduleItem
+            // 会残留 → renderScheduleButton 误判有定时、保存可能把旧定时重绑到新 task。
+            // 所以：只有 schedule_id 有效时才 loadSchedule；否则显式清空 scheduleItem。
             if (detail.schedule_id && detail.schedule_id > 0) {
                 this.loadSchedule(detail.schedule_id);
+            } else {
+                this.setState({ scheduleItem: null, scheduleLoading: false });
             }
 
             // Start fallback poll if task is in progress
@@ -170,7 +175,9 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             const item = await api.getSchedule(scheduleId);
             this.setState({ scheduleItem: item, scheduleLoading: false });
         } catch {
-            this.setState({ scheduleLoading: false });
+            // Blocking 5：加载失败也要清空 scheduleItem，避免上一条总结的定时残留，
+            // 保证 scheduleItem 始终对应当前 detail（宁可显示「设置定时」也不串台）。
+            this.setState({ scheduleItem: null, scheduleLoading: false });
         }
     }
 
@@ -467,24 +474,46 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     sources: detail.sources,
                 });
                 const newScheduleId = newSchedule?.schedule_id;
-                let effectiveScheduleId = newScheduleId;
                 if (newScheduleId != null && detail.task_id != null) {
+                    // Blocking 2：绑定失败不能被吞并谎报成功，否则会留下未绑定的
+                    // 「孤儿」定时。绑定失败时：①回滚——删掉刚建的游离定时；
+                    // ②不报 success，明确报错；③不写入 scheduleItem（避免 UI 假象）。
+                    let bound: { schedule_id?: number } | undefined;
                     try {
-                        const bound = await api.updateSchedule(newScheduleId, {
+                        bound = await api.updateSchedule(newScheduleId, {
                             scope: 'task',
                             task_id: detail.task_id,
                         });
-                        effectiveScheduleId = bound?.schedule_id ?? newScheduleId;
-                    } catch {
-                        // 绑定尝试失败不阻断主流程；定时已创建，属需后端配合的已知限制。
+                    } catch (bindErr: any) {
+                        // 回滚：删掉游离定时，尽力而为。
+                        try {
+                            await api.deleteSchedule(newScheduleId);
+                            Toast.error(t("summary.detail.scheduleBindFailed"));
+                        } catch {
+                            // 回滚也失败：提示可能残留孤儿定时，请去定时列表清理。
+                            Toast.error(t("summary.detail.scheduleBindFailedOrphan"));
+                        }
+                        // 不写入 scheduleItem，按本 task 实际状态重拉详情（清掉任何残留）。
+                        this.setState({ showScheduleConfig: false });
+                        this.loadDetail();
+                        return;
                     }
-                }
-                Toast.success(t("summary.detail.scheduleCreated"));
-                if (effectiveScheduleId != null) {
+                    const effectiveScheduleId = bound?.schedule_id ?? newScheduleId;
+                    Toast.success(t("summary.detail.scheduleCreated"));
                     // 拉取生效记录回显（本会话内保证「刚建的定时立即可见」）。
                     this.loadSchedule(effectiveScheduleId);
                 } else {
-                    this.setState({ scheduleItem: newSchedule });
+                    // 无法发起绑定（缺 newScheduleId 或 task_id）：等同绑定失败，同样回滚。
+                    if (newScheduleId != null) {
+                        try {
+                            await api.deleteSchedule(newScheduleId);
+                        } catch {
+                            /* 回滚尽力而为 */
+                        }
+                    }
+                    Toast.error(t("summary.detail.scheduleBindFailed"));
+                    this.setState({ showScheduleConfig: false });
+                    return;
                 }
             }
             this.setState({ showScheduleConfig: false });
@@ -495,6 +524,12 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
 
     // 任务1：「关闭定时」——停用（可恢复），不走 delete。
     // 调 toggleSchedule(..., false) 把 is_active 置 0，成功后刷新详情页定时状态。
+    //
+    // Blocking 4（降级）：这里 toggleSchedule(schedule_id, false) 是「全局」停用（未带
+    // scope='task'）。之所以不改为 task-scoped disable：后端已上一对一约束（一个定时
+    // 只绑一个总结），所以全局 disable 与本 task 级 disable 等价、实际无害。
+    // ⚠若未来放开定时共享（一个定时绑多个总结），需改为 task-scoped disable，
+    // 否则会误停其他总结的定时。
     handleScheduleDisable = async () => {
         const { scheduleItem } = this.state;
         if (!scheduleItem) return;

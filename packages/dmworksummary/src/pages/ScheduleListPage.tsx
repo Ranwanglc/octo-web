@@ -27,6 +27,7 @@ import {
     getModeLabel,
     describeSchedule,
     getTimeRangeTypeLabel,
+    scheduleItemToConfig,
 } from "../utils/summaryHelpers";
 import ScheduleForm from "../components/ScheduleForm";
 
@@ -254,23 +255,42 @@ export default class ScheduleListPage extends Component<{}, ScheduleListPageStat
                     width={520}
                 >
                     {editingSchedule && (
-                        <ScheduleForm
-                            initialValues={{
-                                title: editingSchedule.title,
-                                summary_mode: editingSchedule.summary_mode,
+                        <>
+                            {/* Blocking 3：列表页编辑 legacy cron 定时时补与详情页一致的警告。
+                                ScheduleForm 总是 scheduleToParams 清空 cron_expr，若不提示，打开
+                                旧的每周/每月 cron 定时不改频率直接保存，会被静默改成每天（数据丢失）。 */}
+                            {scheduleItemToConfig({
                                 cron_expr: editingSchedule.cron_expr,
-                                interval_days: editingSchedule.interval_days ?? 0,
-                                interval_months: editingSchedule.interval_months ?? 0,
-                                day_of_week: editingSchedule.day_of_week ?? 0,
-                                day_of_month: editingSchedule.day_of_month ?? 0,
-                                run_time: editingSchedule.run_time ?? "",
-                                time_range_type: editingSchedule.time_range_type,
-                                sources: editingSchedule.sources ?? [],
-                            }}
-                            onSubmit={this.handleUpdate}
-                            onCancel={() => this.setState({ showEditModal: false, editingSchedule: null })}
-                            loading={formLoading}
-                        />
+                                interval_days: editingSchedule.interval_days,
+                                interval_months: editingSchedule.interval_months,
+                                run_time: editingSchedule.run_time,
+                            }).legacyCron && (
+                                <Banner
+                                    type="warning"
+                                    closeIcon={null}
+                                    description={translate("summary.schedule.config.legacyCronWarning")}
+                                    style={{ marginBottom: 16 }}
+                                    fullMode={false}
+                                />
+                            )}
+                            <ScheduleForm
+                                initialValues={{
+                                    title: editingSchedule.title,
+                                    summary_mode: editingSchedule.summary_mode,
+                                    cron_expr: editingSchedule.cron_expr,
+                                    interval_days: editingSchedule.interval_days ?? 0,
+                                    interval_months: editingSchedule.interval_months ?? 0,
+                                    day_of_week: editingSchedule.day_of_week ?? 0,
+                                    day_of_month: editingSchedule.day_of_month ?? 0,
+                                    run_time: editingSchedule.run_time ?? "",
+                                    time_range_type: editingSchedule.time_range_type,
+                                    sources: editingSchedule.sources ?? [],
+                                }}
+                                onSubmit={this.handleUpdate}
+                                onCancel={() => this.setState({ showEditModal: false, editingSchedule: null })}
+                                loading={formLoading}
+                            />
+                        </>
                     )}
                 </Modal>
             </div>

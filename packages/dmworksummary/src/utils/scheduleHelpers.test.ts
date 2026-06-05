@@ -91,6 +91,20 @@ describe('scheduleItemToConfig', () => {
         expect(cfg).toMatchObject({ unit: 'day', every: 1, time: '09:00' });
         expect(cfg.legacyCron).toBeUndefined();
     });
+
+    // Blocking 3：列表页编辑流程用 scheduleItemToConfig(...).legacyCron 判定是否
+    // 弹「保存将转间隔」警告。这里固化该判定：仅 legacy cron（有 cron_expr、无 interval）
+    // 触发警告；interval 模式不触发（不会被静默转换）。
+    it('Blocking 3: legacyCron flag drives the list-page edit warning only for cron-only schedules', () => {
+        // legacy cron → 应触发警告
+        expect(scheduleItemToConfig({ cron_expr: '0 9 * * 1' }).legacyCron).toBe('0 9 * * 1');
+        // interval_days 模式 → 不触发
+        expect(scheduleItemToConfig({ cron_expr: '', interval_days: 7 }).legacyCron).toBeUndefined();
+        // interval_months 模式 → 不触发
+        expect(scheduleItemToConfig({ cron_expr: '', interval_months: 1 }).legacyCron).toBeUndefined();
+        // 即使同时带了遗留 cron_expr，只要有 interval 就优先 interval、不算 legacy
+        expect(scheduleItemToConfig({ cron_expr: '0 9 * * 1', interval_days: 7 }).legacyCron).toBeUndefined();
+    });
 });
 
 // ─── describeSchedule (非阻塞3: 周几/几号) ──────────────

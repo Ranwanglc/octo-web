@@ -89,6 +89,44 @@ describe('SummaryCreatePage — schedule binding on create', () => {
         expect(createOrder).toBeLessThan(bindOrder);
     });
 
+    it('Blocking 2: rolls back (deleteSchedule) and does NOT report success when binding fails', async () => {
+        const TASK_ID = 4242;
+        const SCHEDULE_ID = 777;
+
+        vi.mocked(api.createSummary).mockResolvedValue({ task_id: TASK_ID });
+        vi.mocked(api.createSchedule).mockResolvedValue({ schedule_id: SCHEDULE_ID } as any);
+        // 绑定失败。
+        vi.mocked(api.updateSchedule).mockRejectedValue(new Error('bind failed'));
+        vi.mocked(api.deleteSchedule).mockResolvedValue(undefined as any);
+
+        const { Toast } = await import('@douyinfe/semi-ui');
+
+        const page = makePage();
+        await page.handleSubmit();
+
+        // 绑定失败后必须回滚：删掉刚建的游离定时（避免孤儿）。
+        expect(api.deleteSchedule).toHaveBeenCalledTimes(1);
+        expect(api.deleteSchedule).toHaveBeenCalledWith(SCHEDULE_ID);
+        // 必须报错，而不是吞掉。
+        expect(Toast.error).toHaveBeenCalled();
+        // 总结本身仍创建成功（create.success 仍会展示），不应因绑定失败而漏报。
+    });
+
+    it('Blocking 2: surfaces orphan warning when rollback (deleteSchedule) also fails', async () => {
+        vi.mocked(api.createSummary).mockResolvedValue({ task_id: 1 });
+        vi.mocked(api.createSchedule).mockResolvedValue({ schedule_id: 9 } as any);
+        vi.mocked(api.updateSchedule).mockRejectedValue(new Error('bind failed'));
+        vi.mocked(api.deleteSchedule).mockRejectedValue(new Error('rollback failed'));
+
+        const { Toast } = await import('@douyinfe/semi-ui');
+
+        const page = makePage();
+        await page.handleSubmit();
+
+        expect(api.deleteSchedule).toHaveBeenCalledTimes(1);
+        expect(Toast.error).toHaveBeenCalled();
+    });
+
     it('does not call createSchedule/updateSchedule when no schedule configured', async () => {
         vi.mocked(api.createSummary).mockResolvedValue({ task_id: 1 });
 
