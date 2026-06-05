@@ -224,6 +224,14 @@ export interface CreateScheduleParams {
     time_range_type: 1 | 2 | 3 | 4;
     sources: SourceItem[];
     participants?: { user_id: string }[];
+    /**
+     * scope='task' 让后端在一个事务里原子完成「建定时 + 绑定到 task_id」：
+     * 校验 task 归属 → 建定时 → Update summary_task.schedule_id 绑定（一对一约束）。
+     * 不带 scope 的旧两步式（create 再 update 绑定）已被后端 C1 直接 400 拒绝。
+     */
+    scope?: 'task';
+    /** scope==='task' 时必填：把新建定时原子绑定到该 task。 */
+    task_id?: number;
 }
 
 export interface UpdateScheduleParams {

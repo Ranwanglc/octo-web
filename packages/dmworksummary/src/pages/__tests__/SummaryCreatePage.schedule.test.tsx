@@ -30,9 +30,10 @@ import WKApp from '@octo/base/src/App';
 import * as api from '../../api/summaryApi';
 import SummaryCreatePage from '../SummaryCreatePage';
 
-// 回归测试：创建智能总结时若配置了定时，必须先 createSchedule，再用刚创建的
-// task_id 调 updateSchedule(scope='task', task_id) 把定时绑定到该 task，
-// 否则 task.schedule_id 为 NULL、定时成孤儿、详情页不显示。
+// 回归测试：创建智能总结时若配置了定时，必须用「一步式」createSchedule —— 参数
+// 里直接带 scope='task' + task_id。后端 create 在 scope=task 时已在一个事务里原子
+// 完成「建定时 + 绑定 summary_task.schedule_id」，不再需要第二步 updateSchedule，
+// 也不会产生游离定时（孤儿），所以不再有 B2 回滚逻辑。
 vi.mock('../../api/summaryApi');
 
 describe('SummaryCreatePage — schedule binding on create', () => {
@@ -61,73 +62,49 @@ describe('SummaryCreatePage — schedule binding on create', () => {
         return page;
     }
 
-    it('creates schedule then binds it to the new task via updateSchedule(scope=task)', async () => {
+    it('one-step createSchedule with scope=task + task_id (no second-step updateSchedule)', async () => {
         const TASK_ID = 4242;
         const SCHEDULE_ID = 777;
 
         vi.mocked(api.createSummary).mockResolvedValue({ task_id: TASK_ID });
         vi.mocked(api.createSchedule).mockResolvedValue({ schedule_id: SCHEDULE_ID } as any);
-        vi.mocked(api.updateSchedule).mockResolvedValue({ schedule_id: SCHEDULE_ID } as any);
 
         const page = makePage();
         await page.handleSubmit();
 
         // 1. 先建 summary。
         expect(api.createSummary).toHaveBeenCalledTimes(1);
-        // 2. 再建 schedule。
+        // 2. 一步式建 schedule：参数里直接带 scope='task' + task_id。
         expect(api.createSchedule).toHaveBeenCalledTimes(1);
-        // 3. 关键：用新 task_id 绑定刚建的 schedule。
-        expect(api.updateSchedule).toHaveBeenCalledTimes(1);
-        expect(api.updateSchedule).toHaveBeenCalledWith(
-            SCHEDULE_ID,
+        expect(api.createSchedule).toHaveBeenCalledWith(
             expect.objectContaining({ scope: 'task', task_id: TASK_ID }),
         );
-
-        // 调用顺序：createSchedule 必须在 updateSchedule 之前。
-        const createOrder = vi.mocked(api.createSchedule).mock.invocationCallOrder[0];
-        const bindOrder = vi.mocked(api.updateSchedule).mock.invocationCallOrder[0];
-        expect(createOrder).toBeLessThan(bindOrder);
+        // 3. 不再有第二步 updateSchedule 绑定。
+        expect(api.updateSchedule).not.toHaveBeenCalled();
     });
 
-    it('Blocking 2: rolls back (deleteSchedule) and does NOT report success when binding fails', async () => {
+    it('on schedule create failure: only Toast.error (no rollback / no deleteSchedule)', async () => {
         const TASK_ID = 4242;
-        const SCHEDULE_ID = 777;
 
         vi.mocked(api.createSummary).mockResolvedValue({ task_id: TASK_ID });
-        vi.mocked(api.createSchedule).mockResolvedValue({ schedule_id: SCHEDULE_ID } as any);
-        // 绑定失败。
-        vi.mocked(api.updateSchedule).mockRejectedValue(new Error('bind failed'));
-        vi.mocked(api.deleteSchedule).mockResolvedValue(undefined as any);
+        // 后端原子建绑失败（如一对一约束 / 无权限 / scope=task 缺 task_id）。
+        vi.mocked(api.createSchedule).mockRejectedValue(new Error('一对一约束'));
 
         const { Toast } = await import('@douyinfe/semi-ui');
 
         const page = makePage();
         await page.handleSubmit();
 
-        // 绑定失败后必须回滚：删掉刚建的游离定时（避免孤儿）。
-        expect(api.deleteSchedule).toHaveBeenCalledTimes(1);
-        expect(api.deleteSchedule).toHaveBeenCalledWith(SCHEDULE_ID);
-        // 必须报错，而不是吞掉。
+        // 一步式失败：后端事务回滚，前端不再产生游离定时，因此不应调用 deleteSchedule。
+        expect(api.deleteSchedule).not.toHaveBeenCalled();
+        // 不再有第二步绑定。
+        expect(api.updateSchedule).not.toHaveBeenCalled();
+        // 直接透出后端 message。
         expect(Toast.error).toHaveBeenCalled();
-        // 总结本身仍创建成功（create.success 仍会展示），不应因绑定失败而漏报。
+        // 总结本身仍创建成功（create.success 仍会展示）。
     });
 
-    it('Blocking 2: surfaces orphan warning when rollback (deleteSchedule) also fails', async () => {
-        vi.mocked(api.createSummary).mockResolvedValue({ task_id: 1 });
-        vi.mocked(api.createSchedule).mockResolvedValue({ schedule_id: 9 } as any);
-        vi.mocked(api.updateSchedule).mockRejectedValue(new Error('bind failed'));
-        vi.mocked(api.deleteSchedule).mockRejectedValue(new Error('rollback failed'));
-
-        const { Toast } = await import('@douyinfe/semi-ui');
-
-        const page = makePage();
-        await page.handleSubmit();
-
-        expect(api.deleteSchedule).toHaveBeenCalledTimes(1);
-        expect(Toast.error).toHaveBeenCalled();
-    });
-
-    it('does not call createSchedule/updateSchedule when no schedule configured', async () => {
+    it('does not call createSchedule when no schedule configured', async () => {
         vi.mocked(api.createSummary).mockResolvedValue({ task_id: 1 });
 
         const page = makePage();

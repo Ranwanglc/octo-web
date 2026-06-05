@@ -114,16 +114,16 @@ describe('SummaryDetailPage — Blocking 5: scheduleItem must track current deta
     });
 });
 
-describe('SummaryDetailPage — Blocking 2: create+bind rollback', () => {
+// 回归：「无定时」总结新建定时改为一步式 createSchedule（scope='task' + task_id）。
+// 后端 create 在 scope=task 时已在一个事务里原子完成「建定时 + 绑定 summary_task.schedule_id」，
+// 前端不再走两步式（create 再 update 绑定），也不再有 B2 回滚（不会产生游离/孤儿定时）。
+describe('SummaryDetailPage — new schedule: one-step create (scope=task)', () => {
     beforeEach(() => vi.clearAllMocks());
 
-    it('rolls back (deleteSchedule) and reports error, no success, on bind failure', async () => {
+    it('creates schedule in one step with scope=task + task_id, then loads it (no updateSchedule/deleteSchedule)', async () => {
         const NEW_ID = 321;
         vi.mocked(api.createSchedule).mockResolvedValue({ schedule_id: NEW_ID } as any);
-        vi.mocked(api.updateSchedule).mockRejectedValue(new Error('bind failed'));
-        vi.mocked(api.deleteSchedule).mockResolvedValue(undefined as any);
-        // loadDetail 在回滚后会被调用，给个返回值避免抛错。
-        vi.mocked(api.getSummaryDetail).mockResolvedValue(baseDetail({ schedule_id: 0 }) as any);
+        vi.mocked(api.getSchedule).mockResolvedValue({ schedule_id: NEW_ID, is_active: true } as any);
 
         const { Toast } = await import('@douyinfe/semi-ui');
 
@@ -137,12 +137,38 @@ describe('SummaryDetailPage — Blocking 2: create+bind rollback', () => {
 
         await page.handleScheduleSave({ unit: 'week', every: 1, time: '09:00' } as any);
 
-        // 必须回滚刚建的游离定时。
-        expect(api.deleteSchedule).toHaveBeenCalledWith(NEW_ID);
-        // 必须报错，不报成功。
+        // 一步式 create：参数里直接带 scope='task' + task_id。
+        expect(api.createSchedule).toHaveBeenCalledTimes(1);
+        expect(api.createSchedule).toHaveBeenCalledWith(
+            expect.objectContaining({ scope: 'task', task_id: 1 }),
+        );
+        // 不再有第二步绑定、也不再回滚。
+        expect(api.updateSchedule).not.toHaveBeenCalled();
+        expect(api.deleteSchedule).not.toHaveBeenCalled();
+        // 拉取刚建并已绑定的定时回显。
+        expect(api.getSchedule).toHaveBeenCalledWith(NEW_ID);
+        expect(Toast.success).toHaveBeenCalled();
+    });
+
+    it('on create failure: only Toast.error, no rollback (no deleteSchedule)', async () => {
+        vi.mocked(api.createSchedule).mockRejectedValue(new Error('一对一约束'));
+
+        const { Toast } = await import('@douyinfe/semi-ui');
+
+        const page = makePage(1);
+        page.state = {
+            ...(page.state as any),
+            detail: baseDetail({ schedule_id: 0 }),
+            scheduleItem: null,
+        };
+
+        await page.handleScheduleSave({ unit: 'week', every: 1, time: '09:00' } as any);
+
+        // 后端事务原子回滚，前端不再产生游离定时 → 不调 deleteSchedule。
+        expect(api.deleteSchedule).not.toHaveBeenCalled();
+        expect(api.updateSchedule).not.toHaveBeenCalled();
+        // 透出后端 message。
         expect(Toast.error).toHaveBeenCalled();
         expect(Toast.success).not.toHaveBeenCalled();
-        // 不应把游离定时写进 scheduleItem（避免 UI 假象）。
-        expect((page.state as any).scheduleItem ?? null).toBeNull();
     });
 });

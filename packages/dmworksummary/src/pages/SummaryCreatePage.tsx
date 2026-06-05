@@ -149,15 +149,14 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
 
             const result = await api.createSummary(params);
 
-            // If schedule is configured, create schedule then bind it to the new task.
-            // 与详情页 handleScheduleSave 的「新建定时」分支保持一致的两步法：
-            //   1. createSchedule 拿到 newSchedule.schedule_id；
-            //   2. updateSchedule(id, {scope:'task', task_id}) 把定时绑定到刚创建的 task，
-            //      否则 task.schedule_id 永远为 NULL，定时成孤儿、详情页不显示。
+            // If schedule is configured, create it in ONE step bound to the new task.
+            // 后端 create 接口在 scope='task' + task_id 下已在一个事务里原子完成
+            //   校验 task 归属 → 建定时 → Update summary_task.schedule_id 绑定（一对一约束）。
+            // 不再需要第二步 update 绑定，也不会产生游离定时，所以去掉 B2 回滚。
             if (scheduleConfig !== null) {
                 const { cron_expr, interval_days, interval_months, day_of_week, day_of_month, run_time } = scheduleToParams(scheduleConfig);
                 try {
-                    const newSchedule = await api.createSchedule({
+                    await api.createSchedule({
                         title: topic.trim(),
                         summary_mode: params.summary_mode || SummaryMode.BY_PERSON,
                         cron_expr,
@@ -169,38 +168,12 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                         time_range_type: 2,
                         sources: params.sources || [],
                         participants: params.participants,
+                        scope: 'task',
+                        task_id: result.task_id,
                     });
-                    const newScheduleId = newSchedule?.schedule_id;
-                    if (newScheduleId != null && result.task_id != null) {
-                        try {
-                            await api.updateSchedule(newScheduleId, {
-                                scope: 'task',
-                                task_id: result.task_id,
-                            });
-                        } catch {
-                            // Blocking 2：绑定失败不能被吞。总结本身已创建成功（仍展示
-                            // create.success），但定时绑定失败 → 回滚删掉刚建的游离定时（避
-                            // 免孤儿），并明确报错（而非只记 warning 被忽略）。
-                            try {
-                                await api.deleteSchedule(newScheduleId);
-                                Toast.error(t("summary.create.scheduleBindFailed"));
-                            } catch {
-                                // 回滚也失败：提示可能残留孤儿定时，请去定时列表清理。
-                                Toast.error(t("summary.create.scheduleBindFailedOrphan"));
-                            }
-                        }
-                    } else if (newScheduleId != null) {
-                        // 拿不到 task_id，无法绑定：同样回滚、报错。
-                        try {
-                            await api.deleteSchedule(newScheduleId);
-                        } catch {
-                            /* 回滚尽力而为 */
-                        }
-                        Toast.error(t("summary.create.scheduleBindFailed"));
-                    }
-                } catch {
-                    // 创建定时本身失败（尚未产生孤儿）：总结仍成功，仅提示定时未配置。
-                    Toast.error(t("summary.create.scheduleFailed"));
+                } catch (scheduleErr: any) {
+                    // 总结本身已创建成功；定时创建失败仅提示（后端返回中文 message）。
+                    Toast.error(scheduleErr.message || t("summary.create.scheduleFailed"));
                 }
             }
 

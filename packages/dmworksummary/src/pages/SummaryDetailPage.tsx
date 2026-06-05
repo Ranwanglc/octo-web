@@ -455,12 +455,12 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 Toast.success(t("summary.detail.scheduleSaved"));
                 this.loadSchedule(effectiveScheduleId);
             } else {
-                // Blocking 2：为「无定时」总结新建定时时，创建后需把新 schedule 绑定
-                // 到当前 task。后端 create 接口不接受 task_id/scope，且 update 的 scope=task 克隆
-                // 路径仅在 task.schedule_id 已指向该 schedule 时才 rebind——所以纯前端无法
-                // 持久化绑定。这里以「创建→再 update(scope=task,task_id)」发出正确调用形状，
-                // 本会话内立即生效；跨刷新持久化需后端在 update scope=task 路径支持
-                // 「task 无 schedule_id 时绑定」（见交付说明：需后端配合）。
+                // 为「无定时」总结新建定时：一步式 create，带 scope='task' + task_id。
+                // 后端在一个事务里原子完成：校验 task 归属 → 建定时 → Update
+                // summary_task.schedule_id 绑定（一对一约束）。不再需要第二步 update
+                // 绑定，也不会产生游离定时，所以去掉 B2 回滚。失败时后端返回
+                // 中文错误（一对一约束 / 40004 无权限 / scope=task 必传 task_id 等），
+                // 由下方 catch 的 Toast.error 透出 err.message。
                 const newSchedule = await api.createSchedule({
                     title: detail.title,
                     summary_mode: detail.summary_mode,
@@ -472,49 +472,12 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     run_time,
                     time_range_type: 2,
                     sources: detail.sources,
+                    scope: 'task',
+                    task_id: detail.task_id,
                 });
-                const newScheduleId = newSchedule?.schedule_id;
-                if (newScheduleId != null && detail.task_id != null) {
-                    // Blocking 2：绑定失败不能被吞并谎报成功，否则会留下未绑定的
-                    // 「孤儿」定时。绑定失败时：①回滚——删掉刚建的游离定时；
-                    // ②不报 success，明确报错；③不写入 scheduleItem（避免 UI 假象）。
-                    let bound: { schedule_id?: number } | undefined;
-                    try {
-                        bound = await api.updateSchedule(newScheduleId, {
-                            scope: 'task',
-                            task_id: detail.task_id,
-                        });
-                    } catch (bindErr: any) {
-                        // 回滚：删掉游离定时，尽力而为。
-                        try {
-                            await api.deleteSchedule(newScheduleId);
-                            Toast.error(t("summary.detail.scheduleBindFailed"));
-                        } catch {
-                            // 回滚也失败：提示可能残留孤儿定时，请去定时列表清理。
-                            Toast.error(t("summary.detail.scheduleBindFailedOrphan"));
-                        }
-                        // 不写入 scheduleItem，按本 task 实际状态重拉详情（清掉任何残留）。
-                        this.setState({ showScheduleConfig: false });
-                        this.loadDetail();
-                        return;
-                    }
-                    const effectiveScheduleId = bound?.schedule_id ?? newScheduleId;
-                    Toast.success(t("summary.detail.scheduleCreated"));
-                    // 拉取生效记录回显（本会话内保证「刚建的定时立即可见」）。
-                    this.loadSchedule(effectiveScheduleId);
-                } else {
-                    // 无法发起绑定（缺 newScheduleId 或 task_id）：等同绑定失败，同样回滚。
-                    if (newScheduleId != null) {
-                        try {
-                            await api.deleteSchedule(newScheduleId);
-                        } catch {
-                            /* 回滚尽力而为 */
-                        }
-                    }
-                    Toast.error(t("summary.detail.scheduleBindFailed"));
-                    this.setState({ showScheduleConfig: false });
-                    return;
-                }
+                Toast.success(t("summary.detail.scheduleCreated"));
+                // 拉取刚建并已绑定的定时回显。
+                this.loadSchedule(newSchedule.schedule_id);
             }
             this.setState({ showScheduleConfig: false });
         } catch (err: any) {
