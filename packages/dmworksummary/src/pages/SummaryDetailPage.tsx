@@ -409,9 +409,24 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
 
         try {
             if (scheduleItem) {
-                await api.updateSchedule(scheduleItem.schedule_id, { cron_expr, interval_days, interval_months, day_of_week, day_of_month, run_time });
+                // Plan A1: detail-page edit is scoped to THIS summary. The backend
+                // clones a new schedule (and rebinds this task) when the schedule
+                // is shared by multiple summaries, so other summaries are not
+                // affected. The response carries the effective schedule_id (the
+                // clone's id when cloned, or the original id otherwise).
+                const updated = await api.updateSchedule(scheduleItem.schedule_id, {
+                    cron_expr,
+                    interval_days,
+                    interval_months,
+                    day_of_week,
+                    day_of_month,
+                    run_time,
+                    scope: 'task',
+                    task_id: detail.task_id,
+                });
                 Toast.success(t("summary.detail.scheduleSaved"));
-                this.loadSchedule(scheduleItem.schedule_id);
+                const effectiveScheduleId = updated?.schedule_id ?? scheduleItem.schedule_id;
+                this.loadSchedule(effectiveScheduleId);
             } else {
                 const newSchedule = await api.createSchedule({
                     title: detail.title,

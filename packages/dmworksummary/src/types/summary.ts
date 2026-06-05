@@ -240,6 +240,16 @@ export interface UpdateScheduleParams {
     time_range_type?: 1 | 2 | 3 | 4;
     sources?: SourceItem[];
     participants?: { user_id: string }[];
+    /**
+     * Plan A1: scope distinguishes the caller. "task" means a summary detail
+     * page is editing the period of ONE summary — if the schedule is shared by
+     * multiple tasks the backend clones a new schedule for this task instead of
+     * mutating the shared row. Omit (schedule list page) to edit the template
+     * in place.
+     */
+    scope?: 'task';
+    /** Required when scope === 'task': the task whose schedule_id is rebound. */
+    task_id?: number;
 }
 
 /** API 统一响应 */
