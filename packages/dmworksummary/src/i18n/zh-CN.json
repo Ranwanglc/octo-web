@@ -144,7 +144,8 @@
     "scheduleWeekly": "每{{day}} {{time}}",
     "scheduleMonthly": "每月{{day}}日 {{time}}",
     "scheduleBindFailed": "总结已创建，但定时绑定失败，已撤销该定时，请到详情页重试",
-    "scheduleBindFailedOrphan": "总结已创建，但定时绑定失败且撤销未成功，可能残留未绑定定时，请到定时列表检查清理"
+    "scheduleBindFailedOrphan": "总结已创建，但定时绑定失败且撤销未成功，可能残留未绑定定时，请到定时列表检查清理",
+    "archivedNotice": "默认总结活跃子区，不含已归档子区"
   },
   "chatSummary": {
     "panelTitle": "聊天内的智能总结",
@@ -180,7 +181,10 @@
     "title": "选择聊天",
     "searchPlaceholder": "搜索群聊或联系人",
     "all": "全部",
-    "noData": "暂无数据"
+    "noData": "暂无数据",
+    "includeArchived": "包含已归档子区",
+    "includeArchivedHelper": "默认不含已归档子区，开启后可选择归档子区",
+    "archivedTag": "已归档"
   },
   "memberSelector": {
     "title": "添加成员",
@@ -301,6 +305,8 @@
     "expandAll": "展开全部 ▼",
     "waitingSubmit": "{{name}} · 等待提交...",
     "regenerate": "重新生成",
+    "regenerateEditTitle": "修改提示词并重新生成",
+    "regenerateTopicLabel": "提示词",
     "cancelTask": "取消任务",
     "errorCause": "可能由网络波动或服务异常导致",
     "inviteQuestion": "你被邀请参与此总结任务，是否同意？",

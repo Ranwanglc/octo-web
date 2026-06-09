@@ -101,7 +101,10 @@ import { handleGlobalSearchClick } from "./Pages/Chat/vm";
 import { ApproveGroupMemberCell } from "./Messages/ApproveGroupMember";
 import { notificationUtil } from "./Utils/NotificationUtil";
 import { resolveExternalForViewer } from "./Utils/externalViewer";
-import { copyImageToClipboard } from "./Utils/clipboard";
+import {
+  copyImageToClipboard,
+  copyRichTextToClipboard,
+} from "./Utils/clipboard";
 import { shouldSkipMessageForSpace } from "./Service/SpaceService";
 import { t } from "./i18n";
 import {
@@ -111,6 +114,8 @@ import {
 import { SummaryCardContent } from "./Messages/SummaryCard/SummaryCardContent";
 import { SummaryCardCell } from "./Messages/SummaryCard";
 import { parseThreadChannelId, ThreadStatus } from "./Service/Thread";
+import { shouldShowThreadArchiveAction } from "./Service/threadPermission";
+import { runChannelSettingThreadArchive } from "./Service/threadArchiveAction";
 import { canShowRevokeMenu } from "./Service/revokePermission";
 
 /** execCommand 降级复制，用于 navigator.clipboard 不可用的场景 */
@@ -128,6 +133,16 @@ function fallbackCopy(text: string) {
   }
 }
 
+function removeLocalConversationAndCloseIfOpen(channel: Channel) {
+  WKSDK.shared().conversationManager.removeConversation(channel);
+  const isOpen = WKApp.shared.openChannel?.isEqual(channel);
+  if (isOpen) {
+    WKApp.shared.openChannel = undefined;
+    WKApp.routeRight.popToRoot();
+  }
+  WKApp.shared.notifyListener();
+}
+
 const pendingRevokeRoleFetches = new Set<string>();
 
 function findSubscriber(channel: Channel, uid: string): Subscriber | undefined {
@@ -135,14 +150,18 @@ function findSubscriber(channel: Channel, uid: string): Subscriber | undefined {
     | Subscriber[]
     | null
     | undefined;
-  return subscribers?.find((subscriber) => subscriber && subscriber.uid === uid);
+  return subscribers?.find(
+    (subscriber) => subscriber && subscriber.uid === uid
+  );
 }
 
 function mergeSubscriberIntoCache(channel: Channel, subscriber: Subscriber) {
   const channelManager = WKSDK.shared().channelManager;
   const cached = (channelManager.getSubscribes(channel) || []) as Subscriber[];
   const nextSubscribers = [...cached];
-  const index = nextSubscribers.findIndex((item) => item.uid === subscriber.uid);
+  const index = nextSubscribers.findIndex(
+    (item) => item.uid === subscriber.uid
+  );
   subscriber.channel = channel;
 
   if (index >= 0) {
@@ -154,7 +173,10 @@ function mergeSubscriberIntoCache(channel: Channel, subscriber: Subscriber) {
     nextSubscribers.push(subscriber);
   }
 
-  channelManager.subscribeCacheMap.set(channel.getChannelKey(), nextSubscribers);
+  channelManager.subscribeCacheMap.set(
+    channel.getChannelKey(),
+    nextSubscribers
+  );
   channelManager.notifySubscribeChangeListeners(channel);
 }
 
@@ -630,12 +652,16 @@ export default class BaseModule implements IModule {
     }
 
     // 已屏蔽（免打扰）的 channel 不播提示音、不发通知
-    const channelInfo = WKSDK.shared().channelManager.getChannelInfo(message.channel);
+    const channelInfo = WKSDK.shared().channelManager.getChannelInfo(
+      message.channel
+    );
     if (channelInfo?.mute) {
       return false;
     }
     // 子区消息：额外检查父群聊 mute
-    const parentGroupNo = channelInfo?.orgData?.parentGroupNo as string | undefined;
+    const parentGroupNo = channelInfo?.orgData?.parentGroupNo as
+      | string
+      | undefined;
     if (parentGroupNo) {
       const parentChannelInfo = WKSDK.shared().channelManager.getChannelInfo(
         new Channel(parentGroupNo, ChannelTypeGroup)
@@ -729,6 +755,14 @@ export default class BaseModule implements IModule {
               ? (message.content as RichTextContent).plain || ""
               : (message.content as MessageText).text || "";
             const textToCopy = selectedText || fullText;
+            if (isRichText && !selectedText) {
+              copyRichTextToClipboard(message.content as RichTextContent).catch(
+                () => {
+                  fallbackCopy(textToCopy);
+                }
+              );
+              return;
+            }
             if (navigator.clipboard?.writeText) {
               navigator.clipboard.writeText(textToCopy).catch(() => {
                 // navigator.clipboard 失败时降级到 execCommand
@@ -754,14 +788,23 @@ export default class BaseModule implements IModule {
         const rawSrc = content.url || content.remoteUrl || "";
         if (!rawSrc) return null;
         // 经过 datasource URL 处理，与渲染路径保持一致（补全 base URL、路径改写等）
-        const src = WKApp.dataSource.commonDataSource.getImageURL(rawSrc, { width: content.width || 0, height: content.height || 0 });
+        const src = WKApp.dataSource.commonDataSource.getImageURL(rawSrc, {
+          width: content.width || 0,
+          height: content.height || 0,
+        });
 
         return {
           title: t("base.module.contextMenus.copyImage"),
           onClick: () => {
             copyImageToClipboard(src)
-              .then(() => Toast.success(t("base.module.contextMenus.copyImageSuccess")))
-              .catch((err: Error) => Toast.warning(err.message || t("base.module.contextMenus.copyFailed")));
+              .then(() =>
+                Toast.success(t("base.module.contextMenus.copyImageSuccess"))
+              )
+              .catch((err: Error) =>
+                Toast.warning(
+                  err.message || t("base.module.contextMenus.copyFailed")
+                )
+              );
           },
         };
       },
@@ -1043,7 +1086,9 @@ export default class BaseModule implements IModule {
             const inviteChannelInfo =
               WKSDK.shared().channelManager.getChannelInfo(inviterChannel);
             if (inviteChannelInfo) {
-              joinDesc += t("base.module.userInfo.invitedBy", { values: { name: inviteChannelInfo.title } });
+              joinDesc += t("base.module.userInfo.invitedBy", {
+                values: { name: inviteChannelInfo.title },
+              });
             } else {
               WKSDK.shared().channelManager.fetchChannelInfo(inviterChannel);
             }
@@ -1256,9 +1301,8 @@ export default class BaseModule implements IModule {
         if (relation !== UserRelation.friend) {
           return;
         }
-        const sourceDesc = (channelInfo?.orgData?.source_desc as
-          | string
-          | undefined) || "";
+        const sourceDesc =
+          (channelInfo?.orgData?.source_desc as string | undefined) || "";
         if (!sourceDesc || sourceDesc.trim() === "") {
           return;
         }
@@ -1517,7 +1561,9 @@ export default class BaseModule implements IModule {
               subTitle: groupNameSubTitle,
               onClick: () => {
                 if (!data.isManagerOrCreatorOfMe) {
-                  Toast.warning(t("base.module.channelSettings.groupNameOnlyManager"));
+                  Toast.warning(
+                    t("base.module.channelSettings.groupNameOnlyManager")
+                  );
                   return;
                 }
                 this.inputEditPush(
@@ -1595,7 +1641,9 @@ export default class BaseModule implements IModule {
               subTitle: channelInfo?.orgData?.notice,
               onClick: () => {
                 if (!data.isManagerOrCreatorOfMe) {
-                  Toast.warning(t("base.module.channelSettings.groupNoticeOnlyManager"));
+                  Toast.warning(
+                    t("base.module.channelSettings.groupNoticeOnlyManager")
+                  );
                   return;
                 }
                 this.inputEditPush(
@@ -1617,6 +1665,102 @@ export default class BaseModule implements IModule {
             },
           })
         );
+        if (data.subscriberOfMe?.role === GroupRole.owner) {
+          let transferOwnerFinishButtonContext: FinishButtonContext;
+          let transferOwnerSelectedItems: Subscriber[] = [];
+          rows.push(
+            new Row({
+              cell: ListItem,
+              properties: {
+                title: t("base.module.channelSettings.transferOwner"),
+                onClick: () => {
+                  context.push(
+                    <SubscriberList
+                      channel={channel}
+                      canSelect={true}
+                      singleSelect={true}
+                      disableSelectList={[WKApp.loginInfo.uid || ""]}
+                      filter={(subscriber) =>
+                        subscriber.uid !== WKApp.loginInfo.uid &&
+                        (subscriber.orgData?.robot === 1) !== true
+                      }
+                      onSelect={(items) => {
+                        transferOwnerSelectedItems = items;
+                        transferOwnerFinishButtonContext?.disable(
+                          items.length !== 1
+                        );
+                      }}
+                    />,
+                    new RouteContextConfig({
+                      title: t(
+                        "base.module.channelSettings.transferOwnerSelect"
+                      ),
+                      showFinishButton: true,
+                      finishButtonTitle: t("base.common.ok"),
+                      onFinishContext: (finishButtonContext) => {
+                        transferOwnerFinishButtonContext = finishButtonContext;
+                        transferOwnerFinishButtonContext.disable(true);
+                      },
+                      onFinish: () => {
+                        const selected = transferOwnerSelectedItems[0];
+                        if (!selected) {
+                          Toast.warning(
+                            t(
+                              "base.module.channelSettings.transferOwnerSelectOne"
+                            )
+                          );
+                          return;
+                        }
+                        const name =
+                          selected.remark || selected.name || selected.uid;
+                        wkConfirm({
+                          title: t(
+                            "base.module.channelSettings.transferOwner"
+                          ),
+                          content: t(
+                            "base.module.channelSettings.transferOwnerConfirm",
+                            { values: { name } }
+                          ),
+                          okText: t("base.common.ok"),
+                          cancelText: t("base.common.cancel"),
+                          onOk: async () => {
+                            try {
+                              await WKApp.dataSource.channelDataSource.channelTransferOwner(
+                                channel,
+                                selected.uid
+                              );
+                              Toast.success(
+                                t(
+                                  "base.module.channelSettings.transferOwnerSuccess"
+                                )
+                              );
+                              context.pop();
+                              void WKSDK.shared().channelManager.syncSubscribes(
+                                channel
+                              );
+                              void WKSDK.shared().channelManager.fetchChannelInfo(
+                                channel
+                              );
+                              data.refresh();
+                            } catch (err: any) {
+                              Toast.error(
+                                err?.msg ||
+                                  t(
+                                    "base.module.channelSettings.transferOwnerFailed"
+                                  )
+                              );
+                              throw err;
+                            }
+                          },
+                        });
+                      },
+                    })
+                  );
+                },
+              },
+            })
+          );
+        }
         if (channel.channelType === ChannelTypeGroup) {
           const hasGroupMd = channelInfo?.orgData?.has_group_md;
           const mdVersion = channelInfo?.orgData?.group_md_version || 0;
@@ -1626,7 +1770,9 @@ export default class BaseModule implements IModule {
               properties: {
                 title: "GROUP.md",
                 subTitle: hasGroupMd
-                  ? t("base.module.channelSettings.configuredVersion", { values: { version: mdVersion } })
+                  ? t("base.module.channelSettings.configuredVersion", {
+                      values: { version: mdVersion },
+                    })
                   : t("base.module.channelSettings.notConfigured"),
                 onClick: () => {
                   // Fall back to role check: creator (role=1) or manager (role=2) can edit GROUP.md
@@ -1940,7 +2086,9 @@ export default class BaseModule implements IModule {
                 type: ListItemButtonType.warn,
                 onClick: () => {
                   WKApp.shared.baseContext.showAlert({
-                    content: t("base.module.channelSettings.clearMessagesConfirm"),
+                    content: t(
+                      "base.module.channelSettings.clearMessagesConfirm"
+                    ),
                     onOk: async () => {
                       const conversation =
                         WKSDK.shared().conversationManager.findConversation(
@@ -1968,17 +2116,44 @@ export default class BaseModule implements IModule {
                 title: t("base.module.channelSettings.deleteAndExit"),
                 type: ListItemButtonType.warn,
                 onClick: () => {
+                  if (data.subscriberOfMe?.role === GroupRole.owner) {
+                    WKApp.shared.baseContext.showAlert({
+                      title: t(
+                        "base.module.channelSettings.ownerLeaveBlockedTitle"
+                      ),
+                      content: t(
+                        "base.module.channelSettings.ownerLeaveBlockedContent"
+                      ),
+                    });
+                    return;
+                  }
                   WKApp.shared.baseContext.showAlert({
-                    content: t("base.module.channelSettings.deleteAndExitConfirm"),
+                    content: t(
+                      "base.module.channelSettings.deleteAndExitConfirm"
+                    ),
                     onOk: async () => {
-                      WKApp.dataSource.channelDataSource
-                        .exitChannel(data.channel)
-                        .catch((err) => {
-                          Toast.error(err.msg);
-                        });
-                      WKApp.conversationProvider.deleteConversation(
-                        data.channel
-                      );
+                      try {
+                        await WKApp.dataSource.channelDataSource.exitChannel(
+                          data.channel
+                        );
+                        await WKApp.conversationProvider
+                          .deleteConversation(data.channel)
+                          .catch((err) => {
+                            console.warn(
+                              "[ChannelSetting] delete conversation after leaving failed:",
+                              err
+                            );
+                          });
+                        removeLocalConversationAndCloseIfOpen(data.channel);
+                      } catch (err: any) {
+                        Toast.error(
+                          err?.msg ||
+                            t(
+                              "base.module.channelSettings.deleteAndExitFailed"
+                            )
+                        );
+                        throw err;
+                      }
                     },
                   });
                 },
@@ -2017,14 +2192,14 @@ export default class BaseModule implements IModule {
           thread?.status === ThreadStatus.Archived
             ? t("base.module.thread.status.archived")
             : thread?.status === ThreadStatus.Deleted
-              ? t("base.module.thread.status.deleted")
-              : t("base.module.thread.status.active");
+            ? t("base.module.thread.status.deleted")
+            : t("base.module.thread.status.active");
         const statusColor =
           thread?.status === ThreadStatus.Archived
             ? "grey"
             : thread?.status === ThreadStatus.Deleted
-              ? "red"
-              : "green";
+            ? "red"
+            : "green";
 
         const rows = new Array<Row>();
         rows.push(
@@ -2036,7 +2211,9 @@ export default class BaseModule implements IModule {
               onClick: () => {
                 if (!threadInfo) return;
                 if (!canEdit) {
-                  Toast.warning(t("base.module.thread.nameOnlyCreatorOrManager"));
+                  Toast.warning(
+                    t("base.module.thread.nameOnlyCreatorOrManager")
+                  );
                   return;
                 }
                 this.inputEditPush(
@@ -2050,7 +2227,9 @@ export default class BaseModule implements IModule {
                         { name: value }
                       );
                     } catch (err: any) {
-                      Toast.error(err?.msg || t("base.module.thread.saveFailedRetry"));
+                      Toast.error(
+                        err?.msg || t("base.module.thread.saveFailedRetry")
+                      );
                       return; // 失败时 inputEditPush 正常关闭，不刷新缓存
                     }
                     // 清除缓存后重新拉取，拿到新数据再刷新 UI
@@ -2137,7 +2316,9 @@ export default class BaseModule implements IModule {
               properties: {
                 title: "GROUP.md",
                 subTitle: hasThreadMd
-                  ? t("base.module.channelSettings.configuredVersion", { values: { version: mdVersion } })
+                  ? t("base.module.channelSettings.configuredVersion", {
+                      values: { version: mdVersion },
+                    })
                   : t("base.module.channelSettings.notConfigured"),
                 onClick: () => {
                   // 延迟获取最新数据
@@ -2194,13 +2375,22 @@ export default class BaseModule implements IModule {
         }
         const threadInfo = parseThreadChannelId(channel.channelID);
         const thread = data.channelInfo?.orgData?.thread as any;
-        const isCreator = thread?.creator_uid === WKApp.loginInfo.uid;
-        const canArchive = isCreator || data.isManagerOrCreatorOfMe;
+        // 角色/权限判定统一走 shouldShowThreadArchiveAction（内部调用
+        // canArchiveThread → canManageThread，从【父群】成员列表解析
+        // owner/manager，与 ThreadPanel.canEditThread 完全一致，见 issue #283），
+        // 并统一「状态须为 Active/Archived」的门槛，避免与入口 B 产生平行副本。
+        // data.isManagerOrCreatorOfMe 读的是子区频道自身成员缓存，从未同步，
+        // 非创建者的群主/管理员恒为 false，仅作兜底。
+        const showArchiveAction = shouldShowThreadArchiveAction({
+          thread,
+          groupNo: threadInfo?.groupNo,
+          isManagerOrCreatorOfMeFallback: data.isManagerOrCreatorOfMe,
+        });
+        // isArchived 用于决定显示「归档」还是「取消归档」文案。
         const isArchived = thread?.status === ThreadStatus.Archived;
-        const isActive = thread?.status === ThreadStatus.Active;
         const rows = new Array<Row>();
 
-        if (threadInfo && canArchive && (isActive || isArchived)) {
+        if (threadInfo && showArchiveAction) {
           rows.push(
             new Row({
               cell: ListItemButton,
@@ -2210,11 +2400,18 @@ export default class BaseModule implements IModule {
                   : t("base.module.thread.archive"),
                 type: ListItemButtonType.default,
                 onClick: () => {
-                  const threadDisplayName = thread?.name || data.channelInfo?.title || t("base.module.thread.fallbackName");
+                  const threadDisplayName =
+                    thread?.name ||
+                    data.channelInfo?.title ||
+                    t("base.module.thread.fallbackName");
                   wkConfirm({
                     title: isArchived
-                      ? t("base.module.thread.unarchiveConfirmTitle", { values: { name: threadDisplayName } })
-                      : t("base.module.thread.archiveConfirmTitle", { values: { name: threadDisplayName } }),
+                      ? t("base.module.thread.unarchiveConfirmTitle", {
+                          values: { name: threadDisplayName },
+                        })
+                      : t("base.module.thread.archiveConfirmTitle", {
+                          values: { name: threadDisplayName },
+                        }),
                     okText: isArchived
                       ? t("base.module.thread.unarchive")
                       : t("base.module.thread.archiveOk"),
@@ -2224,28 +2421,16 @@ export default class BaseModule implements IModule {
                       : t("base.module.thread.archiveConfirmContent"),
                     onOk: async () => {
                       try {
-                        if (isArchived) {
-                          await WKApp.dataSource.channelDataSource.threadUnarchive(
-                            threadInfo.groupNo,
-                            threadInfo.shortId
-                          );
-                        } else {
-                          await WKApp.dataSource.channelDataSource.threadArchive(
-                            threadInfo.groupNo,
-                            threadInfo.shortId
-                          );
-                        }
-                        Toast.success(
-                          isArchived
-                            ? t("base.module.thread.unarchiveSuccess")
-                            : t("base.module.thread.archiveSuccess")
-                        );
-                        WKSDK.shared().channelManager.deleteChannelInfo(
-                          channel
-                        );
-                        await WKSDK.shared().channelManager.fetchChannelInfo(
-                          channel
-                        );
+                        // 收口到共享 helper：打接口 → Toast → 用操作后的权威 status
+                        // 走 syncThreadArchiveState 同步左侧 sidebar（issue #345）。
+                        // 权威状态写回 channelInfo 缓存，避免被在途旧 fetch 覆盖
+                        // （B1 去重竞态）。data.refresh() 仍保留，刷新面板本身。
+                        await runChannelSettingThreadArchive({
+                          channel,
+                          groupNo: threadInfo.groupNo,
+                          shortId: threadInfo.shortId,
+                          isArchived,
+                        });
                         data.refresh();
                       } catch (err: any) {
                         Toast.error(
@@ -2265,8 +2450,8 @@ export default class BaseModule implements IModule {
 
         rows.push(
           new Row({
-              cell: ListItemButton,
-              properties: {
+            cell: ListItemButton,
+            properties: {
               title: t("base.module.thread.leave"),
               type: ListItemButtonType.warn,
               onClick: () => {
@@ -2274,14 +2459,25 @@ export default class BaseModule implements IModule {
                   content: t("base.module.thread.leaveConfirm"),
                   onOk: async () => {
                     if (threadInfo) {
-                      await WKApp.apiClient
-                        .post(`threads/${threadInfo.shortId}/leave`)
-                        .catch((err: any) => {
-                          Toast.error(err.msg || t("base.module.thread.leaveFailed"));
-                        });
-                      WKApp.conversationProvider.deleteConversation(
-                        data.channel
-                      );
+                      try {
+                        await WKApp.apiClient.post(
+                          `threads/${threadInfo.shortId}/leave`
+                        );
+                        await WKApp.conversationProvider
+                          .deleteConversation(data.channel)
+                          .catch((err) => {
+                            console.warn(
+                              "[ChannelSetting] delete thread conversation after leaving failed:",
+                              err
+                            );
+                          });
+                        removeLocalConversationAndCloseIfOpen(data.channel);
+                      } catch (err: any) {
+                        Toast.error(
+                          err?.msg || t("base.module.thread.leaveFailed")
+                        );
+                        throw err;
+                      }
                     }
                   },
                 });

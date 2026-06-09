@@ -319,6 +319,9 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                                     ? this.getScheduleLabel(scheduleConfig)
                                     : translate("summary.schedule.config.title")}
                             </Button>
+                            <span style={{ marginLeft: 8, fontSize: 12, color: "var(--semi-color-text-2)" }}>
+                                {translate("summary.create.archivedNotice")}
+                            </span>
                         </div>
 
                         <Button

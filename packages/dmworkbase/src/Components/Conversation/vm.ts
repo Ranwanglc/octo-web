@@ -70,6 +70,8 @@ const PendingMessageOrderBase = Number.MAX_SAFE_INTEGER / 2
 
 export default class ConversationVM extends ProviderListener {
 
+    private static nextMessageContainerSeq = 0
+
     loading: boolean = false // 消息是否加载中
     channel: Channel
     channelInfo?: ChannelInfo // 当前会话的频道详情
@@ -87,7 +89,7 @@ export default class ConversationVM extends ProviderListener {
     pullupHasMore: boolean = false // 上拉是否有更多
     pulldownFinished: boolean = false // 下拉完成
     pendingMessages: MessageWrap[] = [] // 缓冲区：pullupHasMore 期间收到的实时消息
-    messageContainerId = "viewport" // 消息容器的ID
+    messageContainerId = `viewport-${ConversationVM.nextMessageContainerSeq++}` // 消息容器的ID
     static sendQueue: Map<string, Array<MessageWrap>> = new Map() // 发送队列
     static foldSessionPreview: Map<string, { participants: string[], count: number }> = new Map() // 会话列表折叠预览缓存
     private _needSetUnread: boolean = false // 是否需要设置未读数量
@@ -107,6 +109,7 @@ export default class ConversationVM extends ProviderListener {
     subscribers: Subscriber[] = []
     private foldSessionState: Map<string, FoldSessionUIState> = new Map()
     private messageSeqToFoldSessionId: Map<number, string> = new Map()
+    private liveFoldRevokeClientMsgNos: Set<string> = new Set()
     afterFoldSessionClientMsgNos: Set<string> = new Set() // 紧跟在折叠卡片后的消息，需强制独立显示
     private foldSessionActiveTimer: ReturnType<typeof setTimeout> | null = null // 协作态超时自动结束
 
@@ -271,7 +274,10 @@ export default class ConversationVM extends ProviderListener {
         if (!this.supportsFolding) {
             return false
         }
-        if (message.revoke || message.send) {
+        if (message.send) {
+            return false
+        }
+        if (message.revoke && !this.liveFoldRevokeClientMsgNos.has(message.clientMsgNo)) {
             return false
         }
         if (message.contentType === MessageContentTypeConst.time
@@ -500,6 +506,16 @@ export default class ConversationVM extends ProviderListener {
         if (renderItem && renderItem.type === "foldSession") {
             return renderItem.session
         }
+    }
+
+    foldSessionMessageElementId(message: MessageWrap | Message): string {
+        return `fold-session-message-${message.clientMsgNo}`
+    }
+
+    private messageSeqElement(messageSeq: number): HTMLElement | null {
+        return document.querySelector<HTMLElement>(
+            `[data-locate-message-row="true"][data-message-seq="${messageSeq}"]`,
+        )
     }
 
     setFoldSessionExpanded(sessionId: string, expanded: boolean, userToggled: boolean = false, stateCallback?: () => void) {
@@ -828,7 +844,11 @@ export default class ConversationVM extends ProviderListener {
                 let existMessage = this.findMessageWithMessageID(param.message_id)
                 if (existMessage) {
                     existMessage.revoke = true
-                    existMessage.revoker = existMessage.fromUID;
+                    existMessage.revoker = message.fromUID;
+                    if (this.findFoldSessionByMessageSeq(existMessage.messageSeq)) {
+                        this.liveFoldRevokeClientMsgNos.add(existMessage.clientMsgNo)
+                    }
+                    this.rebuildRenderItems()
                     this.notifyListener()
                 }
             } else if (cmdContent.cmd === 'syncMessageExtra') { // 同步消息扩展
@@ -882,6 +902,7 @@ export default class ConversationVM extends ProviderListener {
                 this.renderItems = []
                 this.foldSessionState.clear()
                 this.messageSeqToFoldSessionId.clear()
+                this.liveFoldRevokeClientMsgNos.clear()
                 if (this.foldSessionActiveTimer) {
                     clearTimeout(this.foldSessionActiveTimer)
                     this.foldSessionActiveTimer = null
@@ -1538,6 +1559,7 @@ export default class ConversationVM extends ProviderListener {
     // 同步消息
     async syncMessages(initMessageSeq?: number, stateCallback?: () => void, locateOffsetY: number = 0) {
         this.loading = true
+        this.liveFoldRevokeClientMsgNos.clear()
         this.notifyListener()
 
         const opts = new SyncMessageOptions()
@@ -1925,18 +1947,51 @@ export default class ConversationVM extends ProviderListener {
         }
     }
     private messageScrollElement(message: MessageWrap): HTMLElement | null {
+        const foldSession = message.messageSeq && message.messageSeq > 0
+            ? this.findFoldSessionByMessageSeq(message.messageSeq)
+            : undefined
+        if (foldSession?.isExpanded) {
+            const expandedElement = document.getElementById(this.foldSessionMessageElementId(message))
+            if (expandedElement) {
+                return expandedElement
+            }
+        }
+        if (!foldSession && message.messageSeq && message.messageSeq > 0) {
+            const seqElement = this.messageSeqElement(message.messageSeq)
+            if (seqElement) {
+                return seqElement
+            }
+        }
         const element = document.getElementById(message.clientMsgNo)
         if (element) {
             return element
         }
-        if (!message.messageSeq || message.messageSeq <= 0) {
-            return null
-        }
-        const foldSession = this.findFoldSessionByMessageSeq(message.messageSeq)
         if (!foldSession) {
             return null
         }
         return document.getElementById(foldSession.anchorId)
+    }
+
+    private scrollTopForElement(viewport: HTMLElement, element: HTMLElement, keepOffsetY: number): number {
+        const viewportRect = viewport.getBoundingClientRect()
+        const elementRect = element.getBoundingClientRect()
+        const hasRectLayout = viewportRect.height > 0
+            || elementRect.height > 0
+            || viewportRect.top !== 0
+            || elementRect.top !== 0
+
+        if (hasRectLayout) {
+            const anchorOffsetTop = viewport.scrollTop + elementRect.top - viewportRect.top
+            return getRestoredAnchorScrollTop({
+                anchorOffsetTop,
+                keepOffsetY,
+            })
+        }
+
+        return getRestoredAnchorScrollTop({
+            anchorOffsetTop: element.offsetTop,
+            keepOffsetY,
+        })
     }
 
     // 滚动到指定的消息
@@ -1945,10 +2000,7 @@ export default class ConversationVM extends ProviderListener {
         const element = this.messageScrollElement(message)
         const keepOffsetY = Number.isFinite(offsetY) ? Math.max(0, offsetY) : 0
         if (viewport && element) {
-            viewport.scrollTop = getRestoredAnchorScrollTop({
-                anchorOffsetTop: element.offsetTop,
-                keepOffsetY,
-            })
+            viewport.scrollTop = this.scrollTopForElement(viewport, element, keepOffsetY)
             return
         }
         scroller.scrollTo(message.clientMsgNo, {

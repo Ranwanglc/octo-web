@@ -144,7 +144,8 @@
     "scheduleWeekly": "Every {{day}} {{time}}",
     "scheduleMonthly": "Monthly on day {{day}} {{time}}",
     "scheduleBindFailed": "Summary was created, but binding the schedule failed; the schedule was rolled back. Please retry on the detail page.",
-    "scheduleBindFailedOrphan": "Summary was created, but binding the schedule failed and rollback did not succeed; an unbound schedule may remain. Please check and clean it up in the schedule list."
+    "scheduleBindFailedOrphan": "Summary was created, but binding the schedule failed and rollback did not succeed; an unbound schedule may remain. Please check and clean it up in the schedule list.",
+    "archivedNotice": "Active threads are summarized by default; archived threads are excluded"
   },
   "chatSummary": {
     "panelTitle": "Summaries in this chat",
@@ -180,7 +181,10 @@
     "title": "Select chats",
     "searchPlaceholder": "Search groups or contacts",
     "all": "All",
-    "noData": "No data"
+    "noData": "No data",
+    "includeArchived": "Include archived threads",
+    "includeArchivedHelper": "Archived threads are excluded by default; enable to select them",
+    "archivedTag": "Archived"
   },
   "memberSelector": {
     "title": "Add members",
@@ -301,6 +305,8 @@
     "expandAll": "Expand all ▼",
     "waitingSubmit": "{{name}} · Waiting to submit...",
     "regenerate": "Regenerate",
+    "regenerateEditTitle": "Edit prompt and regenerate",
+    "regenerateTopicLabel": "Prompt",
     "cancelTask": "Cancel task",
     "errorCause": "This may be caused by network instability or a service error.",
     "inviteQuestion": "You have been invited to participate in this summary task. Accept?",
