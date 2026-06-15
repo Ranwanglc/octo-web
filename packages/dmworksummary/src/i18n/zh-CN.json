@@ -329,7 +329,11 @@
     "scheduleDisabledHint": "定时已关闭",
     "scheduleActiveLabel": "已开启定时",
     "schedulePrefix": "定时：",
-    "scheduleNextRun": "下次 {{time}}"
+    "scheduleNextRun": "下次 {{time}}",
+    "scheduleConfirmHint": "该定时总结需要你确认参与，确认一次后续每轮免确认。",
+    "scheduleConfirmButton": "确认参与",
+    "membersLoadingRetry": "成员信息加载中，请稍候重试",
+    "scheduleConfirmed": "已确认参与该定时总结"
   },
   "summaryCard": {
     "createdBy": "{{name}} 发起",

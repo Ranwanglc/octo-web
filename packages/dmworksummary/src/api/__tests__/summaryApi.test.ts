@@ -189,4 +189,17 @@ describe('summaryApi', () => {
             expect(items.map((i) => i.is_active)).toEqual([false, true]);
         });
     });
+
+    // V5：schedule 级一次性确认。POST /summary-schedules/:id/confirm，无 body。
+    describe('confirmSchedule (V5 one-time schedule confirm)', () => {
+        it('POSTs to /summary-schedules/:id/confirm', async () => {
+            const { confirmSchedule } = await import('../summaryApi');
+            mockPost.mockResolvedValueOnce({ data: { data: { confirmed: true } } });
+            await confirmSchedule(42);
+            expect(mockPost).toHaveBeenCalledWith(
+                '/summary/api/v1/summary-schedules/42/confirm',
+                undefined,
+            );
+        });
+    });
 });

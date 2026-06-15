@@ -6,7 +6,7 @@ import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import { visit } from 'unist-util-visit';
 import { useI18n } from '@octo/base';
 import CitationBadge, { CitationGroupBadge, TeamCitationBadge } from './CitationBadge';
-import { CitationItem, TeamCitationItem } from '../types/summary';
+import { CitationItem, TeamCitationItem, MemberStatus } from '../types/summary';
 
 export interface CitationContextValue {
     activeKey: string | null;
@@ -24,6 +24,11 @@ interface CitationTextProps {
     content: string;
     citations: CitationItem[];
     teamCitations?: TeamCitationItem[];
+    /**
+     * V5/§6.2：供 `[Pn]` 点击时在本地匹配作者单人报告用（详情页已拉取的
+     * members）。不传时 `[Pn]` 退化为仅显示姓名。
+     */
+    members?: MemberStatus[];
 }
 
 const citationSchema = {
@@ -178,7 +183,7 @@ function remarkTeamCitation() {
     };
 }
 
-function markdownComponents(citations: CitationItem[], teamCitations: TeamCitationItem[]): any {
+function markdownComponents(citations: CitationItem[], teamCitations: TeamCitationItem[], members: MemberStatus[]): any {
     return {
         citation: ({ node, ...props }: any) => {
             const idx = node?.properties?.index ?? props?.index;
@@ -197,7 +202,7 @@ function markdownComponents(citations: CitationItem[], teamCitations: TeamCitati
             const idx = node?.properties?.index ?? props?.index;
             const badgeKey = node?.properties?.badgekey ?? props?.badgekey ?? `tc-${idx}-fallback`;
             if (idx === undefined) return null;
-            return <TeamCitationBadge index={idx} teamCitations={teamCitations} badgeKey={badgeKey} />;
+            return <TeamCitationBadge index={idx} teamCitations={teamCitations} badgeKey={badgeKey} members={members} />;
         },
         a: ({ href, children, ...props }: any) => (
             <a href={href} target="_blank" rel="noopener noreferrer" {...props}>
@@ -207,7 +212,7 @@ function markdownComponents(citations: CitationItem[], teamCitations: TeamCitati
     };
 }
 
-const CitationText: React.FC<CitationTextProps> = ({ content, citations, teamCitations = [] }) => {
+const CitationText: React.FC<CitationTextProps> = ({ content, citations, teamCitations = [], members = [] }) => {
     const { t } = useI18n();
     const [activeKey, setActiveKey] = useState<string | null>(null);
 
@@ -237,7 +242,7 @@ const CitationText: React.FC<CitationTextProps> = ({ content, citations, teamCit
                 <ReactMarkdown
                     remarkPlugins={remarkPlugins}
                     rehypePlugins={[[rehypeSanitize, citationSchema]]}
-                    components={markdownComponents(citations, teamCitations)}
+                    components={markdownComponents(citations, teamCitations, members)}
                 >
                     {normalized}
                 </ReactMarkdown>

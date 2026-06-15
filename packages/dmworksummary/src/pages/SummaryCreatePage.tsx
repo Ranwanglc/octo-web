@@ -187,6 +187,9 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             // 不再需要第二步 update 绑定，也不会产生游离定时，所以去掉 B2 回滚。
             if (scheduleConfig !== null) {
                 const { cron_expr, interval_days, interval_months, day_of_week, day_of_month, run_time } = scheduleToParams(scheduleConfig);
+                // V5/§6.1：多人（participants 非空）+ 定时默认 confirm_policy=1（一次性确认）；
+                // 单人定时不传（走后端 AUTO 兜底）。
+                const isMultiPerson = !!params.participants && params.participants.length > 0;
                 try {
                     await api.createSchedule({
                         title: topic.trim(),
@@ -200,6 +203,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                         time_range_type: 2,
                         sources: params.sources || [],
                         participants: params.participants,
+                        ...(isMultiPerson ? { confirm_policy: 1 } : {}),
                         scope: 'task',
                         task_id: result.task_id,
                     });

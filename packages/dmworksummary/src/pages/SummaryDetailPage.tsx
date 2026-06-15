@@ -66,6 +66,8 @@ interface SummaryDetailPageState {
     showRegenerateModal: boolean;
     regenerateTopic: string;
     regenerateSubmitting: boolean;
+    /** V5：schedule 级一次性确认提交中 */
+    confirmingSchedule: boolean;
 }
 
 const INTER_MESSAGE_DELAY_MS = 200;
@@ -94,6 +96,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         showRegenerateModal: false,
         regenerateTopic: "",
         regenerateSubmitting: false,
+        confirmingSchedule: false,
     };
 
     private personalPollTimer: ReturnType<typeof setInterval> | null = null;
@@ -473,11 +476,72 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         }
     };
 
+    /**
+     * V5/§4.2/§6.1：本任务是否「多人」。
+     *
+     * 竞态修复（第3轮）：members 来自 loadDetail 之后的二次异步 getMembers，到达
+     * 时间不确定。若以 members.length 作主判据，members 未回填的窗口里多人任务会被
+     * 误判为单人 → handleScheduleSave 漏传 confirm_policy=1。
+     *
+     * 因此判定的「可靠数据源」改为 detail.participants —— 它随 loadDetail 的
+     * getSummaryDetail 一并同步返回（不依赖二次异步），且语义即本任务全体参与者
+     *（含 creator + 协作成员）。只有当 detail 里就没有 participants 信息时，才退回
+     * 用已加载的 members 兜底。
+     *
+     * 注意：这里只回答「是否多人」。members 是否「已加载完成」由 handleScheduleSave
+     * 的保存前 guard（isMembersReadyForSave）单独把关，避免把「members 加载中」误
+     * 当「确实单人」。
+     */
+    private isMultiPerson(): boolean {
+        const { detail, members } = this.state;
+        // 主判据：detail.participants（同步随 detail 返回，不受二次异步竞态影响）。
+        if (detail && Array.isArray(detail.participants) && detail.participants.length > 0) {
+            return detail.participants.length > 1;
+        }
+        // 兜底：detail 没带 participants 时，用已加载的 members。
+        return members.length > 1;
+    }
+
+    /**
+     * 竞态修复（第3轮）：保存定时前判断「多人判定所依赖的数据是否已可靠就绪」。
+     *
+     * - 若 isMultiPerson 能从 detail.participants 得出结论（detail 已加载且带
+     *   participants），则判定不依赖二次异步 members，任何时刻都可靠 → 直接就绪。
+     * - 否则（只能退回 members 兜底）必须等 members 加载完成才允许保存；membersLoading
+     *   为 true 时表示「members 加载中」，此时不能保存（不能把加载中误当单人）。
+     *
+     * 用 membersLoading 标志严格区分「加载中」(true) 与「已加载且确实单人」(false 且
+     * members.length<=1)。
+     */
+    private isMembersReadyForSave(): boolean {
+        const { detail, membersLoading } = this.state;
+        // detail 带 participants → 多人判定不依赖 members，始终就绪。
+        if (detail && Array.isArray(detail.participants) && detail.participants.length > 0) {
+            return true;
+        }
+        // 退回 members 兜底的情形：members 仍在加载中则未就绪。
+        return !membersLoading;
+    }
+
     handleScheduleSave = async (config: ScheduleConfig) => {
         const { detail, scheduleItem } = this.state;
         if (!detail) return;
 
-        const { cron_expr, interval_days, interval_months, day_of_week, day_of_month, run_time } = scheduleToParams(config);
+        // 竞态修复（第3轮）finding 1：多人判定只能退回 members 兜底且 members 尚未
+        // 加载完成时，不能保存——否则 isMultiPerson() 会把「members 加载中」误判为
+        // 单人，漏传 confirm_policy=1（手动转定时未触发后端一次性确认重置）。
+        // 阻止保存并提示，等 members 就绪后用户重试。
+        if (!this.isMembersReadyForSave()) {
+            Toast.warning(t("summary.detail.membersLoadingRetry"));
+            return;
+        }
+
+        // V5：多人定时（手动转定时/改定时）写路径必须带 confirm_policy=1，
+        // 触发后端一次性确认（create 全员置 confirmed=false；update 重置确认）。
+        // 单人不传 confirm_policy，走后端兜底。复用 scheduleToParams 的条件透传。
+        const confirmPolicy = this.isMultiPerson() ? 1 : undefined;
+        const { cron_expr, interval_days, interval_months, day_of_week, day_of_month, run_time, confirm_policy } =
+            scheduleToParams({ ...config, confirm_policy: confirmPolicy });
 
         try {
             if (scheduleItem) {
@@ -501,6 +565,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     run_time,
                     scope: 'task',
                     task_id: detail.task_id,
+                    // V5：多人「改/转定时」带 confirm_policy=1 触发后端一次性确认重置。
+                    ...(confirm_policy !== undefined ? { confirm_policy } : {}),
                 });
                 const effectiveScheduleId = updated?.schedule_id ?? scheduleItem.schedule_id;
 
@@ -532,6 +598,9 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     sources: detail.sources,
                     scope: 'task',
                     task_id: detail.task_id,
+                    // V5：多人「手动转定时」关键路径带 confirm_policy=1，
+                    // 后端创建 participant_config 时全员（含 creator）置 confirmed=false。
+                    ...(confirm_policy !== undefined ? { confirm_policy } : {}),
                 });
                 Toast.success(t("summary.detail.scheduleCreated"));
                 // 拉取刚建并已绑定的定时回显。
@@ -809,6 +878,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         content={detail.result.content}
                         citations={detail.result.citations || []}
                         teamCitations={detail.result.team_citations || []}
+                        members={members}
                     />
                 </div>
             </div>
@@ -970,6 +1040,104 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         );
     }
 
+    /**
+     * V5/§4.2：本任务是否为 V5 schedule 级 CONFIRM 任务。
+     * 以 scheduleItem.confirm_policy===1 区分两条确认路：
+     *  - true：WAITING_CONFIRM 入口走 schedule 级确认 banner（不导向旧页）。
+     *  - false：旧 task 级 manual 确认流，保留导向 SummaryConfirmPage。
+     * 无 scheduleItem 或 confirm_policy≠1 均视为旧路径（false）。
+     */
+    private isV5ScheduleConfirm(): boolean {
+        const { scheduleItem } = this.state;
+        return !!scheduleItem && scheduleItem.confirm_policy === 1;
+    }
+
+    /**
+     * 竞态修复（第3轮）finding 2：WAITING_CONFIRM 多人分支的渲染分路决策。
+     *
+     * scheduleItem 由 loadDetail 之后的二次异步 loadSchedule 回填，到达时间不确定。
+     * 若直接用 isV5ScheduleConfirm()（只看 confirm_policy===1）分路，scheduleItem 未到
+     * 的瞬间窗口会返回 false → V5 CONFIRM 任务 fallback 到旧 SummaryConfirmPage。
+     *
+     * 因此把旧分支的条件从「!isV5」收紧为「已加载完成 && 确认不是 V5」：
+     *  - 'loading'：scheduleLoading 期间（scheduleItem 尚未到）只显示加载态，不暴露
+     *    任何确认入口，绝不 fallback 旧页。
+     *  - 'v5'：加载完成且 confirm_policy===1 → schedule 级确认 banner。
+     *  - 'legacy'：加载完成且确认非 V5（confirm_policy≠1）或确无 schedule
+     *    （scheduleItem 为 null 且 scheduleLoading=false）→ 保留旧 SummaryConfirmPage 路径。
+     */
+    private waitingConfirmMode(): 'loading' | 'v5' | 'legacy' {
+        if (this.state.scheduleLoading) return 'loading';
+        return this.isV5ScheduleConfirm() ? 'v5' : 'legacy';
+    }
+
+    /**
+     * V5/§4.5：当前登录用户是否尚需对本定时任务完成一次性确认。
+     * 条件：confirm_policy=1（CONFIRM）且该用户在 participant_config 名单里 confirmed=false
+     *（含 creator——creator 也要确认）。确认后永久免确认，按钮消失。
+     * 兼容：participant_config 为旧纯数组时无 confirmed 态，视为需确认。
+     */
+    needsScheduleConfirm(): boolean {
+        const { scheduleItem } = this.state;
+        if (!scheduleItem) return false;
+        if (scheduleItem.is_active === false) return false;
+        if (scheduleItem.confirm_policy !== 1) return false;
+        const uid = WKApp.loginInfo.uid;
+        const pc = scheduleItem.participant_config;
+        if (!pc || !uid) return false;
+        // 旧纯数组（string[]）：无确认态 → 只要在名单里就视为需确认。
+        if (Array.isArray(pc)) {
+            return pc.includes(uid);
+        }
+        const me = (pc.participants || []).find((p) => p.user_id === uid);
+        if (!me) return false;
+        return me.confirmed !== true;
+    }
+
+    handleConfirmSchedule = async () => {
+        const { scheduleItem } = this.state;
+        if (!scheduleItem) return;
+        this.setState({ confirmingSchedule: true });
+        try {
+            await api.confirmSchedule(scheduleItem.schedule_id);
+            Toast.success(t("summary.detail.scheduleConfirmed"));
+            // 复用现有加载路径刷新（不新增任何出站推送）：重拉 schedule 让按钮消失。
+            this.loadSchedule(scheduleItem.schedule_id);
+        } catch (err: any) {
+            Toast.error(err.message || t("summary.common.operationFailed"));
+        } finally {
+            this.setState({ confirmingSchedule: false });
+        }
+    };
+
+    // V5/§4.5：schedule 级一次性确认入口。常驻直到该成员确认成功；
+    // 确认后后续所有轮不再出现。点击调 POST /summary-schedules/:id/confirm。
+    renderScheduleConfirm() {
+        const { t } = this.context;
+        if (!this.needsScheduleConfirm()) return null;
+        return (
+            <Banner
+                type="info"
+                closeIcon={null}
+                fullMode={false}
+                style={{ marginTop: 12 }}
+                description={
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                        <span>{t("summary.detail.scheduleConfirmHint")}</span>
+                        <Button
+                            theme="solid"
+                            size="small"
+                            loading={this.state.confirmingSchedule}
+                            onClick={this.handleConfirmSchedule}
+                        >
+                            {t("summary.detail.scheduleConfirmButton")}
+                        </Button>
+                    </div>
+                }
+            />
+        );
+    }
+
     // 任务2：详情页直观展示当前定时（人类可读）。
     renderScheduleSummary() {
         const { detail, scheduleItem, isEditing } = this.state;
@@ -1083,6 +1251,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     </div>
                 </div>
                 {this.renderScheduleSummary()}
+                {this.renderScheduleConfirm()}
             </div>
         );
     }
@@ -1184,18 +1353,44 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                 )}
 
                                 {/* 单人时不显示"等待参与者确认"，因为creator自动接受 */}
-                                {detail.status === TaskStatus.WAITING_CONFIRM && this.state.members.length > 1 && (
-                                    <div className="summary-detail-waiting">
-                                        <div style={{ fontSize: 48, marginBottom: 12 }}>⏳</div>
-                                        <p style={{ fontSize: 16, fontWeight: 500 }}>{t("summary.detail.waitingConfirmTitle")}</p>
-                                        <p style={{ fontSize: 14, color: "var(--semi-color-text-2)", marginTop: 8, marginBottom: 16 }}>
-                                            {t("summary.detail.waitingConfirmDesc")}
-                                        </p>
-                                        <Button onClick={() => WKApp.routeLeft.push(<SummaryConfirmPage taskId={this.taskId} />)}>
-                                            {t("summary.detail.viewConfirmStatus")}
-                                        </Button>
-                                    </div>
-                                )}
+                                {detail.status === TaskStatus.WAITING_CONFIRM && this.state.members.length > 1 && (() => {
+                                    const mode = this.waitingConfirmMode();
+                                    return mode === 'loading' ? (
+                                        // 竞态修复（第3轮）finding 2：scheduleItem 由 loadDetail 之后的二次
+                                        // 异步 loadSchedule 回填，未到达时 isV5ScheduleConfirm() 会返回 false。
+                                        // 若此时直接 fallback 到旧 SummaryConfirmPage，V5 CONFIRM 任务会在
+                                        // scheduleItem 未到的瞬间窗口落到旧 task 级确认流。因此定时加载
+                                        // 未完成期间只显示加载态，不暴露任何确认入口；等 scheduleItem 到了
+                                        // （scheduleLoading=false）再按 isV5ScheduleConfirm 分路。
+                                        this.renderProcessing()
+                                    ) : mode === 'v5' ? (
+                                        // V5/§4.2：schedule 级 CONFIRM 任务（confirm_policy===1）。
+                                        // 不再导向旧 task 级 SummaryConfirmPage（POST /summaries/:id/confirm
+                                        // 选 sources，与「确认一次长期生效」语义冲突）。改为引导到
+                                        // header 中常驻的 schedule 级确认 banner（renderScheduleConfirm →
+                                        // POST /summary-schedules/:id/confirm）。进入本详情页即可触达该 banner。
+                                        <div className="summary-detail-waiting">
+                                            <div style={{ fontSize: 48, marginBottom: 12 }}>⏳</div>
+                                            <p style={{ fontSize: 16, fontWeight: 500 }}>{t("summary.detail.waitingConfirmTitle")}</p>
+                                            <p style={{ fontSize: 14, color: "var(--semi-color-text-2)", marginTop: 8, marginBottom: 16 }}>
+                                                {t("summary.detail.scheduleConfirmHint")}
+                                            </p>
+                                        </div>
+                                    ) : (
+                                        // 旧的非 V5 / task 级 manual 确认流（confirm_policy 非 1 或无 schedule）
+                                        // 保留走 SummaryConfirmPage，不破坏旧路径。
+                                        <div className="summary-detail-waiting">
+                                            <div style={{ fontSize: 48, marginBottom: 12 }}>⏳</div>
+                                            <p style={{ fontSize: 16, fontWeight: 500 }}>{t("summary.detail.waitingConfirmTitle")}</p>
+                                            <p style={{ fontSize: 14, color: "var(--semi-color-text-2)", marginTop: 8, marginBottom: 16 }}>
+                                                {t("summary.detail.waitingConfirmDesc")}
+                                            </p>
+                                            <Button onClick={() => WKApp.routeLeft.push(<SummaryConfirmPage taskId={this.taskId} />)}>
+                                                {t("summary.detail.viewConfirmStatus")}
+                                            </Button>
+                                        </div>
+                                    );
+                                })()}
                                 {/* 单人 WaitingConfirm 状态显示生成中（个人总结已出则不再显示 loading） */}
                                 {detail.status === TaskStatus.WAITING_CONFIRM && this.state.members.length <= 1 && !this.personalReady && (
                                     this.renderProcessing()

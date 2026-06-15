@@ -329,7 +329,11 @@
     "scheduleDisabledHint": "Schedule is off",
     "scheduleActiveLabel": "Schedule on",
     "schedulePrefix": "Schedule: ",
-    "scheduleNextRun": "next {{time}}"
+    "scheduleNextRun": "next {{time}}",
+    "scheduleConfirmHint": "This scheduled summary needs your confirmation. Confirm once and every later round runs without asking again.",
+    "scheduleConfirmButton": "Confirm participation",
+    "membersLoadingRetry": "Member info is still loading, please try again in a moment.",
+    "scheduleConfirmed": "You have confirmed this scheduled summary"
   },
   "summaryCard": {
     "createdBy": "Created by {{name}}",

@@ -262,6 +262,13 @@ export async function toggleSchedule(scheduleId: number, isActive: boolean): Pro
     return normalizeScheduleItem(await put<ScheduleItem>(`/summary-schedules/${scheduleId}/toggle`, { is_active: isActive }));
 }
 
+// V5：schedule 级「一次性确认」。对当前登录用户在该 schedule 的 participant_config
+// 里置 confirmed=true（后端处理）。语义是「确认这个定时任务，确认一次后续
+// 每轮免确认」，不是确认某一轮 task。
+export async function confirmSchedule(scheduleId: number): Promise<void> {
+    return post(`/summary-schedules/${scheduleId}/confirm`);
+}
+
 // ─── Candidate Selection ───────────────────────────────
 
 export async function getChatCandidates(params?: { keyword?: string; chat_type?: string; include_archived?: boolean }): Promise<ChatCandidate[]> {

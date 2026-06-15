@@ -2,7 +2,7 @@ import React from 'react';
 import { render as rtlRender, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import CitationText from './CitationText';
-import type { CitationItem, TeamCitationItem } from '../types/summary';
+import type { CitationItem, TeamCitationItem, MemberStatus } from '../types/summary';
 
 // @octo/base is aliased to the dmworkBase mock by vitest.config.ts, so useI18n /
 // i18n already resolve. We only need to tame the semi-ui Popover here: the real
@@ -207,5 +207,53 @@ describe('CitationText — [n] vs [Pn] parsing', () => {
         );
         expect(badgeByText('[P1]')).toBeTruthy();
         expect(badgeByText('[1]')).toBeFalsy();
+    });
+
+    // V5/§6.2：[Pn] 可点击，点击用 user_id 在已拉取的 members 里匹配同一成员，
+    // 取其 content 展示（不发新请求）。
+    it('5) [Pn] click surfaces the matched member\'s single-person report content', () => {
+        const members: MemberStatus[] = [
+            {
+                user_id: 'u1',
+                user_name: '李四',
+                status: 'submitted',
+                submitted_at: '2026-01-01T10:00:00Z',
+                content: '这是李四的单人总结正文',
+                citations: [],
+            },
+        ];
+        render(
+            <CitationText
+                content="参见 [P1]"
+                citations={[]}
+                teamCitations={[makeTeamCitation({ index: 1, user_id: 'u1', user_name: '李四' })]}
+                members={members}
+            />,
+        );
+        const team = badgeByText('[P1]')!;
+        fireEvent.click(team);
+        const open = screen.queryAllByTestId('popover-content');
+        expect(open.length).toBeGreaterThanOrEqual(1);
+        // 弹出里含该成员的单人报告正文。
+        expect(document.body.textContent).toContain('这是李四的单人总结正文');
+    });
+
+    it('6) [Pn] click degrades to name-only when member has no submitted content', () => {
+        const members: MemberStatus[] = [
+            { user_id: 'u1', user_name: '李四', status: 'pending', submitted_at: null },
+        ];
+        render(
+            <CitationText
+                content="参见 [P1]"
+                citations={[]}
+                teamCitations={[makeTeamCitation({ index: 1, user_id: 'u1', user_name: '李四' })]}
+                members={members}
+            />,
+        );
+        const team = badgeByText('[P1]')!;
+        fireEvent.click(team);
+        const open = screen.queryAllByTestId('popover-content');
+        expect(open.length).toBeGreaterThanOrEqual(1);
+        expect(open[0].textContent).toContain('李四');
     });
 });
