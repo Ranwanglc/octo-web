@@ -24,8 +24,11 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, onClick, onDelete, onRe
     const isPendingInvite = isMultiParticipant && myParticipant != null && myParticipant.status === ParticipantStatus.PENDING;
 
     // 是否创建者：以 creator_id 为准。非创建者且是参与者 -> 退出；
-    // 创建者 -> 删除。无 creator_id（旧后端）时退回当“创建者”处理，保留删除。
-    const isCreator = task.creator_id == null || task.creator_id === currentUid;
+    // 创建者 -> 删除。
+    // FE-2（fail-safe）：creator_id 缺失（旧后端 / 数据异常）时【不】当 creator——
+    // 否则会对任何人露出「删除整个任务」破坏性入口（fail-open 泄漏）。与详情页
+    // isCreator 口径一致（creator_id != null && === uid，fail-closed），缺失只显示退出。
+    const isCreator = task.creator_id != null && task.creator_id === currentUid;
     const isParticipant = myParticipant != null;
 
     // 是否定时任务：以 schedule_id 为准，trigger_type===SCHEDULED 作兜底，

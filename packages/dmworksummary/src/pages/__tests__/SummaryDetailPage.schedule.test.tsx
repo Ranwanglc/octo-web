@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 
 // SummaryDetailPage import wukongimjssdk，测试环境会拉起无关依赖导致解析失败，mock 掉。
 vi.mock('wukongimjssdk', () => ({
@@ -165,6 +165,416 @@ describe('SummaryDetailPage — Blocking 5: scheduleItem must track current deta
 
         // 关键断言：A 的定时绝不能污染 B 的 state。
         expect((page.state as any).scheduleItem).toBeNull();
+    });
+});
+
+// ─── FE-1（blocking）：切任务竞态——旧任务 members/personalResult 迟到返回不得 setState 到新任务 ───
+//
+// 背景：loadDetail 拿到 detail 后，loadPersonalResult / loadMembers 是二次异步请求。
+// 用户快速切任务时，旧任务的 in-flight 请求返回后会把【旧任务的 members / personalResult】
+// setState 到【新任务】界面上 → 泄漏别的任务成员报告内容，并污染 team citations /
+// schedule participant 写入。修复：复用 loadSchedule 同款 seq(scheduleLoadSeq)+taskId
+// 归属校验——发起时捕获 reqSeq+requestTaskId，异步返回后不一致一律忽略(return)，不 setState；
+// 且 loadDetail 入口同步清空 stale personalResult/members。
+describe('SummaryDetailPage — FE-1: 切任务竞态，旧 members/personalResult 迟到返回被忽略', () => {
+    beforeEach(() => vi.clearAllMocks());
+
+    // loadDetail 入口必须同步清空上一 task 的 personalResult/members，避免新 detail 返回前残留显示。
+    it('loadDetail clears stale personalResult/members at entry (no leak before new detail resolves)', async () => {
+        vi.mocked(api.getSummaryDetail).mockResolvedValue(
+            baseDetail({ task_id: 9, summary_mode: 1 /* BY_GROUP，不触发二次加载 */ }) as any,
+        );
+        const page = makePage(9);
+        // 预置上一 task 的残留数据。
+        page.state = {
+            ...(page.state as any),
+            personalResult: { content: '旧任务的个人报告', worker_status: 2, submitted_at: null } as any,
+            members: [member('old-a'), member('old-b')] as any,
+        };
+
+        await page.loadDetail();
+
+        // 切任务开始加载即清空 → 不会把旧任务成员/个人报告残留到新任务界面。
+        expect((page.state as any).personalResult).toBeNull();
+        expect((page.state as any).members).toEqual([]);
+    });
+
+    // 核心 blocker：旧任务 loadMembers 迟到 resolve，taskId 已切到新任务 → 必须丢弃，不 setState。
+    it('discards a stale loadMembers response after switching task (no cross-task member leak)', async () => {
+        // A（task=1）的 getMembers 手动控制 resolve 时机，模拟「切完 task 才返回」。
+        let resolveA: (v: any) => void = () => {};
+        const aPending = new Promise((res) => { resolveA = res; });
+        vi.mocked(api.getMembers).mockReturnValueOnce(aPending as any);
+
+        const page = makePage(1);
+        // 直接发起 A 的 loadMembers（带 A 当前的 seq 基准——不传则内部 bump）。
+        const aSeq = (page as any).scheduleLoadSeq + 1;
+        const pending = page.loadMembers(aSeq);
+        // bump seq 到 A 的基准，使其成为「当时最新」。
+        (page as any).scheduleLoadSeq = aSeq;
+        expect(api.getMembers).toHaveBeenCalledWith(1);
+
+        // 切到 task B：props.taskId 变 + seq 再 bump（模拟新一轮 loadDetail）。
+        (page as any).props = { taskId: 2 };
+        (page as any).scheduleLoadSeq = aSeq + 1; // 新一轮加载令 A 作废
+        page.state = { ...(page.state as any), members: [] };
+
+        // A 的 getMembers 现在才迟迟 resolve——含旧任务成员，必须被丢弃。
+        resolveA([member('leaked-old-member')]);
+        await pending;
+
+        // 关键断言：旧任务成员绝不能 setState 到新任务。
+        expect((page.state as any).members).toEqual([]);
+    });
+
+    // 旧任务 loadPersonalResult 迟到 resolve，taskId 已切 → 丢弃，不 setState（不泄漏他人报告）。
+    it('discards a stale loadPersonalResult response after switching task', async () => {
+        let resolveA: (v: any) => void = () => {};
+        const aPending = new Promise((res) => { resolveA = res; });
+        vi.mocked(api.getPersonalResult).mockReturnValueOnce(aPending as any);
+
+        const page = makePage(1);
+        const aSeq = (page as any).scheduleLoadSeq + 1;
+        const pending = page.loadPersonalResult(aSeq);
+        (page as any).scheduleLoadSeq = aSeq;
+        expect(api.getPersonalResult).toHaveBeenCalledWith(1);
+
+        // 切 task + 新一轮加载作废 A。
+        (page as any).props = { taskId: 2 };
+        (page as any).scheduleLoadSeq = aSeq + 1;
+        page.state = { ...(page.state as any), personalResult: null };
+
+        resolveA({ content: '旧任务的个人报告', worker_status: 2, submitted_at: null });
+        await pending;
+
+        // 旧任务个人报告绝不能回填到新任务。
+        expect((page.state as any).personalResult).toBeNull();
+    });
+
+    // 守卫逻辑直接验证：reqSeq 与当前 scheduleLoadSeq 不匹配时忽略（不 setState）。
+    it('ignores response when reqSeq no longer matches current scheduleLoadSeq (guard hit)', async () => {
+        vi.mocked(api.getMembers).mockResolvedValue([member('x')] as any);
+        const page = makePage(1);
+        // 用一个「过期」seq 发起：传入的 seq 比当前 scheduleLoadSeq 小。
+        const staleSeq = (page as any).scheduleLoadSeq; // 当前值
+        (page as any).scheduleLoadSeq = staleSeq + 5;   // 之后又切了好几轮
+        page.state = { ...(page.state as any), members: [] };
+
+        await page.loadMembers(staleSeq);
+
+        // seq 不匹配 → 守卫命中，忽略响应，members 保持空。
+        expect((page.state as any).members).toEqual([]);
+    });
+
+    // taskId 不匹配时也忽略（即便 seq 凑巧一致）。
+    it('ignores response when requestTaskId no longer matches current taskId (guard hit)', async () => {
+        let resolveA: (v: any) => void = () => {};
+        const aPending = new Promise((res) => { resolveA = res; });
+        vi.mocked(api.getMembers).mockReturnValueOnce(aPending as any);
+
+        const page = makePage(1);
+        const seq = (page as any).scheduleLoadSeq + 1;
+        const pending = page.loadMembers(seq);
+        (page as any).scheduleLoadSeq = seq; // seq 保持一致
+        // 只改 taskId（不再 bump seq），验证 taskId 这一维守卫单独生效。
+        (page as any).props = { taskId: 2 };
+        page.state = { ...(page.state as any), members: [] };
+
+        resolveA([member('leaked')]);
+        await pending;
+
+        expect((page.state as any).members).toEqual([]);
+    });
+});
+
+// ─── 续修1（blocking）：成对 refresh 共用一个 seq，不互相作废 ───
+//
+// 问题：handleStatusChangeEvent / fallback poll 终态处成对调用 loadPersonalResult()/loadMembers()，
+// 不传 seq 时各自 nextScheduleSeq() 自增 → 第二个把第一个的 reqSeq 作废 → 第一个响应被丢弃
+//（personalLoading 卡 true）。修复：一个刷新周期共用一个 seq，传给所有子加载。
+describe('SummaryDetailPage — 续修1: 成对 refresh 共用一个 seq，两者结果都落地', () => {
+    beforeEach(() => vi.clearAllMocks());
+
+    // handleStatusChangeEvent 触发的成对 refresh：personalResult 与 members 都能 setState（不互杀）。
+    it('handleStatusChangeEvent paired refresh: both personalResult and members land (no mutual invalidation)', async () => {
+        vi.mocked(api.getSummaryDetail).mockResolvedValue(
+            baseDetail({ task_id: 1, status: 3, summary_mode: 2 }) as any,
+        );
+        vi.mocked(api.getPersonalResult).mockResolvedValue(
+            { content: '我的报告', worker_status: 2, submitted_at: null } as any,
+        );
+        vi.mocked(api.getMembers).mockResolvedValue([member('test-uid'), member('u_b')] as any);
+
+        const page = makePage(1);
+        page.state = { ...(page.state as any), lastKnownStatus: 2 /* PROCESSING，与新状态不同 */ };
+
+        await (page as any).handleStatusChangeEvent(
+            new CustomEvent('summary-status-change', { detail: { taskIds: [1] } }),
+        );
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+
+        // 两者都落地：证明共用一个 seq、不互相作废。
+        expect((page.state as any).personalResult).not.toBeNull();
+        expect((page.state as any).members).toHaveLength(2);
+        expect((page.state as any).personalLoading).toBe(false);
+        expect((page.state as any).membersLoading).toBe(false);
+    });
+
+    // 直接验证「同一个 seq 传给两个子加载」后二者互不作废。
+    it('passing the same seq to both loaders lets both results land', async () => {
+        vi.mocked(api.getPersonalResult).mockResolvedValue(
+            { content: 'p', worker_status: 2, submitted_at: null } as any,
+        );
+        vi.mocked(api.getMembers).mockResolvedValue([member('a'), member('b')] as any);
+
+        const page = makePage(1);
+        const seq = (page as any).nextScheduleSeq();
+        await Promise.all([page.loadPersonalResult(seq), page.loadMembers(seq)]);
+
+        expect((page.state as any).personalResult).not.toBeNull();
+        expect((page.state as any).members).toHaveLength(2);
+    });
+});
+
+// ─── 续修2（blocking）：startPersonalPoll 轮询回调切任务不串台 ───
+//
+// 问题：轮询回调 await getPersonalResult 后直接 setState，无 taskId 守卫。切任务时
+// clearInterval 停不住已在途请求，A 的结果会写进 B 的 personalResult。
+// 修复：进回调捕获 requestTaskId，await 后 setState 前校验 this.taskId === requestTaskId。
+describe('SummaryDetailPage — 续修2: startPersonalPoll 轮询回调 taskId 守卫（切任务不串台）', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        vi.useFakeTimers();
+    });
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    it('discards a stale poll response after switching task (no cross-task personalResult leak)', async () => {
+        let resolveA: (v: any) => void = () => {};
+        const aPending = new Promise((res) => { resolveA = res; });
+        vi.mocked(api.getPersonalResult).mockReturnValueOnce(aPending as any);
+
+        const page = makePage(1);
+        // worker_status=0 → 启动轮询定时器。
+        page.startPersonalPoll(0);
+        // 推进 5s 触发一次 tick（发起 getPersonalResult(1)，未 resolve）。
+        await vi.advanceTimersByTimeAsync(5000);
+        expect(api.getPersonalResult).toHaveBeenCalledWith(1);
+
+        // 切到 task B。
+        (page as any).props = { taskId: 2 };
+        page.state = { ...(page.state as any), personalResult: null };
+
+        // A 的轮询请求现在才迟迟 resolve——含 A 的个人报告，必须被丢弃。
+        resolveA({ content: 'A 任务的个人报告', worker_status: 2, submitted_at: null });
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+
+        // 关键断言：A 的轮询结果绝不能 setState 到 B。
+        expect((page.state as any).personalResult).toBeNull();
+    });
+
+    it('poll callback writes personalResult when taskId unchanged (legit same-task tick not killed)', async () => {
+        vi.mocked(api.getPersonalResult).mockResolvedValue(
+            { content: '同 task 最新报告', worker_status: 1, submitted_at: null } as any,
+        );
+
+        const page = makePage(1);
+        page.startPersonalPoll(1);
+        await vi.advanceTimersByTimeAsync(5000);
+        await Promise.resolve();
+        await Promise.resolve();
+
+        // taskId 未变 → 合法 tick 正常写入，不被误杀。
+        expect((page.state as any).personalResult).not.toBeNull();
+        expect((page.state as any).personalResult.content).toBe('同 task 最新报告');
+    });
+});
+
+// ─── 续修3/4（blocking）：detail 写入路径同病 race（状态事件 / 兑底轮询）───
+//
+// handleStatusChangeEvent / doFallbackPollOnce 都 await api.getSummaryDetail 后直接
+// setState({ detail })，之前未捕获 requestTaskId。await 期间切 task，A 的 detail
+//（含 result.team_citations）会写进 B 页 → A detail + B members/personal 混搭串台。
+// 修复：await 前捕获 requestTaskId，写 detail 前 if (this.taskId !== requestTaskId) return。
+describe('SummaryDetailPage — 续修3/4: detail 写入路径切 task 迟到丢弃', () => {
+    beforeEach(() => vi.clearAllMocks());
+
+    // 续修3：handleStatusChangeEvent 的 getSummaryDetail 在切 task 后迟到返回 → 旧 detail 不覆盖新 task。
+    it('handleStatusChangeEvent discards a stale detail after switching task', async () => {
+        // A（task=1）的 getSummaryDetail 手动控制 resolve。
+        let resolveA: (v: any) => void = () => {};
+        const aPending = new Promise((res) => { resolveA = res; });
+        vi.mocked(api.getSummaryDetail).mockReturnValueOnce(aPending as any);
+
+        const page = makePage(1);
+        // 预置 B 的 detail（切完 task 后应保留的）。
+        const bDetail = baseDetail({ task_id: 2, title: 'B-detail' });
+
+        // 启动 A 的状态事件处理（发起 getSummaryDetail(1)，未 resolve）。
+        const pending = (page as any).handleStatusChangeEvent(
+            new CustomEvent('summary-status-change', { detail: { taskIds: [1] } }),
+        );
+        expect(api.getSummaryDetail).toHaveBeenCalledWith(1);
+
+        // 切到 task B。
+        (page as any).props = { taskId: 2 };
+        page.state = { ...(page.state as any), detail: bDetail };
+
+        // A 的 getSummaryDetail 现在才迟迟 resolve——含 A 的 detail，必须被丢弃。
+        resolveA(baseDetail({ task_id: 1, title: 'A-detail', status: 3 }) as any);
+        await pending;
+        await Promise.resolve();
+        await Promise.resolve();
+
+        // 关键断言：B 的 detail 不被 A 覆盖。
+        expect((page.state as any).detail.task_id).toBe(2);
+        expect((page.state as any).detail.title).toBe('B-detail');
+    });
+
+    // 续修4：doFallbackPollOnce 的 getSummaryDetail 在切 task 后迟到返回 → 旧 detail 不覆盖新 task。
+    it('doFallbackPollOnce discards a stale detail after switching task', async () => {
+        // batchStatus 立即返回状态变化（触发 getSummaryDetail）。
+        vi.mocked(api.batchStatus).mockResolvedValue([{ id: 1, status: 3 }] as any);
+        // getSummaryDetail 手动控制 resolve。
+        let resolveA: (v: any) => void = () => {};
+        const aPending = new Promise((res) => { resolveA = res; });
+        vi.mocked(api.getSummaryDetail).mockReturnValueOnce(aPending as any);
+
+        const page = makePage(1);
+        const bDetail = baseDetail({ task_id: 2, title: 'B-detail' });
+        page.state = { ...(page.state as any), lastKnownStatus: 2 /* 与新状态 3 不同，进入 detail 拉取 */ };
+
+        // 启动一次兑底轮询：batchStatus resolve → 发起 getSummaryDetail(1)（未 resolve）。
+        const pending = (page as any).doFallbackPollOnce();
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(api.getSummaryDetail).toHaveBeenCalledWith(1);
+
+        // 切到 task B。
+        (page as any).props = { taskId: 2 };
+        page.state = { ...(page.state as any), detail: bDetail };
+
+        // A 的 getSummaryDetail 迟到 resolve——必须被丢弃。
+        resolveA(baseDetail({ task_id: 1, title: 'A-detail', status: 3 }) as any);
+        await pending;
+        await Promise.resolve();
+        await Promise.resolve();
+
+        // B 的 detail 不被 A 覆盖。
+        expect((page.state as any).detail.task_id).toBe(2);
+        expect((page.state as any).detail.title).toBe('B-detail');
+    });
+});
+
+// ─── 续修5/6/7（blocking）：schedule 用户操作路径切 task 迟到丢弃 ───
+//
+// 根因：handleScheduleSave / handleScheduleDisable / handleConfirmSchedule 在【用户操作入口】
+// 未捕获 requestTaskId，await 后才调 loadSchedule()/setState scheduleItem。loadSchedule 内部捕获的
+// requestTaskId 是【它被调用那一刻】的 this.taskId——此时已切到 B，于是 A 的 schedule 被当成 B
+// 写进 scheduleItem。修复：入口捕获 requestTaskId，调 loadSchedule / 动 UI 前 if (this.taskId !== requestTaskId) return。
+describe('SummaryDetailPage — 续修5/6/7: schedule 用户操作路径切 task 迟到丢弃', () => {
+    beforeEach(() => vi.clearAllMocks());
+
+    // 续修5：handleScheduleSave 新建定时，createSchedule 在切 task 后迟到返回 → 不回显到 B。
+    it('handleScheduleSave: stale createSchedule response after switching task does not load/setState schedule for new task', async () => {
+        // createSchedule 手动控制 resolve，模拟「切完 task 才返回」。
+        let resolveCreate: (v: any) => void = () => {};
+        const createPending = new Promise((res) => { resolveCreate = res; });
+        vi.mocked(api.createSchedule).mockReturnValueOnce(createPending as any);
+        vi.mocked(api.getSchedule).mockResolvedValue({ schedule_id: 999, is_active: true } as any);
+
+        const page = makePage(1);
+        page.state = {
+            ...(page.state as any),
+            detail: baseDetail({ task_id: 1, schedule_id: 0 }),
+            scheduleItem: null, // 进入「新建定时」分支
+            members: [member('test-uid')], // 单人，跳过 members guard
+        };
+
+        // 发起保存（createSchedule(1) 未 resolve）。
+        const pending = page.handleScheduleSave({ unit: 'week', every: 1, time: '09:00' } as any);
+        await Promise.resolve();
+        expect(api.createSchedule).toHaveBeenCalled();
+
+        // 切到 task B。
+        (page as any).props = { taskId: 2 };
+        page.state = { ...(page.state as any), scheduleItem: null, showScheduleConfig: true };
+
+        // create 迟到 resolve——回显环节必须被跳过。
+        resolveCreate({ schedule_id: 999 });
+        await pending;
+        await Promise.resolve();
+        await Promise.resolve();
+
+        // 关键断言：切 task 后不再拉 schedule 回显、不动 B 的 scheduleItem。
+        expect(api.getSchedule).not.toHaveBeenCalled();
+        expect((page.state as any).scheduleItem).toBeNull();
+    });
+
+    // 续修6：handleScheduleDisable 在切 task 后迟到返回 → 不写 B 的 scheduleItem，且复位 loading。
+    it('handleScheduleDisable: stale toggle response after switching task does not setState schedule for new task (loading reset)', async () => {
+        let resolveToggle: (v: any) => void = () => {};
+        const togglePending = new Promise((res) => { resolveToggle = res; });
+        vi.mocked(api.toggleSchedule).mockReturnValueOnce(togglePending as any);
+
+        const page = makePage(1);
+        page.state = {
+            ...(page.state as any),
+            scheduleItem: { schedule_id: 50, is_active: true } as any,
+        };
+
+        const pending = page.handleScheduleDisable();
+        await Promise.resolve();
+        expect(api.toggleSchedule).toHaveBeenCalledWith(50, false);
+
+        // 切到 task B（B 无定时）。
+        (page as any).props = { taskId: 2 };
+        page.state = { ...(page.state as any), scheduleItem: null, scheduleDisabling: true };
+
+        // toggle 迟到 resolve——不得把 A 的停用结果写进 B。
+        resolveToggle({ schedule_id: 50, is_active: false });
+        await pending;
+        await Promise.resolve();
+
+        // B 的 scheduleItem 仍为 null（未被 A 回显污染）；loading 已复位，不卡住。
+        expect((page.state as any).scheduleItem).toBeNull();
+        expect((page.state as any).scheduleDisabling).toBe(false);
+    });
+
+    // 续修7：handleConfirmSchedule 在切 task 后迟到返回 → 不回显 B，confirmingSchedule 由 finally 复位。
+    it('handleConfirmSchedule: stale confirm response after switching task does not load schedule for new task', async () => {
+        let resolveConfirm: (v: any) => void = () => {};
+        const confirmPending = new Promise((res) => { resolveConfirm = res; });
+        vi.mocked(api.confirmSchedule).mockReturnValueOnce(confirmPending as any);
+        vi.mocked(api.getSchedule).mockResolvedValue({ schedule_id: 60, is_active: true } as any);
+
+        const page = makePage(1);
+        page.state = {
+            ...(page.state as any),
+            scheduleItem: { schedule_id: 60, is_active: true, confirm_policy: 1 } as any,
+        };
+
+        const pending = page.handleConfirmSchedule();
+        await Promise.resolve();
+        expect(api.confirmSchedule).toHaveBeenCalledWith(60);
+
+        // 切到 task B。
+        (page as any).props = { taskId: 2 };
+        page.state = { ...(page.state as any), scheduleItem: null, confirmingSchedule: true };
+
+        resolveConfirm({});
+        await pending;
+        await Promise.resolve();
+
+        // 不重拉 schedule 回显，confirmingSchedule 由 finally 复位。
+        expect(api.getSchedule).not.toHaveBeenCalled();
+        expect((page.state as any).confirmingSchedule).toBe(false);
     });
 });
 

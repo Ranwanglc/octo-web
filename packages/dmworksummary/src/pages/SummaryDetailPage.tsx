@@ -179,12 +179,18 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         const requestTaskId = this.taskId;
         // F1：切 task / 重拉 detail 时复位全部编辑态，避免旧 task 编辑态（尤其
         // editingTeamSummary）被带入新 task——否则切到非 creator 新 task 会绕过权限进编辑器。
+        // FE-1（切任务竞态）：开始新 task 加载时同步清空上一 task 的 personalResult/members，
+        // 避免旧任务成员报告 / 个人结果在新 detail 返回前残留显示（泄漏他人报告）。
         this.setState({
             loading: true,
             error: null,
             editingTeamSummary: false,
             editingPersonalReport: false,
             isEditing: false,
+            personalResult: null,
+            members: [],
+            personalLoading: false,
+            membersLoading: false,
         });
         try {
             const detail = await api.getSummaryDetail(this.taskId);
@@ -214,8 +220,9 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             }
             // Load BY_PERSON data
             if (detail.summary_mode === SummaryMode.BY_PERSON) {
-                this.loadPersonalResult();
-                this.loadMembers();
+                // FE-1：把本轮 seq 传给二次异步加载，迟到响应按 seq/taskId 校验后才 setState。
+                this.loadPersonalResult(seq);
+                this.loadMembers(seq);
             }
         } catch (err: any) {
             this.setState({ error: err.message || t("summary.common.loadingFailed"), loading: false });
@@ -246,25 +253,46 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         }
     }
 
-    async loadPersonalResult() {
+    /**
+     * FE-1（切 task 竞态）：与 loadSchedule 同风格的「请求归属校验」。
+     * 进入时捕获 reqSeq（不传则自动 bump，代表「本次是最新一次加载」，供
+     * 同一 task 内主动刷新复用）与 requestTaskId；异步返回后只有 seq + taskId
+     * 仍一致才能 setState。过期响应（期间切了 task / 又发了一轮加载）一律
+     * 忽略（return），绝不把旧任务的 personalResult 写到新任务界面（泄漏他人报告）。
+     */
+    async loadPersonalResult(seq?: number) {
         if (this.taskId == null) return;
+        const reqSeq = seq ?? this.nextScheduleSeq();
+        const requestTaskId = this.taskId;
         this.setState({ personalLoading: true });
         try {
             const result = await api.getPersonalResult(this.taskId);
+            // 迟到响应（期间切 task / 重新加载）：丢弃，不污染新 task。
+            if (this.scheduleLoadSeq !== reqSeq || this.taskId !== requestTaskId) return;
             this.setState({ personalResult: result, personalLoading: false });
             this.startPersonalPoll(result.worker_status);
         } catch {
+            if (this.scheduleLoadSeq !== reqSeq || this.taskId !== requestTaskId) return;
             this.setState({ personalLoading: false });
         }
     }
 
-    async loadMembers() {
+    /**
+     * FE-1（切 task 竞态）：同 loadPersonalResult——迟到的 getMembers 响应不能
+     * 把旧 task 的成员名单 setState 到新 task（否则泄漏他人报告 / 污染 team
+     * citations、schedule participant 写入）。seq/taskId 不一致一律忽略。
+     */
+    async loadMembers(seq?: number) {
         if (this.taskId == null) return;
+        const reqSeq = seq ?? this.nextScheduleSeq();
+        const requestTaskId = this.taskId;
         this.setState({ membersLoading: true });
         try {
             const members = await api.getMembers(this.taskId);
+            if (this.scheduleLoadSeq !== reqSeq || this.taskId !== requestTaskId) return;
             this.setState({ members, membersLoading: false });
         } catch {
+            if (this.scheduleLoadSeq !== reqSeq || this.taskId !== requestTaskId) return;
             this.setState({ membersLoading: false });
         }
     }
@@ -276,12 +304,19 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 if (this.taskId == null) return;
                 if (this.isPersonalPolling) return;
                 this.isPersonalPolling = true;
+                // 续修2：捕获本 tick 发起时的 taskId。轮询是周期性的——不每 tick 抢 seq
+                // （会与其它同 task 加载互杀），只用 requestTaskId 守卫：切 task 后迟到响应
+                // 必丢弃，同 task 合法加载不误杀。
+                const requestTaskId = this.taskId;
                 try {
                     const result = await api.getPersonalResult(this.taskId);
+                    // 切 task 后（clearInterval 停不住已在途请求）迟到响应：丢弃，不串台。
+                    if (this.taskId !== requestTaskId) return;
                     this.setState({ personalResult: result });
                     if (result.worker_status !== 0 && result.worker_status !== 1) {
                         if (this.personalPollTimer) clearInterval(this.personalPollTimer);
-                        this.loadMembers();
+                        // 终态一次性补拉 members：轮询已停，给它一个新 seq 即可。
+                        this.loadMembers(this.nextScheduleSeq());
                     }
                 } catch {
                     // ignore poll errors
@@ -297,8 +332,10 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         try {
             await api.submitPersonalResult(this.taskId);
             Toast.success(t("summary.detail.submitSuccess"));
-            this.loadPersonalResult();
-            this.loadMembers();
+            // 续修1：成对 refresh 共用一个 seq，避免互相作废。
+            const seq = this.nextScheduleSeq();
+            this.loadPersonalResult(seq);
+            this.loadMembers(seq);
             // F1：最后一人提交后团队总结/状态由 meta 聚合产生，team 区读 state.detail，
             // 必须 loadDetail 才能刷出新团队总结与状态，否则显示旧数据。
             this.loadDetail();
@@ -364,7 +401,13 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         this.stopFallbackPoll();
 
         try {
+            // 续修3：await 前捕获 requestTaskId。task A 状态事件触发后、await 未返回前切到
+            // task B，A 的 detail（含 result.team_citations）不得 setState 到 B 页面（A detail +
+            // B members/personal 混搭串台）。迟到直接 return，后续 prevStatus 判断 / 成对
+            // reload 都在这道守卫之后。
+            const requestTaskId = this.taskId;
             const detail = await api.getSummaryDetail(this.taskId);
+            if (this.taskId !== requestTaskId) return;
             const prevStatus = this.state.lastKnownStatus;
             const newStatus = detail.status;
             this.setState({ detail, lastKnownStatus: newStatus });
@@ -376,8 +419,12 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     newStatus === TaskStatus.CANCELLED
                 ) {
                     if (detail.summary_mode === SummaryMode.BY_PERSON) {
-                        this.loadPersonalResult();
-                        this.loadMembers();
+                        // 续修1：一个刷新周期共用一个 seq，避免成对调用各自
+                        // nextScheduleSeq() 互相作废（第二个把第一个的 reqSeq 作废，
+                        // 导致第一个响应被守卫丢弃 / personalLoading 卡 true）。
+                        const seq = this.nextScheduleSeq();
+                        this.loadPersonalResult(seq);
+                        this.loadMembers(seq);
                     }
                 }
             }
@@ -420,9 +467,14 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
 
     private async doFallbackPollOnce() {
         if (this.taskId == null) return;
+        // 续修4：tick 开始处捕获 requestTaskId，整个 tick 内 batchStatus / getSummaryDetail
+        // 及 await 后所有 setState 都用这一个 requestTaskId 守卫：兑底轮询 await 期间切
+        // task，旧 task 的 team result/citations 不得写进新 task 页。
+        const requestTaskId = this.taskId;
         try {
             const updates = await api.batchStatus([this.taskId]);
-            const update = updates.find(u => u.id === this.taskId);
+            if (this.taskId !== requestTaskId) return;
+            const update = updates.find(u => u.id === requestTaskId);
             if (!update) return;
 
             const prevStatus = this.state.lastKnownStatus;
@@ -431,6 +483,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             if (prevStatus !== undefined && prevStatus !== newStatus) {
                 try {
                     const detail = await api.getSummaryDetail(this.taskId);
+                    if (this.taskId !== requestTaskId) return;
                     this.setState({ detail, lastKnownStatus: newStatus });
                     if (
                         newStatus === TaskStatus.COMPLETED ||
@@ -438,12 +491,15 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         newStatus === TaskStatus.CANCELLED
                     ) {
                         this.stopFallbackPoll();
+                        // 续修1：本轮刷新共用一个 seq，传给所有子加载（personal/members/schedule），
+                        // 避免多次 nextScheduleSeq() 互相作废。
+                        const seq = this.nextScheduleSeq();
                         if (detail.summary_mode === SummaryMode.BY_PERSON) {
-                            this.loadPersonalResult();
-                            this.loadMembers();
+                            this.loadPersonalResult(seq);
+                            this.loadMembers(seq);
                         }
                         if (detail.schedule_id && detail.schedule_id > 0) {
-                            this.loadSchedule(detail.schedule_id);
+                            this.loadSchedule(detail.schedule_id, seq);
                         }
                     }
                 } catch {
@@ -608,6 +664,10 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     }
 
     handleScheduleSave = async (config: ScheduleConfig) => {
+        // 续修5：入口捕获发起时的 requestTaskId。用户保存定时后、网络往返期间
+        // 切到别的 task，不能把 A 的 schedule 回显到 B（loadSchedule 只能守「调用后才切」，
+        // 守不住「调用前已切」）。await 后、调 loadSchedule / 动新 task UI 前均校验。
+        const requestTaskId = this.taskId;
         const { detail, scheduleItem } = this.state;
         if (!detail) return;
 
@@ -670,6 +730,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 }
 
                 Toast.success(t("summary.detail.scheduleSaved"));
+                // 续修5：切了 task 就别回显 / 别动新 task 的 UI。
+                if (this.taskId !== requestTaskId) return;
                 this.loadSchedule(effectiveScheduleId);
             } else {
                 // 为「无定时」总结新建定时：一步式 create，带 scope='task' + task_id。
@@ -705,8 +767,12 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 });
                 Toast.success(t("summary.detail.scheduleCreated"));
                 // 拉取刚建并已绑定的定时回显。
+                // 续修5：切了 task 就别回显 / 别动新 task 的 UI。
+                if (this.taskId !== requestTaskId) return;
                 this.loadSchedule(newSchedule.schedule_id);
             }
+            // 续修5：迟到则不关闭新 task 的弹框。
+            if (this.taskId !== requestTaskId) return;
             this.setState({ showScheduleConfig: false });
         } catch (err: any) {
             Toast.error(err.message || t("summary.common.saveFailed"));
@@ -722,11 +788,20 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     // ⚠若未来放开定时共享（一个定时绑多个总结），需改为 task-scoped disable，
     // 否则会误停其他总结的定时。
     handleScheduleDisable = async () => {
+        // 续修6：入口捕获 requestTaskId。await toggleSchedule 期间切 task，不得把 A 的
+        // schedule 回显到 B 的 scheduleItem。迟到则放弃回显，但必须复位 scheduleDisabling
+        //（当前无 finally，在 return 前安全复位），别让 loading 卡住。
+        const requestTaskId = this.taskId;
         const { scheduleItem } = this.state;
         if (!scheduleItem) return;
         this.setState({ scheduleDisabling: true });
         try {
             const updated = await api.toggleSchedule(scheduleItem.schedule_id, false);
+            // 迟到（已切 task）：不回显新 task，仅复位本地 loading 标志。
+            if (this.taskId !== requestTaskId) {
+                this.setState({ scheduleDisabling: false });
+                return;
+            }
             Toast.success(t("summary.detail.scheduleDisabled"));
             // 任务3：回显一致——停用后本地把 is_active 置 false，
             // 使 hasSchedule / 描述行不再把它当作“有效定时”。
@@ -1502,11 +1577,16 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     }
 
     handleConfirmSchedule = async () => {
+        // 续修7：入口捕获 requestTaskId。await confirmSchedule 期间切 task，不得把 A 的
+        // schedule 回显到 B（finally 的 confirmingSchedule 复位保留）。
+        const requestTaskId = this.taskId;
         const { scheduleItem } = this.state;
         if (!scheduleItem) return;
         this.setState({ confirmingSchedule: true });
         try {
             await api.confirmSchedule(scheduleItem.schedule_id);
+            // 迟到（已切 task）：不回显新 task（confirmingSchedule 由 finally 复位）。
+            if (this.taskId !== requestTaskId) return;
             Toast.success(t("summary.detail.scheduleConfirmed"));
             // 复用现有加载路径刷新（不新增任何出站推送）：重拉 schedule 让按钮消失。
             this.loadSchedule(scheduleItem.schedule_id);
