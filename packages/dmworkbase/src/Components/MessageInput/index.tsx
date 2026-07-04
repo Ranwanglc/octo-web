@@ -465,11 +465,6 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
   const mentionActiveRef = useRef(false);
   // 表情前缀联想下拉激活标志，激活时 Enter 用于选中而非发送
   const emojiSuggestionActiveRef = useRef(false);
-  // 组字期 onUpdate 只记 pending 标志，不 setState；
-  // compositionend 后 ProseMirror 必再派 update / transaction 触发 onUpdate，
-  // 届时 view.composing 已复位，补算天然拿到已 flush 的 doc。
-  // 病态兜底：compositionend 后用户不再输入 → 布局暂保留旧值，下次输入即纠回（octo-web#531）。
-  const pendingMultiLineRecalcRef = useRef(false);
   const botCommandsRef = useRef(props.botCommands);
   // editorHandleKeyDownRef 持有最新的键盘处理函数，通过 useEffect 更新
   const editorHandleKeyDownRef = useRef<
@@ -595,9 +590,9 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
         setSlashActiveIndex(0);
       }
 
-      // 组字期跳过多行切换（外层 flex row→column 或 inputbox width 突变会打断 IME）。
+      // 组字期跳过 setIsMultiLine：外层 flex row→column 会打断 IME。
+      // compositionend 后 ProseMirror 会自然重发 onUpdate（composing=false），届时收尾。
       if (editor.view.composing) {
-        pendingMultiLineRecalcRef.current = true;
         return;
       }
       const json = editor.getJSON();
@@ -615,7 +610,6 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
           previous,
         })
       );
-      pendingMultiLineRecalcRef.current = false;
     },
   });
 
