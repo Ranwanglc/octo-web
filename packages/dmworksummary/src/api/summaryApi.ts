@@ -1,6 +1,8 @@
 import axios, { AxiosRequestConfig } from 'axios';
 import { WKApp, buildAcceptLanguage } from '@octo/base';
 import type {
+    AgentChatParams,
+    AgentChatResult,
     ApiResponse,
     BatchStatusItem,
     BatchStatusResponse,
@@ -139,6 +141,28 @@ export async function createAgentSummary(
     params: CreateAgentSummaryParams,
 ): Promise<{ task_id: number }> {
     return post('/summaries/agent', params);
+}
+
+// Agent 交互式问答（非流式一问一答）。POST /summary/api/v1/agent/chat。
+// 不复用公共 post()：post() 只 `data?.data ?? data`，不校验业务 code，
+// HTTP200 + {code:非0,data:null} 会被当成功、undefined 追进气泡。这里自行
+// 校验 envelope，非0 code 或空 reply 时抛错，交给 UI 层 catch。
+export async function agentChat(params: AgentChatParams): Promise<AgentChatResult> {
+    try {
+        const resp = await summaryAxios.post(`${BASE}/agent/chat`, params);
+        if (resp.data?.code !== 0) {
+            throw new Error(resp.data?.message || 'agent chat failed');
+        }
+        const data = resp.data?.data as AgentChatResult | undefined;
+        if (!data?.reply) {
+            throw new Error(resp.data?.message || 'agent chat failed');
+        }
+        return { reply: data.reply, session_id: data.session_id };
+    } catch (err) {
+        if (axios.isCancel(err)) throw err;
+        if (err instanceof Error) throw err;
+        throw new Error(extractErrorMessage(err));
+    }
 }
 
 export async function listSummaries(

@@ -20,18 +20,19 @@ import ChatSelectorModal from "../components/ChatSelectorModal";
 import MemberSelectorModal from "../components/MemberSelectorModal";
 import ScheduleConfigModal from "../components/ScheduleConfigModal";
 import TemplateCard from "../components/TemplateCard";
+import AgentChatPanel from "../components/AgentChatPanel";
 import { TOPIC_TEMPLATES } from "../constants/templates";
 import { MAX_CHAT_SELECT } from "../constants/limits";
 import type {
     CreateSummaryParams,
-    CreateAgentSummaryParams,
+    ChatMessage,
     ChatCandidate,
     MemberCandidate,
     ScheduleConfig,
     TopicTemplate,
 } from "../types/summary";
 import { SummaryMode, SourceType } from "../types/summary";
-import { describeSchedule, scheduleToParams } from "../utils/summaryHelpers";
+import { describeSchedule, scheduleToParams, genSessionId } from "../utils/summaryHelpers";
 import { resolveTemplate, computeTemplateSelection, type ResolvableTemplate } from "../utils/templateResolver";
 
 const { Text } = Typography;
@@ -53,6 +54,9 @@ interface SummaryCreatePageState {
     showScheduleConfig: boolean;
     submitting: boolean;
     agentSubmitting: boolean;
+    // Agent 交互式问答：多轮气泡 + session_id 透传（本次不落库）
+    messages: ChatMessage[];
+    sessionId: string;
     error: string | null;
 }
 
@@ -75,8 +79,13 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         showScheduleConfig: false,
         submitting: false,
         agentSubmitting: false,
+        messages: [],
+        sessionId: '',
         error: null,
     };
+
+    // 同步实例锁：防快速双击/回车的竞态（React state 未刷新时仍能拦住第二次）。
+    private agentSendInFlight = false;
 
     componentDidMount() {
         void this.loadTemplates();
@@ -234,61 +243,61 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
     };
 
     /**
-     * Agent 总结提交（预留接口）。
+     * Agent 交互式问答（本次不落库）。
      *
-     * 与 handleSubmit 的区别：把用户输入作为自然语言「需求 requirement」交给后端 agent
-     * 自主规划总结，而非按主题/模板汇总。来源（sources）组装逻辑与 handleSubmit 一致，
-     * 复用当前已选聊天。participants/schedule 不参与 agent 路径（agent 自主决定范围）。
-     *
-     * NOTE(预留)：后端 '/summaries/agent' 尚未实现，调用会抛错并 Toast 提示；
-     * 后端就绪后仅需改 summaryApi.createAgentSummary 的 path，本方法无需变更。
+     * 与 handleSubmit 的区别：不建 task / 不跳详情页 / 不调 createAgentSummary，
+     * 只做「多轮气泡 UI + session_id 透传」。后端一期无记忆，追问不保证上下文。
      */
-    handleAgentSubmit = async () => {
-        const { topic, selectedChats } = this.state;
-        if (!this.canSubmit()) return;
+    handleAgentSend = async (text: string) => {
+        const trimmed = text.trim();
+        if (!trimmed || this.state.agentSubmitting) return;
+        // 同步锁：在读/生成 sessionId 之前拦并发，确保 sessionId 只生成一次。
+        if (this.agentSendInFlight) return;
+        this.agentSendInFlight = true;
 
-        this.setState({ agentSubmitting: true, error: null });
+        // 惰性生成 session_id，整会话复用。
+        const sessionId = this.state.sessionId || genSessionId();
+
+        this.setState((prev) => ({
+            messages: [...prev.messages, { role: 'user', content: trimmed }],
+            sessionId,
+            agentSubmitting: true,
+            error: null,
+        }));
+
         try {
-            const params: CreateAgentSummaryParams = {
-                requirement: topic.trim(),
-                title: topic.trim(),
-            };
-
-            if (selectedChats.length > 0) {
-                params.sources = selectedChats.map((c) => ({
-                    source_type: c.chat_type === "group" ? SourceType.GROUP_CHAT
-                               : c.chat_type === "thread" ? SourceType.THREAD
-                               : SourceType.DIRECT_MESSAGE,
-                    source_id: c.chat_id,
-                }));
-            }
-
-            const result = await api.createAgentSummary(params);
-
-            Toast.success(t("summary.create.success"));
-            WKApp.routeRight.popToRoot();
-            WKApp.routeRight.push(<SummaryDetailPage taskId={result.task_id} />);
-            this.props.onCreated?.();
+            const res = await api.agentChat({ message: trimmed, session_id: sessionId });
+            this.setState((prev) => ({
+                messages: [...prev.messages, { role: 'assistant', content: res.reply }],
+                // 后端回传 session_id 非空则回填（一期只透传，不强依赖）
+                sessionId: res.session_id || prev.sessionId,
+            }));
         } catch (err: any) {
-            this.setState({ error: err.message || t("summary.common.createFailed") });
-            Toast.error(err.message || t("summary.common.createFailed"));
+            // 失败：Toast + 追一条 assistant 错误气泡（让失败在对话流里可见）。
+            const msg = err?.message || t("summary.common.createFailed");
+            Toast.error(msg);
+            this.setState((prev) => ({
+                messages: [...prev.messages, { role: 'assistant', content: msg }],
+            }));
         } finally {
+            this.agentSendInFlight = false;
             this.setState({ agentSubmitting: false });
         }
     };
 
-    /** 主按钮点击：按当前 mode 分发到普通总结 / Agent 总结。 */
+    /** 主按钮点击：normal 走普通提交；agent 输入走面板底部输入框，主按钮无需提交。 */
     handlePrimaryClick = () => {
-        if (this.state.mode === 'agent') {
-            void this.handleAgentSubmit();
-        } else {
+        if (this.state.mode !== 'agent') {
             void this.handleSubmit();
         }
     };
 
-    /** 下拉菜单选择模式：只切换 mode（不提交），输入框提示与主按钮文案随之变化。 */
+    /** 下拉菜单选择模式：只切换 mode。首次进入 agent 时惰性生成 session_id。 */
     handleSelectMode = (mode: 'normal' | 'agent') => {
-        this.setState({ mode });
+        this.setState((prev) => ({
+            mode,
+            sessionId: mode === 'agent' && !prev.sessionId ? genSessionId() : prev.sessionId,
+        }));
     };
 
     render() {
@@ -299,6 +308,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             selectedChats, selectedMembers, scheduleConfig,
             showChatSelector, showMemberSelector, showScheduleConfig,
             submitting, agentSubmitting, error,
+            messages,
         } = this.state;
         const { t: translate } = this.context;
         // 模板在 render() 用当前 locale 解析，切语言即时刷新（不在 state 烘焙）。
@@ -319,6 +329,18 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
 
                 {/* Main input */}
                 <div className="summary-workbench-input-area">
+                    {mode === 'agent' ? (
+                        // Agent 交互式问答：面板自带输入框，隐藏顶部大 textarea + 4 模板卡片。
+                        <div className="summary-workbench-agent-chat">
+                            <AgentChatPanel
+                                messages={messages}
+                                onSend={this.handleAgentSend}
+                                sending={agentSubmitting}
+                                welcome={translate("summary.create.agentChatWelcome")}
+                            />
+                        </div>
+                    ) : (
+                        <>
                     <div style={{ position: "relative" }}>
                         <textarea
                             ref={this.textareaRef}
@@ -363,6 +385,8 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                                     />
                                 ))}
                             </div>
+                        </>
+                    )}
                         </>
                     )}
 
@@ -411,17 +435,18 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                         </div>
 
                         <SplitButtonGroup className="chat-summary-modal-split">
-                            <Button
-                                theme="solid"
-                                size="default"
-                                loading={submitting || agentSubmitting}
-                                disabled={!this.canSubmit() || submitting || agentSubmitting}
-                                onClick={this.handlePrimaryClick}
-                            >
-                                {mode === 'agent'
-                                    ? (agentSubmitting ? translate("summary.create.agentSubmitting") : translate("summary.create.agentStart"))
-                                    : (submitting ? translate("summary.create.submitting") : translate("summary.create.start"))}
-                            </Button>
+                            {/* agent 模式下输入走面板底部输入框，隐藏主「开始」按钮；normal 保持不变。 */}
+                            {mode !== 'agent' && (
+                                <Button
+                                    theme="solid"
+                                    size="default"
+                                    loading={submitting || agentSubmitting}
+                                    disabled={!this.canSubmit() || submitting || agentSubmitting}
+                                    onClick={this.handlePrimaryClick}
+                                >
+                                    {submitting ? translate("summary.create.submitting") : translate("summary.create.start")}
+                                </Button>
+                            )}
                             <Dropdown
                                 trigger="click"
                                 position="bottomRight"

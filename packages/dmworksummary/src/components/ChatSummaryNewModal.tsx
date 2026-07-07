@@ -2,17 +2,18 @@ import React, { Component, createRef } from 'react';
 import { Modal, Toast, Tag, Button, Dropdown, SplitButtonGroup } from '@douyinfe/semi-ui';
 import { IconPlus, IconClock, IconChevronDown } from '@douyinfe/semi-icons';
 import { WKApp, I18nContext } from '@octo/base';
-import type { TopicTemplate, ChatCandidate, ScheduleConfig, CreateAgentSummaryParams } from '../types/summary';
+import type { TopicTemplate, ChatCandidate, ScheduleConfig, ChatMessage } from '../types/summary';
 import { SourceType, SummaryMode } from '../types/summary';
 import { getSourceType } from '../utils/channelType';
 import { channelToChatCandidate } from '../utils/channelConvert';
 import { resolveTemplate, computeTemplateSelection, type ResolvableTemplate } from '../utils/templateResolver';
-import { describeSchedule, scheduleToParams } from '../utils/summaryHelpers';
+import { describeSchedule, scheduleToParams, genSessionId } from '../utils/summaryHelpers';
 import * as summaryApi from '../api/summaryApi';
 import { getTopicTemplates } from '../api/summaryApi';
 import { TOPIC_TEMPLATES } from '../constants/templates';
 import { MAX_CHAT_SELECT } from '../constants/limits';
 import TemplateCard from './TemplateCard';
+import AgentChatPanel from './AgentChatPanel';
 import ChatSelectorModal from './ChatSelectorModal';
 import ScheduleConfigModal from './ScheduleConfigModal';
 import './ChatSummaryNewModal.css';
@@ -35,6 +36,9 @@ interface ChatSummaryNewModalState {
     templatePlaceholderRange: [number, number] | null;
     scheduleConfig: ScheduleConfig | null;
     showScheduleConfig: boolean;
+    // Agent 交互式问答：多轮气泡 + session_id 透传（本次不落库）
+    messages: ChatMessage[];
+    sessionId: string;
 }
 
 export default class ChatSummaryNewModal extends Component<
@@ -45,6 +49,9 @@ export default class ChatSummaryNewModal extends Component<
     declare context: React.ContextType<typeof I18nContext>;
 
     private inputRef = createRef<HTMLTextAreaElement>();
+
+    // 同步实例锁：防快速双击/回车的竞态（React state 未刷新时仍能拦住第二次）。
+    private agentSendInFlight = false;
 
     constructor(props: ChatSummaryNewModalProps) {
         super(props);
@@ -59,6 +66,8 @@ export default class ChatSummaryNewModal extends Component<
             templatePlaceholderRange: null,
             scheduleConfig: null,
             showScheduleConfig: false,
+            messages: [],
+            sessionId: '',
         };
     }
 
@@ -83,6 +92,8 @@ export default class ChatSummaryNewModal extends Component<
                 templatePlaceholderRange: null,
                 scheduleConfig: null,
                 showScheduleConfig: false,
+                messages: [],
+                sessionId: '',
             });
             void this.loadTemplates();
         }
@@ -212,77 +223,63 @@ export default class ChatSummaryNewModal extends Component<
     };
 
     /**
-     * Agent 总结提交（预留接口）。
+     * Agent 交互式问答（本次不落库）。
      *
-     * 与 handleSubmit 的区别：把用户输入作为自然语言「需求 requirement」交给后端
-     * agent 自主规划总结，而非按主题/模板汇总。来源（sources）组装逻辑与 handleSubmit
-     * 保持一致，复用当前弹窗已选聊天 / 默认频道。
-     *
-     * NOTE(预留)：后端 '/summaries/agent' 尚未实现，调用会抛错并 Toast 提示；
-     * 后端就绪后仅需改 summaryApi.createAgentSummary 的 path，本方法无需变更。
+     * 与 handleSubmit 的区别：不建 task / 不触发 onSubmit / 不调 createAgentSummary，
+     * 只做「多轮气泡 UI + session_id 透传」。与 SummaryCreatePage 逻辑一致。
+     * 后端一期无记忆，追问不保证上下文。
      */
-    private handleAgentSubmit = async () => {
-        const { topic, selectedChats } = this.state;
-        const { channel, onSubmit } = this.props;
+    private handleAgentSend = async (text: string) => {
+        const trimmed = text.trim();
+        if (!trimmed || this.state.agentSubmitting) return;
+        // 同步锁：在读/生成 sessionId 之前拦并发，确保 sessionId 只生成一次。
+        if (this.agentSendInFlight) return;
+        this.agentSendInFlight = true;
 
-        if (!topic.trim()) return;
+        // 惰性生成 session_id，整会话复用。
+        const sessionId = this.state.sessionId || genSessionId();
 
-        const sourceType = getSourceType(channel);
-        if (sourceType === null) return;
+        this.setState((prev) => ({
+            messages: [...prev.messages, { role: 'user', content: trimmed }],
+            sessionId,
+            agentSubmitting: true,
+        }));
 
-        this.setState({ agentSubmitting: true });
         try {
-            const sources = selectedChats.length > 0
-                ? selectedChats.map((c) => ({
-                    source_type: (c.chat_type === 'group'
-                        ? SourceType.GROUP_CHAT
-                        : c.chat_type === 'thread'
-                        ? SourceType.THREAD
-                        : SourceType.DIRECT_MESSAGE),
-                    source_id: c.chat_id,
-                }))
-                : [{
-                    source_type: sourceType as 1 | 2 | 3,
-                    source_id: channel.channelID,
-                }];
-
-            const params: CreateAgentSummaryParams = {
-                requirement: topic.trim(),
-                origin_channel_id: channel.channelID,
-                origin_channel_type: sourceType,
-                sources,
-            };
-
-            const res = await summaryApi.createAgentSummary(params);
-
-            window.dispatchEvent(
-                new CustomEvent('chat-summary-created', {
-                    detail: { taskId: res.task_id, channelId: channel.channelID },
-                }),
-            );
-            onSubmit(res.task_id);
+            const res = await summaryApi.agentChat({ message: trimmed, session_id: sessionId });
+            this.setState((prev) => ({
+                messages: [...prev.messages, { role: 'assistant', content: res.reply }],
+                // 后端回传 session_id 非空则回填（一期只透传，不强依赖）
+                sessionId: res.session_id || prev.sessionId,
+            }));
         } catch (err: unknown) {
+            // 失败：Toast + 追一条 assistant 错误气泡（让失败在对话流里可见）。
             const msg = err instanceof Error
                 ? err.message
                 : this.context.t('summary.common.createFailedRetry');
             Toast.error(msg);
+            this.setState((prev) => ({
+                messages: [...prev.messages, { role: 'assistant', content: msg }],
+            }));
         } finally {
+            this.agentSendInFlight = false;
             this.setState({ agentSubmitting: false });
         }
     };
 
-    /** 主按钮点击：按当前 mode 分发到普通总结 / Agent 总结。 */
+    /** 主按钮点击：normal 走普通提交；agent 输入走面板底部输入框，主按钮无需提交。 */
     private handlePrimaryClick = () => {
-        if (this.state.mode === 'agent') {
-            void this.handleAgentSubmit();
-        } else {
+        if (this.state.mode !== 'agent') {
             void this.handleSubmit();
         }
     };
 
-    /** 下拉菜单选择模式：只切换 mode（不提交），输入框提示与主按钮文案随之变化。 */
+    /** 下拉菜单选择模式：只切换 mode。首次进入 agent 时惰性生成 session_id。 */
     private handleSelectMode = (mode: 'normal' | 'agent') => {
-        this.setState({ mode });
+        this.setState((prev) => ({
+            mode,
+            sessionId: mode === 'agent' && !prev.sessionId ? genSessionId() : prev.sessionId,
+        }));
     };
 
     private handleRemoveChat = (chatId: string) => {
@@ -293,7 +290,7 @@ export default class ChatSummaryNewModal extends Component<
 
     render() {
         const { visible, onClose } = this.props;
-        const { topic, mode, templates, selectedChats, showChatSelector, submitting, agentSubmitting, scheduleConfig, showScheduleConfig } = this.state;
+        const { topic, mode, templates, selectedChats, showChatSelector, submitting, agentSubmitting, scheduleConfig, showScheduleConfig, messages } = this.state;
         const { t } = this.context;
         // 模板在 render() 用当前 locale 解析，切语言即时刷新（不在 state 烘焙）。
         const resolvedTemplates = templates.map((tpl) => resolveTemplate(tpl, t));
@@ -310,15 +307,18 @@ export default class ChatSummaryNewModal extends Component<
         const footer = (
             <div className="chat-summary-modal-footer">
                 <SplitButtonGroup className="chat-summary-modal-split">
-                    <Button
-                        theme="solid"
-                        size="default"
-                        loading={anySubmitting}
-                        disabled={!canSubmit}
-                        onClick={this.handlePrimaryClick}
-                    >
-                        {primaryLabel}
-                    </Button>
+                    {/* agent 模式下输入走面板底部输入框，隐藏主「开始」按钮；normal 保持不变。 */}
+                    {!isAgent && (
+                        <Button
+                            theme="solid"
+                            size="default"
+                            loading={anySubmitting}
+                            disabled={!canSubmit}
+                            onClick={this.handlePrimaryClick}
+                        >
+                            {primaryLabel}
+                        </Button>
+                    )}
                     <Dropdown
                         trigger="click"
                         position="bottomRight"
@@ -372,6 +372,18 @@ export default class ChatSummaryNewModal extends Component<
                     </div>
 
                     <div className="chat-summary-modal-input-area">
+                        {isAgent ? (
+                            // 弹窗内高度受限：固定面板高度让内部消息列表滚动。
+                            <div className="chat-summary-modal-agent-chat" style={{ height: 360 }}>
+                                <AgentChatPanel
+                                    messages={messages}
+                                    onSend={this.handleAgentSend}
+                                    sending={agentSubmitting}
+                                    welcome={t('summary.create.agentChatWelcome')}
+                                />
+                            </div>
+                        ) : (
+                            <>
                         <textarea
                             ref={this.inputRef}
                             className="chat-summary-modal-input"
@@ -400,6 +412,8 @@ export default class ChatSummaryNewModal extends Component<
                                         />
                                     ))}
                                 </div>
+                            </>
+                        )}
                             </>
                         )}
                     </div>
