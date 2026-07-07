@@ -5,8 +5,10 @@ import {
     Typography,
     Tag,
     Avatar,
+    Dropdown,
+    SplitButtonGroup,
 } from "@douyinfe/semi-ui";
-import { IconPlus, IconClock, IconUserGroup } from "@douyinfe/semi-icons";
+import { IconPlus, IconClock, IconUserGroup, IconChevronDown } from "@douyinfe/semi-icons";
 import { I18nContext, t } from "@octo/base";
 import WKApp from "@octo/base/src/App";
 import VoiceInputButton from "@octo/base/src/Components/VoiceInputButton";
@@ -22,6 +24,7 @@ import { TOPIC_TEMPLATES } from "../constants/templates";
 import { MAX_CHAT_SELECT } from "../constants/limits";
 import type {
     CreateSummaryParams,
+    CreateAgentSummaryParams,
     ChatCandidate,
     MemberCandidate,
     ScheduleConfig,
@@ -39,6 +42,7 @@ interface SummaryCreatePageProps {
 
 interface SummaryCreatePageState {
     topic: string;
+    mode: 'normal' | 'agent';
     templates: ResolvableTemplate[];
     templatePlaceholderRange: [number, number] | null;
     selectedChats: ChatCandidate[];
@@ -48,6 +52,7 @@ interface SummaryCreatePageState {
     showMemberSelector: boolean;
     showScheduleConfig: boolean;
     submitting: boolean;
+    agentSubmitting: boolean;
     error: string | null;
 }
 
@@ -59,6 +64,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
 
     state: SummaryCreatePageState = {
         topic: "",
+        mode: 'normal',
         templates: TOPIC_TEMPLATES,
         templatePlaceholderRange: null,
         selectedChats: [],
@@ -68,6 +74,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         showMemberSelector: false,
         showScheduleConfig: false,
         submitting: false,
+        agentSubmitting: false,
         error: null,
     };
 
@@ -226,13 +233,72 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         }
     };
 
+    /**
+     * Agent 总结提交（预留接口）。
+     *
+     * 与 handleSubmit 的区别：把用户输入作为自然语言「需求 requirement」交给后端 agent
+     * 自主规划总结，而非按主题/模板汇总。来源（sources）组装逻辑与 handleSubmit 一致，
+     * 复用当前已选聊天。participants/schedule 不参与 agent 路径（agent 自主决定范围）。
+     *
+     * NOTE(预留)：后端 '/summaries/agent' 尚未实现，调用会抛错并 Toast 提示；
+     * 后端就绪后仅需改 summaryApi.createAgentSummary 的 path，本方法无需变更。
+     */
+    handleAgentSubmit = async () => {
+        const { topic, selectedChats } = this.state;
+        if (!this.canSubmit()) return;
+
+        this.setState({ agentSubmitting: true, error: null });
+        try {
+            const params: CreateAgentSummaryParams = {
+                requirement: topic.trim(),
+                title: topic.trim(),
+            };
+
+            if (selectedChats.length > 0) {
+                params.sources = selectedChats.map((c) => ({
+                    source_type: c.chat_type === "group" ? SourceType.GROUP_CHAT
+                               : c.chat_type === "thread" ? SourceType.THREAD
+                               : SourceType.DIRECT_MESSAGE,
+                    source_id: c.chat_id,
+                }));
+            }
+
+            const result = await api.createAgentSummary(params);
+
+            Toast.success(t("summary.create.success"));
+            WKApp.routeRight.popToRoot();
+            WKApp.routeRight.push(<SummaryDetailPage taskId={result.task_id} />);
+            this.props.onCreated?.();
+        } catch (err: any) {
+            this.setState({ error: err.message || t("summary.common.createFailed") });
+            Toast.error(err.message || t("summary.common.createFailed"));
+        } finally {
+            this.setState({ agentSubmitting: false });
+        }
+    };
+
+    /** 主按钮点击：按当前 mode 分发到普通总结 / Agent 总结。 */
+    handlePrimaryClick = () => {
+        if (this.state.mode === 'agent') {
+            void this.handleAgentSubmit();
+        } else {
+            void this.handleSubmit();
+        }
+    };
+
+    /** 下拉菜单选择模式：只切换 mode（不提交），输入框提示与主按钮文案随之变化。 */
+    handleSelectMode = (mode: 'normal' | 'agent') => {
+        this.setState({ mode });
+    };
+
     render() {
         const {
             topic,
+            mode,
             templates,
             selectedChats, selectedMembers, scheduleConfig,
             showChatSelector, showMemberSelector, showScheduleConfig,
-            submitting, error,
+            submitting, agentSubmitting, error,
         } = this.state;
         const { t: translate } = this.context;
         // 模板在 render() 用当前 locale 解析，切语言即时刷新（不在 state 烘焙）。
@@ -263,7 +329,9 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                                 this.autoResizeTextarea();
                             }}
                             onFocus={this.handleInputFocus}
-                            placeholder={translate("summary.create.topicPlaceholder")}
+                            placeholder={mode === 'agent'
+                                ? translate("summary.create.agentTopicPlaceholder")
+                                : translate("summary.create.topicPlaceholder")}
                             rows={1}
                             maxLength={1000}
                         />
@@ -342,15 +410,47 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                             </span>
                         </div>
 
-                        <Button
-                            theme="solid"
-                            size="default"
-                            loading={submitting}
-                            disabled={!this.canSubmit()}
-                            onClick={this.handleSubmit}
-                        >
-                            {translate("summary.create.start")}
-                        </Button>
+                        <SplitButtonGroup className="chat-summary-modal-split">
+                            <Button
+                                theme="solid"
+                                size="default"
+                                loading={submitting || agentSubmitting}
+                                disabled={!this.canSubmit() || submitting || agentSubmitting}
+                                onClick={this.handlePrimaryClick}
+                            >
+                                {mode === 'agent'
+                                    ? (agentSubmitting ? translate("summary.create.agentSubmitting") : translate("summary.create.agentStart"))
+                                    : (submitting ? translate("summary.create.submitting") : translate("summary.create.start"))}
+                            </Button>
+                            <Dropdown
+                                trigger="click"
+                                position="bottomRight"
+                                render={(
+                                    <Dropdown.Menu>
+                                        <Dropdown.Item
+                                            active={mode !== 'agent'}
+                                            onClick={() => this.handleSelectMode('normal')}
+                                        >
+                                            {translate("summary.create.start")}
+                                        </Dropdown.Item>
+                                        <Dropdown.Item
+                                            active={mode === 'agent'}
+                                            onClick={() => this.handleSelectMode('agent')}
+                                        >
+                                            {translate("summary.create.agentStart")}
+                                        </Dropdown.Item>
+                                    </Dropdown.Menu>
+                                )}
+                            >
+                                <Button
+                                    theme="solid"
+                                    size="default"
+                                    disabled={submitting || agentSubmitting}
+                                    icon={<IconChevronDown />}
+                                    aria-label={translate("summary.create.switchMode")}
+                                />
+                            </Dropdown>
+                        </SplitButtonGroup>
                     </div>
                 </div>
 
