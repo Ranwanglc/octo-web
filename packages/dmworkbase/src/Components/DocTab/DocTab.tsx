@@ -8,10 +8,11 @@
  * 边界（务必）：
  *   - iframe src 必须由调用方拼装为 doc 服务的可访问 URL；组件不猜 origin，
  *     也不做 URL 编码之外的处理，避免误注入 slug/query。
- *   - sandbox 只放开 allow-scripts + allow-same-origin：doc 服务需要 same-origin
- *     才能读写自己的 cookie（capability cookie 是 HttpOnly，但页面 JS 通过
- *     同源 fetch 访问 /v1/*，见 octo-docs-html handlers_auth）。
- *   - 不放开 allow-top-navigation：doc 若企图跳走宿主要被浏览器拦。
+ *   - sandbox 放开 allow-scripts + allow-same-origin + allow-forms + allow-popups：
+ *     same-origin 是刚需（doc 页面 JS 通过同源 fetch 拿 HttpOnly capability cookie，
+ *     见 octo-docs-html handlers_auth）；forms/popups 供后续文档内表单和新窗口分享用。
+ *   - 明确不放 allow-top-navigation：防恶意 doc 用 top.location 劫持宿主 tab。
+ *     vitest 里有反向断言锁住这一条，别顺手加。
  *   - Stage B（等 OCT-150 登录合入）再补 postMessage 传 X-Octo-Token；此处
  *     不埋 TODO 注释，见 issue comment。
  */
