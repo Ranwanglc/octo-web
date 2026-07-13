@@ -8,9 +8,10 @@ import {
 } from "../guards";
 
 describe("isSupportedProfile", () => {
-  it("octo/v1 支持；其他不支持", () => {
+  it("octo/v1、octo/v2 支持；更高/未知 profile 不支持", () => {
     expect(isSupportedProfile("octo/v1")).toBe(true);
-    expect(isSupportedProfile("octo/v2")).toBe(false);
+    expect(isSupportedProfile("octo/v2")).toBe(true);
+    expect(isSupportedProfile("octo/v3")).toBe(false);
     expect(isSupportedProfile("")).toBe(false);
     expect(isSupportedProfile("adaptivecard")).toBe(false);
   });
@@ -34,11 +35,11 @@ describe("compareCardVersion", () => {
 });
 
 describe("isSupportedCardVersion", () => {
-  it("<= 1.5 支持，> 1.5 不支持，非法不支持", () => {
+  it("<= 1.6 支持（对齐 SDK 上限），> 1.6 不支持，非法不支持", () => {
     expect(isSupportedCardVersion("1.5")).toBe(true);
     expect(isSupportedCardVersion("1.4")).toBe(true);
     expect(isSupportedCardVersion("1.0")).toBe(true);
-    expect(isSupportedCardVersion("1.6")).toBe(false);
+    expect(isSupportedCardVersion("1.6")).toBe(true);
     expect(isSupportedCardVersion("2.0")).toBe(false);
     expect(isSupportedCardVersion("bogus")).toBe(false);
     expect(isSupportedCardVersion("")).toBe(false);
@@ -49,10 +50,12 @@ describe("negotiate", () => {
   it("profile + version 均支持 → ok", () => {
     expect(negotiate("octo/v1", "1.5")).toEqual({ ok: true });
     expect(negotiate("octo/v1", "1.4")).toEqual({ ok: true });
+    expect(negotiate("octo/v2", "1.5")).toEqual({ ok: true });
+    expect(negotiate("octo/v2", "1.6")).toEqual({ ok: true });
   });
 
   it("不支持 profile → unsupported-profile（优先于 version 判定）", () => {
-    expect(negotiate("octo/v2", "1.5")).toEqual({
+    expect(negotiate("octo/v3", "1.5")).toEqual({
       ok: false,
       reason: "unsupported-profile",
     });
@@ -64,7 +67,7 @@ describe("negotiate", () => {
   });
 
   it("profile 支持但 version 过高 → unsupported-version", () => {
-    expect(negotiate("octo/v1", "1.6")).toEqual({
+    expect(negotiate("octo/v1", "1.7")).toEqual({
       ok: false,
       reason: "unsupported-version",
     });
