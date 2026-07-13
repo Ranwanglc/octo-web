@@ -54,6 +54,17 @@ vi.mock('../sheet/SheetView.tsx', () => ({
   ),
 }))
 
+// Replace the read-only HTML view (which raw-fetches the octo-doc backend) with a marker so
+// the html docType dispatch is testable without a real octo-doc fetch. Surfaces the docId,
+// mirroring the editor / board / sheet markers above.
+vi.mock('../html/HtmlDocView.tsx', () => ({
+  HtmlDocView: (props: { docId: string }) => (
+    <div data-testid="html-doc-view">
+      <span data-testid="html-doc">{props.docId}</span>
+    </div>
+  ),
+}))
+
 const TARGET_KEY = 'octo.docs.target'
 
 let assignSpy: ReturnType<typeof vi.fn>
@@ -513,6 +524,56 @@ describe('DocsHome navigation (split-pane)', () => {
     expect(calls.some((c) => c.method === 'get' && c.url === '/docs/b_known')).toBe(false)
   })
 
+  it('opens a persisted html doc directly into HtmlDocView on refresh (no getDoc round-trip, no editor fallback)', async () => {
+    // Regression: the stored docType='html' must open the read-only HtmlDocView on first paint.
+    // Previously the initial known-kind whitelist only covered board/doc, so a refreshed html doc
+    // took a getDoc detour and, on any hiccup, fell back to the rich-text editor.
+    window.sessionStorage.setItem(
+      TARGET_KEY,
+      JSON.stringify({ space: 'sp', folder: 'fd', doc: 'h_known', docType: 'html' }),
+    )
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    const calls: Array<{ method: string; url: string }> = []
+    wk.apiClient.responder = (method, url) => {
+      calls.push({ method, url })
+      if (method === 'get' && url.startsWith('/docs')) {
+        return { data: { total: 0, items: [] }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<DocsHome />)
+    // HtmlDocView mounts immediately from the stored kind — not the editor.
+    expect(screen.getByTestId('html-doc-view')).toBeTruthy()
+    expect(screen.queryByTestId('editor-shell')).toBeNull()
+    // No per-doc getDoc round-trip was needed.
+    expect(calls.some((c) => c.method === 'get' && c.url === '/docs/h_known')).toBe(false)
+  })
+
+  it('opens a persisted sheet doc directly into SheetView on refresh (no getDoc round-trip)', async () => {
+    // Same whitelist fix also covers sheet, which the reviewer flagged as missing alongside html.
+    window.sessionStorage.setItem(
+      TARGET_KEY,
+      JSON.stringify({ space: 'sp', folder: 'fd', doc: 's_known', docType: 'sheet' }),
+    )
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    const calls: Array<{ method: string; url: string }> = []
+    wk.apiClient.responder = (method, url) => {
+      calls.push({ method, url })
+      if (method === 'get' && url.startsWith('/docs')) {
+        return { data: { total: 0, items: [] }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<DocsHome />)
+    expect(screen.getByTestId('sheet-view')).toBeTruthy()
+    expect(screen.queryByTestId('editor-shell')).toBeNull()
+    expect(calls.some((c) => c.method === 'get' && c.url === '/docs/s_known')).toBe(false)
+  })
+
   it('back-to-list unmounts the editor and clears the persisted target (no full navigation)', async () => {
     window.sessionStorage.setItem(TARGET_KEY, JSON.stringify({ doc: 'd_persist' }))
     const wk = createMockWKApp()
@@ -926,6 +987,44 @@ describe('DocsHome — sheet open path restored (XIN-520)', () => {
     expect(JSON.parse(window.sessionStorage.getItem(TARGET_KEY)!)).toMatchObject({
       doc: 's_new',
       docType: 'sheet',
+    })
+  })
+
+  it('opens an existing html row directly in the read-only HtmlDocView (no per-doc lookup)', async () => {
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    const calls: Array<{ method: string; url: string }> = []
+    wk.apiClient.responder = (method, url) => {
+      calls.push({ method, url })
+      if (method === 'get' && url.startsWith('/docs')) {
+        return {
+          data: {
+            total: 1,
+            items: [
+              { docId: 'h_row', title: 'Agent Report', ownerId: 'u_owner', role: 'admin', docType: 'html' },
+            ],
+          },
+          status: 200,
+        }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<DocsHome />)
+    await waitFor(() => expect(screen.getByText('Agent Report')).toBeTruthy())
+
+    fireEvent.click(screen.getByText('Agent Report'))
+
+    await waitFor(() => expect(screen.getByTestId('html-doc-view')).toBeTruthy())
+    expect(screen.getByTestId('html-doc').textContent).toBe('h_row')
+    // Read-only html doc: it must NOT open the rich-text editor / sheet.
+    expect(screen.queryByTestId('editor-shell')).toBeNull()
+    expect(screen.queryByTestId('sheet-view')).toBeNull()
+    // The list row already carried docType='html' — no authoritative round-trip needed.
+    expect(calls.some((c) => c.method === 'get' && c.url === '/docs/h_row')).toBe(false)
+    expect(JSON.parse(window.sessionStorage.getItem(TARGET_KEY)!)).toMatchObject({
+      doc: 'h_row',
+      docType: 'html',
     })
   })
 

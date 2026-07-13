@@ -5,6 +5,7 @@ import { EditorShell } from '../editor/EditorShell.tsx'
 import { SheetView } from '../sheet/SheetView.tsx'
 import { parseXlsxToMatrix, pendingSheetImports } from '../sheet/xlsxImport.ts'
 import { BoardSession } from '../board/BoardSession.tsx'
+import { HtmlDocView } from '../html/HtmlDocView.tsx'
 import { isBoardDoc, isBoardIdLocally, rememberBoard } from '../board/boardStore.ts'
 import '../editor/styles.css'
 import {
@@ -609,13 +610,15 @@ function DocsList({
             // list API omitted docType AND we have no local board record — a NON-creator viewing a
             // shared board — pass `undefined` so openDoc resolves the authoritative kind via getDoc
             // instead of defaulting that member to the rich-text editor (the M2 routing bug).
-            const knownKind: 'board' | 'doc' | 'sheet' | undefined = board
+            const knownKind: 'board' | 'doc' | 'sheet' | 'html' | undefined = board
               ? 'board'
               : d.docType === 'sheet'
                 ? 'sheet'
-                : d.docType === 'doc'
-                  ? 'doc'
-                  : undefined
+                : d.docType === 'html'
+                  ? 'html'
+                  : d.docType === 'doc'
+                    ? 'doc'
+                    : undefined
             return (
               <li
                 key={d.docId}
@@ -794,12 +797,21 @@ export function DocsHome() {
   // an owner direct-opening a whiteboard fell back to the Docs editor (canvas=0). This mirrors
   // what the list-open path already does (openDoc → getDoc for unknown kinds), aligning the two
   // open paths so every member lands on the whiteboard regardless of how they entered.
-  const initialKnownKind: 'board' | 'doc' | undefined =
+  // Kinds we can assert from the stored docType WITHOUT a getDoc round-trip: 'board',
+  // 'sheet' (SheetView) and 'html' (read-only HtmlDocView) are all deterministic shells, so a
+  // persisted/deep-link target that already carries one of them opens straight into the right
+  // shell on first paint — no getDoc detour, and (for html) no risk of falling back to the
+  // rich-text editor. Only a docId with an UNKNOWN kind still defers to getDoc on mount.
+  const initialKnownKind: 'board' | 'doc' | 'sheet' | 'html' | undefined =
     initialTarget.current?.docType === 'board'
       ? 'board'
-      : initialTarget.current?.docType === 'doc'
-        ? 'doc'
-        : undefined
+      : initialTarget.current?.docType === 'sheet'
+        ? 'sheet'
+        : initialTarget.current?.docType === 'html'
+          ? 'html'
+          : initialTarget.current?.docType === 'doc'
+            ? 'doc'
+            : undefined
   const [selectedDocId, setSelectedDocId] = useState<string | null>(
     () => (initialKnownKind ? (initialTarget.current?.docId ?? null) : null),
   )
@@ -979,10 +991,15 @@ export function DocsHome() {
   )
 
   // Choose the right-pane renderer by doc type: a spreadsheet ('sheet') mounts the collaborative
-  // Univer SheetView; a whiteboard ('board') mounts the Excalidraw shell; everything else (incl.
+  // Univer SheetView; a whiteboard ('board') mounts the Excalidraw shell; an agent-authored
+  // read-only HTML doc ('html') mounts the view-only HtmlDocView; everything else (incl.
   // unknown/absent kind) uses the Tiptap EditorShell — the safe default for legacy docs.
   const buildRightPane = useCallback(
     (docId: string, docType: string | undefined, onBack?: () => void) => {
+      // Read-only HTML: NO editor/collab wiring — a human may only view it (comments arrive in 2b).
+      if (docType === 'html') {
+        return <HtmlDocView key={docId} docId={docId} space={space} />
+      }
       if (docType === 'sheet') {
         return (
           <SheetView
@@ -1011,7 +1028,7 @@ export function DocsHome() {
   // (durable sessionStorage + shareable `?doc=` URL), and push the matching shell into the host's
   // right pane. Split out from openDoc so the kind can be resolved asynchronously first.
   const commitOpen = useCallback(
-    (docId: string, docType: 'board' | 'doc' | 'sheet') => {
+    (docId: string, docType: 'board' | 'doc' | 'sheet' | 'html') => {
       setSelectedDocId(docId)
       setSelectedDocType(docType)
       // Durable mirror (survives the host's query-wiping re-push) + shareable URL (replaceState,
@@ -1040,9 +1057,10 @@ export function DocsHome() {
     (docId: string, docType?: string) => {
       latestOpenRef.current = docId
       // Known kind — the creator's own board (API `docType` or the local registry, both surfaced
-      // by isBoardDoc at the call site), an explicit `'doc'`, or a `'sheet'` (created / imported /
-      // known list row): open the right shell immediately without a round-trip.
-      if (docType === 'board' || docType === 'doc' || docType === 'sheet') {
+      // by isBoardDoc at the call site), an explicit `'doc'`, a `'sheet'` (created / imported /
+      // known list row), or an agent-authored read-only `'html'` doc: open the right shell
+      // immediately without a round-trip.
+      if (docType === 'board' || docType === 'doc' || docType === 'sheet' || docType === 'html') {
         commitOpen(docId, docType)
         return
       }
@@ -1065,10 +1083,17 @@ export function DocsHome() {
         .then((meta) => {
           if (superseded()) return // superseded by a newer open or a Space switch
           // Preserve the resolved kind verbatim: a real 'sheet' must reach SheetView, a 'board'
-          // the whiteboard shell; everything else falls back to the rich-text editor.
+          // the whiteboard shell, an 'html' the read-only view; everything else falls back to the
+          // rich-text editor.
           commitOpen(
             docId,
-            meta?.docType === 'board' ? 'board' : meta?.docType === 'sheet' ? 'sheet' : 'doc',
+            meta?.docType === 'board'
+              ? 'board'
+              : meta?.docType === 'sheet'
+                ? 'sheet'
+                : meta?.docType === 'html'
+                  ? 'html'
+                  : 'doc',
           )
         })
         .catch(() => {
