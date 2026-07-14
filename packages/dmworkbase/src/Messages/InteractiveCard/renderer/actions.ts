@@ -1,4 +1,7 @@
+import WKApp from "../../../App";
 import { isSafeUrl } from "../../../Utils/security";
+
+const SUMMARY_DETAIL_PATH_RE = /^\/s\/([A-Za-z0-9_-]+)\/?$/;
 
 /**
  * Action.OpenUrl 导航。
@@ -11,6 +14,18 @@ import { isSafeUrl } from "../../../Utils/security";
 /** 在新标签打开 URL；提交前二次 isSafeUrl 校验（http/https），非法直接忽略。 */
 export function openUrl(url: string): void {
   if (!isSafeUrl(url)) return;
+
+  const parsed = new URL(url);
+  const summaryMatch = parsed.pathname.match(SUMMARY_DETAIL_PATH_RE);
+  if (summaryMatch) {
+    const taskNo = summaryMatch[1];
+    if (WKApp.openSummaryDetail) {
+      // 卡片深链可能来自 https 生产域，本地调试是 http/端口；/s/<taskNo> 路径本身是内部详情信号。
+      WKApp.openSummaryDetail(taskNo);
+      return;
+    }
+  }
+
   window.open(url, "_blank", "noopener,noreferrer");
 }
 

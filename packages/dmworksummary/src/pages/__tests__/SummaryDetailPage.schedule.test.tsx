@@ -53,7 +53,7 @@ import SummaryDetailPage from '../SummaryDetailPage';
 
 vi.mock('../../api/summaryApi');
 
-function makePage(taskId: number) {
+function makePage(taskId: number | string) {
     const page = new SummaryDetailPage({ taskId } as any);
     (page as any).context = { t: (k: string) => k };
     (page as any).setState = function (this: any, patch: any) {
@@ -182,6 +182,29 @@ describe('SummaryDetailPage — Blocking 5: scheduleItem must track current deta
 // 且 loadDetail 入口同步清空 stale personalResult/members。
 describe('SummaryDetailPage — FE-1: 切任务竞态，旧 members/personalResult 迟到返回被忽略', () => {
     beforeEach(() => vi.clearAllMocks());
+
+    it('string task_no detail load starts BY_PERSON secondary fetches with numeric detail.task_id', async () => {
+        vi.mocked(api.getSummaryDetail).mockResolvedValue(
+            baseDetail({ task_id: 740, task_no: 'SUM-740', summary_mode: 2 }) as any,
+        );
+        vi.mocked(api.getPersonalResult).mockResolvedValue(
+            { content: '我的报告', worker_status: 2, submitted_at: null } as any,
+        );
+        vi.mocked(api.getMembers).mockResolvedValue([member('test-uid'), member('u_b')] as any);
+
+        const page = makePage('SUM-740');
+        const queuedSetStates: any[] = [];
+        (page as any).setState = function (this: any, patch: any, callback?: () => void) {
+            queuedSetStates.push({ patch, callback });
+        };
+
+        await page.loadDetail();
+
+        expect(api.getSummaryDetail).toHaveBeenCalledWith('SUM-740');
+        expect(api.getPersonalResult).toHaveBeenCalledWith(740);
+        expect(api.getMembers).toHaveBeenCalledWith(740);
+        expect(queuedSetStates.some(({ patch }) => patch?.detail?.task_id === 740)).toBe(true);
+    });
 
     // loadDetail 入口必须同步清空上一 task 的 personalResult/members，避免新 detail 返回前残留显示。
     it('loadDetail clears stale personalResult/members at entry (no leak before new detail resolves)', async () => {

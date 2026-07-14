@@ -55,7 +55,7 @@ export class SummaryModule implements IModule {
             "en-US": enUS,
         });
 
-        WKApp.openSummaryDetail = (taskId: number) => {
+        WKApp.openSummaryDetail = (taskId: number | string) => {
             WKApp.switchToMenuById?.("summary");
             WKApp.routeLeft.popToRoot();
             WKApp.routeRight.replaceToRoot(

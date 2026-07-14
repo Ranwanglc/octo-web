@@ -47,7 +47,7 @@ import MemberSelectorModal from "../components/MemberSelectorModal";
 import type { MemberCandidate } from "../types/summary";
 
 interface SummaryDetailPageProps {
-    taskId?: number;
+    taskId?: number | string;
 }
 
 interface SummaryDetailPageState {
@@ -192,7 +192,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
 
     componentDidUpdate(prevProps: any) {
         const prevTaskId = prevProps.taskId;
-        const currentTaskId = this.taskId;
+        const currentTaskId = this.detailLookupId;
         if (prevTaskId !== currentTaskId && currentTaskId != null) {
             this.listPageActive = false;
             this.clearAllTimers();
@@ -313,15 +313,20 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     }
 
     get taskId(): number | null {
+        return typeof this.props.taskId === "number" ? this.props.taskId : this.state.detail?.task_id ?? null;
+    }
+
+    private get detailLookupId(): number | string | null {
         return this.props.taskId ?? null;
     }
 
     async loadDetail() {
-        if (this.taskId == null) return;
+        const lookupId = this.detailLookupId;
+        if (lookupId == null) return;
         // Blocking 5：每轮 detail 加载开始就 bump 序列号。这样旧 task 未完成的
         // loadSchedule（包括本函数下面发起的）都会被后续轮作废，不会回填到新 task。
         const seq = this.nextScheduleSeq();
-        const requestTaskId = this.taskId;
+        const requestTaskId = lookupId;
         // F1：切 task / 重拉 detail 时复位全部编辑态，避免旧 task 编辑态（尤其
         // editingTeamSummary）被带入新 task——否则切到非 creator 新 task 会绕过权限进编辑器。
         // FE-1（切任务竞态）：开始新 task 加载时同步清空上一 task 的 personalResult/members，
@@ -352,9 +357,9 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             workflowRevealDone: false,
         });
         try {
-            const detail = await api.getSummaryDetail(this.taskId);
+            const detail = await api.getSummaryDetail(lookupId);
             // detail 本身也可能是旧请求：期间切了 task / 又发了一轮 loadDetail 就丢弃。
-            if (this.scheduleLoadSeq !== seq || this.taskId !== requestTaskId) return;
+            if (this.scheduleLoadSeq !== seq || this.detailLookupId !== requestTaskId) return;
             this.setState({
                 detail,
                 loading: false,
@@ -385,13 +390,13 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             // Load BY_PERSON data
             if (detail.summary_mode === SummaryMode.BY_PERSON) {
                 // FE-1：把本轮 seq 传给二次异步加载，迟到响应按 seq/taskId 校验后才 setState。
-                this.loadPersonalResult(seq);
-                this.loadMembers(seq);
+                this.loadPersonalResult(seq, detail.task_id);
+                this.loadMembers(seq, detail.task_id);
             }
         } catch (err: any) {
             // FE-1（切 task 竞态）：迟到的失败响应也要校验归属，否则旧 task 的加载失败
             // 会把错误/loading 状态写到已切换的新 task 上。
-            if (this.scheduleLoadSeq !== seq || this.taskId !== requestTaskId) return;
+            if (this.scheduleLoadSeq !== seq || this.detailLookupId !== requestTaskId) return;
             this.setState({ error: err.message || t("summary.common.loadingFailed"), loading: false });
         }
     }
@@ -427,13 +432,13 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
      * 仍一致才能 setState。过期响应（期间切了 task / 又发了一轮加载）一律
      * 忽略（return），绝不把旧任务的 personalResult 写到新任务界面（泄漏他人报告）。
      */
-    async loadPersonalResult(seq?: number) {
-        if (this.taskId == null) return;
+    async loadPersonalResult(seq?: number, taskIdOverride?: number) {
+        const requestTaskId = taskIdOverride ?? this.taskId;
+        if (requestTaskId == null) return;
         const reqSeq = seq ?? this.nextScheduleSeq();
-        const requestTaskId = this.taskId;
         this.setState({ personalLoading: true });
         try {
-            const result = await api.getPersonalResult(this.taskId);
+            const result = await api.getPersonalResult(requestTaskId);
             // 迟到响应（期间切 task / 重新加载）：丢弃，不污染新 task。
             if (this.scheduleLoadSeq !== reqSeq || this.taskId !== requestTaskId) return;
             const shouldGateWorkflow = this.shouldGateWorkflowForPersonalResult(result);
@@ -464,13 +469,13 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
      * 把旧 task 的成员名单 setState 到新 task（否则泄漏他人报告 / 污染 team
      * citations、schedule participant 写入）。seq/taskId 不一致一律忽略。
      */
-    async loadMembers(seq?: number) {
-        if (this.taskId == null) return;
+    async loadMembers(seq?: number, taskIdOverride?: number) {
+        const requestTaskId = taskIdOverride ?? this.taskId;
+        if (requestTaskId == null) return;
         const reqSeq = seq ?? this.nextScheduleSeq();
-        const requestTaskId = this.taskId;
         this.setState({ membersLoading: true });
         try {
-            const members = await api.getMembers(this.taskId);
+            const members = await api.getMembers(requestTaskId);
             if (this.scheduleLoadSeq !== reqSeq || this.taskId !== requestTaskId) return;
             this.setState({ members, membersLoading: false });
         } catch {

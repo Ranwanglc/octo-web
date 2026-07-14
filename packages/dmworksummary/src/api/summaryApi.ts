@@ -133,7 +133,7 @@ export async function listSummaries(
     return get('/summaries', params as Record<string, unknown>, config);
 }
 
-export async function getSummaryDetail(taskId: number): Promise<SummaryDetail> {
+export async function getSummaryDetail(taskId: number | string): Promise<SummaryDetail> {
     return get(`/summaries/${taskId}`);
 }
 
