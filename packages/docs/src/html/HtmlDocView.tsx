@@ -19,6 +19,7 @@ import { useEffect, useRef, useState } from 'react'
 import DOMPurify from 'dompurify'
 import { t, getWKApp } from '../octoweb/index.ts'
 import { HtmlDocCommentPanel } from './HtmlDocCommentPanel.tsx'
+import { HtmlMemberPanel } from './HtmlMemberPanel.tsx'
 import { buildAnchorFromSelection } from './htmlDocAnchor.ts'
 import type { Anchor } from './htmlDocComments.ts'
 import './HtmlDocView.css'
@@ -287,9 +288,13 @@ export function HtmlDocView({ docId, space, role, slug, version = 'latest' }: Ht
         </div>
       )}
       {membersOpen && (
-        <div className="octo-html-doc-state" role="status">
-          {t('docs.header.membersComingSoon')}
-        </div>
+        <HtmlMemberPanel
+          slug={effectiveSlug}
+          space={space}
+          creatorUid={meta?.creator_uid || meta?.identity?.login}
+          currentUid={meta?.identity?.login}
+          onClose={() => setMembersOpen(false)}
+        />
       )}
       {state.status === 'loading' && (
         <div className="octo-html-doc-state" role="status">

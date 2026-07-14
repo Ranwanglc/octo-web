@@ -302,6 +302,7 @@
     "ownerBadge": "所有者",
     "ownerCannotRemove": "无法移除所有者",
     "errorAdd": "添加成员失败。",
+    "errorLoad": "加载成员失败。",
     "errorRemove": "移除成员失败。",
     "errorRole": "修改角色失败。",
     "errorUserNotFound": "该用户不是 octo 用户，无法添加。",

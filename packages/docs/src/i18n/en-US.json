@@ -302,6 +302,7 @@
     "ownerBadge": "Owner",
     "ownerCannotRemove": "The owner cannot be removed",
     "errorAdd": "Failed to add member.",
+    "errorLoad": "Failed to load members.",
     "errorRemove": "Failed to remove member.",
     "errorRole": "Failed to change role.",
     "errorUserNotFound": "That user is not an octo user and cannot be added.",
