@@ -1,6 +1,5 @@
-/* Read-only HTML document view (ring 2a). Uses the shared docs theme tokens (octo-theme /
-   octo-doc) so the inlined octo-doc HTML sits inside the docs content area with the same
-   surface, spacing and typography as a native document — no hardcoded colors. */
+/* Read-only HTML document view (ring 2a). The shell uses shared docs tokens; the iframe keeps
+   the agent-authored document's own CSS isolated. */
 
 .octo-html-doc {
   display: flex;
@@ -41,26 +40,15 @@
   color: var(--octo-doc-danger, var(--semi-color-danger, #d0362a));
 }
 
-/* The inlined, agent-authored HTML. Constrain the reading measure like the editor body
-   and let the published document's own structure flow within it. Read-only: no cursor
-   affordances, no selection chrome beyond the browser default. */
-.octo-html-doc-content {
+/* The sandboxed, agent-authored HTML frame. */
+.octo-html-doc-frame {
   flex: 1 1 auto;
-  min-height: 0;
-  min-width: 0;
-  max-width: var(--octo-doc-measure, 820px);
   width: 100%;
-  margin: 0 auto;
-  padding: 24px;
-  box-sizing: border-box;
-  overflow: auto;
-  line-height: 1.6;
-  word-break: break-word;
-}
-
-.octo-html-doc-content img {
-  max-width: 100%;
-  height: auto;
+  height: 100%;
+  border: 0;
+  min-height: 0;
+  display: block;
+  background: var(--octo-doc-bg, var(--semi-color-bg-0, #fff));
 }
 
 /* ---- ring 2b: comment rail overlay (beside the read-only content, never inside it) ---- */
@@ -151,12 +139,10 @@
 @media (max-width: 900px) {
   .octo-html-doc-main {
     flex-direction: column;
-    overflow: auto;
   }
 
-  .octo-html-doc-content {
-    flex: 0 0 auto;
-    overflow: visible;
+  .octo-html-doc-frame {
+    flex: 1 1 auto;
   }
 
   .octo-html-doc-comments {

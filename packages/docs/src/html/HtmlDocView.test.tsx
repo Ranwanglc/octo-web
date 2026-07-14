@@ -5,6 +5,7 @@ import {
   resolveOctoDocBase,
   buildOctoDocUrl,
   sanitizeDocHtml,
+  absolutizeDocAssetUrls,
 } from './HtmlDocView.tsx'
 
 // HtmlDocView fetches the published octo-doc HTML from a SEPARATE backend, so we stub the
@@ -33,13 +34,30 @@ function jsonResponse(body: unknown, ok = true, status = 200): Response {
   } as unknown as Response
 }
 
-function selectNodeText(node: Node) {
-  const range = document.createRange()
+function selectNodeTextInDocument(doc: Document, node: Node) {
+  const range = doc.createRange()
   range.selectNodeContents(node)
-  const sel = window.getSelection()
+  const sel = doc.getSelection?.() ?? doc.defaultView?.getSelection()
   sel?.removeAllRanges()
   sel?.addRange(range)
-  document.dispatchEvent(new Event('selectionchange'))
+  doc.dispatchEvent(new Event('selectionchange'))
+}
+
+function writeIframeBody(iframe: HTMLIFrameElement, body: string): Document {
+  const doc = iframe.contentDocument as Document
+  doc.open()
+  doc.write(`<!doctype html><html><body>${body}</body></html>`)
+  doc.close()
+  fireEvent.load(iframe)
+  return doc
+}
+
+async function waitForFrame(container: HTMLElement): Promise<HTMLIFrameElement> {
+  return waitFor(() => {
+    const frame = container.querySelector('iframe.octo-html-doc-frame') as HTMLIFrameElement | null
+    expect(frame).toBeTruthy()
+    return frame as HTMLIFrameElement
+  })
 }
 
 beforeEach(() => {
@@ -69,17 +87,66 @@ describe('resolveOctoDocBase / buildOctoDocUrl', () => {
   })
 })
 
-describe('HtmlDocView — read-only rendering', () => {
-  it('renders the published octo-doc HTML inline (fetched from the octo-doc backend)', async () => {
-    ;(window as unknown as { __OCTO_DOC_BASE__?: string }).__OCTO_DOC_BASE__ = 'https://od.test'
-    const spy = stubFetch(() =>
-      htmlResponse('<h1>Agent Report</h1><p>Generated content.</p>'),
+describe('absolutizeDocAssetUrls', () => {
+  it('absolutizes root octo-doc img asset URLs and preserves signed query params', () => {
+    const out = absolutizeDocAssetUrls(
+      '<!doctype html><html><body><img src="/d/slug/assets/a.png?sig=s1&exp=9"></body></html>',
+      'https://od.test/d/slug/v/latest',
     )
+    expect(out).toContain('src="https://od.test/d/slug/assets/a.png?sig=s1&amp;exp=9"')
+  })
 
-    render(<HtmlDocView docId="d_html_1" space="sp" />)
+  it('absolutizes relative asset URLs against the real document URL', () => {
+    const out = absolutizeDocAssetUrls(
+      '<html><head><link rel="stylesheet" href="assets/doc.css?sig=s"></head><body><img src="./assets/a.png"><img src="../assets/b.png?exp=9"></body></html>',
+      'https://od.test/d/slug/v/latest',
+    )
+    expect(out).toContain('href="https://od.test/d/slug/v/assets/doc.css?sig=s"')
+    expect(out).toContain('src="https://od.test/d/slug/v/assets/a.png"')
+    expect(out).toContain('src="https://od.test/d/slug/assets/b.png?exp=9"')
+  })
 
-    await waitFor(() => expect(screen.getByText('Agent Report')).toBeTruthy())
-    expect(screen.getByText('Generated content.')).toBeTruthy()
+  it('leaves already absolute asset URLs and ordinary relative links untouched', () => {
+    const out = absolutizeDocAssetUrls(
+      '<html><head><link href="https://cdn.test/d/slug/assets/doc.css"></head><body><img src="/other/image.png"><a href="chapter.html">next</a></body></html>',
+      'https://od.test/d/slug/v/latest',
+    )
+    expect(out).toContain('href="https://cdn.test/d/slug/assets/doc.css"')
+    expect(out).toContain('src="/other/image.png"')
+    expect(out).toContain('href="chapter.html"')
+  })
+
+  it('neutralizes editable controls without removing their display markup', () => {
+    const out = absolutizeDocAssetUrls(
+      '<html><body><p>plain text remains</p><form><input value="x"><button>go</button><textarea>t</textarea><select><option>o</option></select></form><div contenteditable="true">edit me</div></body></html>',
+      'https://od.test/d/slug/v/latest',
+    )
+    expect(out).toContain('plain text remains')
+    expect(out).toContain('<input value="x" disabled="">')
+    expect(out).toContain('<button disabled="">go</button>')
+    expect(out).toContain('<textarea disabled="">t</textarea>')
+    expect(out).toContain('<select disabled="">')
+    expect(out).toContain('contenteditable="false"')
+    expect(out).not.toContain('contenteditable="true"')
+  })
+})
+
+describe('HtmlDocView — read-only rendering', () => {
+  it('renders the published octo-doc HTML in a sandboxed iframe (fetched from the octo-doc backend)', async () => {
+    ;(window as unknown as { __OCTO_DOC_BASE__?: string }).__OCTO_DOC_BASE__ = 'https://od.test'
+    const spy = stubFetch((url) => {
+      if (url.includes('/comments')) return jsonResponse({ roots: [] })
+      return htmlResponse('<h1>Agent Report</h1><p style="color:red">Generated content.</p>')
+    })
+
+    const { container } = render(<HtmlDocView docId="d_html_1" space="sp" />)
+
+    const frame = await waitForFrame(container)
+    expect(frame.getAttribute('sandbox')).toBe('allow-same-origin')
+    expect(frame.getAttribute('sandbox')).not.toContain('allow-scripts')
+    expect(frame.getAttribute('srcdoc')).toContain('Agent Report')
+    expect(frame.getAttribute('srcdoc')).toContain('style="color:red"')
+    expect(container.querySelector('.octo-html-doc-content')).toBeNull()
     // Addressed the octo-doc read-only surface, not the /api/v1 docs backend.
     expect(String(spy.mock.calls[0][0])).toBe('https://od.test/d/d_html_1/v/latest')
     // Cross-origin session cookie must ride along.
@@ -87,9 +154,12 @@ describe('HtmlDocView — read-only rendering', () => {
   })
 
   it('uses an explicit slug + version when provided', async () => {
-    const spy = stubFetch(() => htmlResponse('<p>ok</p>'))
-    render(<HtmlDocView docId="d1" space="sp" slug="published-slug" version="v7" />)
-    await waitFor(() => expect(screen.getByText('ok')).toBeTruthy())
+    const spy = stubFetch((url) => {
+      if (url.includes('/comments')) return jsonResponse({ roots: [] })
+      return htmlResponse('<p>ok</p>')
+    })
+    const { container } = render(<HtmlDocView docId="d1" space="sp" slug="published-slug" version="v7" />)
+    await waitForFrame(container)
     expect(String(spy.mock.calls[0][0])).toBe('/d/published-slug/v/v7')
   })
 
@@ -100,7 +170,7 @@ describe('HtmlDocView — read-only rendering', () => {
     // Loading placeholder present while pending.
     expect(screen.getByRole('status')).toBeTruthy()
     resolve(htmlResponse('<p>done</p>'))
-    await waitFor(() => expect(screen.getByText('done')).toBeTruthy())
+    await waitFor(() => expect(document.querySelector('iframe.octo-html-doc-frame')).toBeTruthy())
   })
 
   it('shows an error state when the fetch fails (non-ok)', async () => {
@@ -124,52 +194,81 @@ describe('HtmlDocView — read-only rendering', () => {
     await waitFor(() => expect(screen.getByText('docs.state.empty')).toBeTruthy())
   })
 
-  it('is READ-ONLY: renders NO editing controls (product hard constraint)', async () => {
-    stubFetch(() =>
-      htmlResponse('<h1>Title</h1><p>Body text the human can read but not edit.</p>'),
-    )
+  it('is READ-ONLY: renders no editing controls in the host document body', async () => {
+    stubFetch((url) => {
+      if (url.includes('/comments')) return jsonResponse({ roots: [] })
+      return htmlResponse('<h1>Title</h1><button>payload button</button><input value="payload">')
+    })
     const { container } = render(<HtmlDocView docId="d1" space="sp" />)
-    await waitFor(() => expect(screen.getByText('Title')).toBeTruthy())
+    await waitForFrame(container)
 
-    // No form/edit affordances of any kind INSIDE THE RENDERED DOC CONTENT. (The 2b comment
-    // rail is a separate overlay with its own controls; the read-only invariant is that the
-    // agent-authored document content carries no editing chrome.)
-    const content = container.querySelector('.octo-html-doc-content') as HTMLElement
-    expect(content.querySelector('button')).toBeNull()
-    expect(content.querySelector('input')).toBeNull()
-    expect(content.querySelector('textarea')).toBeNull()
-    // No toolbar / editable region.
-    expect(content.querySelector('[contenteditable="true"]')).toBeNull()
-    expect(content.querySelector('.ProseMirror')).toBeNull()
-    expect(content.querySelector('[role="toolbar"]')).toBeNull()
+    const main = screen.getByTestId('html-doc-main')
+    expect(main.querySelector('iframe.octo-html-doc-frame')).toBeTruthy()
+    expect(main.querySelector('.octo-html-doc-content')).toBeNull()
+    expect(container.querySelector('.ProseMirror')).toBeNull()
+    expect(container.querySelector('[role="toolbar"]')).toBeNull()
   })
 
-  it('SANITIZES the fetched HTML before inlining (strips a <script> from the payload)', async () => {
-    stubFetch(() =>
-      htmlResponse('<p>safe body</p><script>window.__pwned = 1</script>'),
-    )
+  it('keeps raw HTML in srcdoc while sandbox blocks scripts from running', async () => {
+    stubFetch((url) => {
+      if (url.includes('/comments')) return jsonResponse({ roots: [] })
+      return htmlResponse('<p>safe body</p><script>window.__pwned = 1</script>')
+    })
     const { container } = render(<HtmlDocView docId="d1" space="sp" />)
-    await waitFor(() => expect(screen.getByText('safe body')).toBeTruthy())
-    expect(container.querySelector('script')).toBeNull()
-    expect(container.innerHTML).not.toContain('__pwned')
+    const frame = await waitForFrame(container)
+    expect(frame.getAttribute('srcdoc')).toContain('<script>window.__pwned = 1</script>')
+    expect(frame.getAttribute('sandbox')).toBe('allow-same-origin')
+    expect(frame.getAttribute('sandbox')).not.toContain('allow-scripts')
   })
 
-  it('strips interactive/editable controls injected into the payload (read-only hard rule)', async () => {
-    stubFetch(() =>
-      htmlResponse(
+  it('neutralizes interactive payload markup inside srcdoc instead of inlining it into the host DOM', async () => {
+    stubFetch((url) => {
+      if (url.includes('/comments')) return jsonResponse({ roots: [] })
+      return htmlResponse(
         '<p>ok</p><form><input value="x"><button>go</button><textarea></textarea></form><div contenteditable="true">edit me</div>',
-      ),
-    )
+      )
+    })
     const { container } = render(<HtmlDocView docId="d1" space="sp" />)
-    await waitFor(() => expect(screen.getByText('ok')).toBeTruthy())
-    // Interactive controls injected into the PAYLOAD are stripped from the rendered content
-    // (the 2b comment overlay's own controls live outside .octo-html-doc-content).
-    const content = container.querySelector('.octo-html-doc-content') as HTMLElement
-    expect(content.querySelector('form')).toBeNull()
-    expect(content.querySelector('input')).toBeNull()
-    expect(content.querySelector('button')).toBeNull()
-    expect(content.querySelector('textarea')).toBeNull()
-    expect(content.querySelector('[contenteditable]')).toBeNull()
+    const frame = await waitForFrame(container)
+    expect(frame.getAttribute('srcdoc')).toContain('<form>')
+    expect(frame.getAttribute('srcdoc')).toContain('<input value="x" disabled="">')
+    expect(frame.getAttribute('srcdoc')).toContain('<button disabled="">go</button>')
+    expect(frame.getAttribute('srcdoc')).toContain('<textarea disabled="">')
+    expect(frame.getAttribute('srcdoc')).toContain('contenteditable="false"')
+    expect(frame.getAttribute('srcdoc')).not.toContain('contenteditable="true"')
+    expect(frame.getAttribute('srcdoc')).toContain('ok')
+    expect(frame.getAttribute('srcdoc')).toContain('edit me')
+    expect(screen.getByTestId('html-doc-main').querySelector('form')).toBeNull()
+  })
+
+  it('absolutizes asset URLs before assigning iframe srcdoc', async () => {
+    ;(window as unknown as { __OCTO_DOC_BASE__?: string }).__OCTO_DOC_BASE__ = 'https://od.test'
+    stubFetch((url) => {
+      if (url.includes('/comments')) return jsonResponse({ roots: [] })
+      return htmlResponse('<img src="/d/slug/assets/a.png?sig=s1&exp=9"><a href="note.html">note</a>')
+    })
+    const { container } = render(<HtmlDocView docId="d1" space="sp" slug="slug" />)
+    const frame = await waitForFrame(container)
+    expect(frame.getAttribute('srcdoc')).toContain('https://od.test/d/slug/assets/a.png?sig=s1&amp;exp=9')
+    expect(frame.getAttribute('srcdoc')).toContain('href="note.html"')
+  })
+
+  it('lets the iframe own document scrolling instead of assigning measured inline height', async () => {
+    stubFetch((url) => {
+      if (url.includes('/comments')) return jsonResponse({ roots: [] })
+      return htmlResponse('<main style="height:3000px">long body</main>')
+    })
+    const { container } = render(<HtmlDocView docId="d1" space="sp" />)
+    const frame = await waitForFrame(container)
+    fireEvent.load(frame)
+    expect(frame.style.height).toBe('')
+  })
+
+  it('SANITIZES when sanitizeDocHtml is used by legacy callers (strips a <script> from the payload)', () => {
+    const out = sanitizeDocHtml(
+      '<p>safe body</p><script>window.__pwned = 1</script>',
+    )
+    expect(String(out)).not.toContain('<script')
   })
 
   it('surfaces the attempted octo-doc URL in the error state (misconfig diagnostic)', async () => {
@@ -180,16 +279,16 @@ describe('HtmlDocView — read-only rendering', () => {
     expect(screen.getByText('https://od.test/d/dX/v/latest')).toBeTruthy()
   })
 
-  it('lays out the sanitized content and comment panel in the ready body rail', async () => {
+  it('lays out the iframe content and comment panel in the ready body rail', async () => {
     stubFetch((url) => {
       if (url.includes('/comments')) return jsonResponse({ roots: [] })
       return htmlResponse('<p>body</p>')
     })
     const { container } = render(<HtmlDocView docId="d1" space="sp" />)
-    await waitFor(() => expect(screen.getByText('body')).toBeTruthy())
+    await waitForFrame(container)
 
     const main = screen.getByTestId('html-doc-main')
-    expect(main.querySelector('.octo-html-doc-content')).toBeTruthy()
+    expect(main.querySelector('.octo-html-doc-frame')).toBeTruthy()
     expect(main.querySelector('[data-testid="html-doc-comment-panel"]')).toBeTruthy()
     expect(container.querySelector('.octo-html-doc-header')).toBeTruthy()
   })
@@ -199,16 +298,18 @@ describe('HtmlDocView — read-only rendering', () => {
       if (url.includes('/comments')) return jsonResponse({ roots: [] })
       return htmlResponse('<p data-odoc-aid="a1">selected words</p>')
     })
-    render(<HtmlDocView docId="d1" space="sp" />)
-    const anchored = await screen.findByText('selected words')
+    const { container } = render(<HtmlDocView docId="d1" space="sp" />)
+    const frame = await waitForFrame(container)
+    const frameDoc = writeIframeBody(frame, '<p data-odoc-aid="a1">selected words</p>')
+    const anchored = frameDoc.querySelector('p') as HTMLElement
 
-    selectNodeText(anchored.firstChild ?? anchored)
+    selectNodeTextInDocument(frameDoc, anchored.firstChild ?? anchored)
     await waitFor(() => expect(screen.getByTestId('pending-anchor').textContent).toContain('#a1'))
 
     const input = screen.getByPlaceholderText('docs.comment.placeholder')
     fireEvent.focus(input)
-    window.getSelection()?.removeAllRanges()
-    document.dispatchEvent(new Event('selectionchange'))
+    frameDoc.getSelection()?.removeAllRanges()
+    frameDoc.dispatchEvent(new Event('selectionchange'))
 
     expect(screen.getByTestId('pending-anchor').textContent).toContain('#a1')
   })
@@ -218,10 +319,12 @@ describe('HtmlDocView — read-only rendering', () => {
       if (url.includes('/comments')) return jsonResponse({ roots: [] })
       return htmlResponse('<p data-odoc-aid="a2">clearable words</p>')
     })
-    render(<HtmlDocView docId="d1" space="sp" />)
-    const anchored = await screen.findByText('clearable words')
+    const { container } = render(<HtmlDocView docId="d1" space="sp" />)
+    const frame = await waitForFrame(container)
+    const frameDoc = writeIframeBody(frame, '<p data-odoc-aid="a2">clearable words</p>')
+    const anchored = frameDoc.querySelector('p') as HTMLElement
 
-    selectNodeText(anchored.firstChild ?? anchored)
+    selectNodeTextInDocument(frameDoc, anchored.firstChild ?? anchored)
     await waitFor(() => expect(screen.getByTestId('pending-anchor').textContent).toContain('#a2'))
 
     fireEvent.click(screen.getByText('docs.comment.clearAnchor'))
@@ -236,16 +339,18 @@ describe('HtmlDocView — read-only rendering', () => {
       if (url.includes('/comments')) return jsonResponse({ roots: [] })
       return htmlResponse('<p data-odoc-aid="a3">post anchored words</p>')
     })
-    render(<HtmlDocView docId="d1" space="sp" slug="slug-1" version="v4" />)
-    const anchored = await screen.findByText('post anchored words')
+    const { container } = render(<HtmlDocView docId="d1" space="sp" slug="slug-1" version="v4" />)
+    const frame = await waitForFrame(container)
+    const frameDoc = writeIframeBody(frame, '<p data-odoc-aid="a3">post anchored words</p>')
+    const anchored = frameDoc.querySelector('p') as HTMLElement
 
-    selectNodeText(anchored.firstChild ?? anchored)
+    selectNodeTextInDocument(frameDoc, anchored.firstChild ?? anchored)
     await waitFor(() => expect(screen.getByTestId('pending-anchor').textContent).toContain('#a3'))
 
     const input = screen.getByPlaceholderText('docs.comment.placeholder')
     fireEvent.focus(input)
-    window.getSelection()?.removeAllRanges()
-    document.dispatchEvent(new Event('selectionchange'))
+    frameDoc.getSelection()?.removeAllRanges()
+    frameDoc.dispatchEvent(new Event('selectionchange'))
     fireEvent.change(input, { target: { value: 'anchored note' } })
     fireEvent.click(screen.getByText('docs.comment.send'))
 

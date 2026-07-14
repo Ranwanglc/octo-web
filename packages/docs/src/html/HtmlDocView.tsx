@@ -2,20 +2,20 @@
 //
 // Contract:
 //   - READ-ONLY: the HTML is agent-authored; a human may only read it (comments + "让 AI
-//     处理" arrive in ring 2b). This component renders NO editing chrome and, via
-//     sanitizeDocHtml below, strips any interactive/editable elements from the payload.
-//   - INLINE (not an iframe): the published HTML is fetched and inlined into the docs
-//     content region so it shares the docs width / scroll container / theme tokens.
+//     处理" arrive in ring 2b). This component renders NO editing chrome and loads the
+//     payload in a sandboxed iframe without script permission.
+//   - IFRAME: the published HTML is fetched as-is and rendered by the browser so agent CSS
+//     (<style>, inline style, external stylesheet links) stays intact.
 //   - SEPARATE BACKEND: octo-doc is a distinct deployment from the same-origin Yjs
 //     `/api/v1` docs backend, so we use a plain fetch (with credentials) against
 //     resolveOctoDocBase() rather than the octoweb apiClient.
 //
 // SECURITY: the published HTML is NOT sanitized end-to-end by the backend (ring 1 only
 // validates aid-replace fragments, not the whole Publish payload), so it may contain
-// <script>, on* handlers, javascript: URLs, or interactive/editable controls. Every
-// payload is therefore run through DOMPurify before it is inlined — see sanitizeDocHtml.
+// <script>, on* handlers, javascript: URLs, or interactive/editable controls. The render
+// path isolates it with iframe sandbox="allow-same-origin" and never grants allow-scripts.
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import DOMPurify from 'dompurify'
 import { t, getWKApp } from '../octoweb/index.ts'
 import { HtmlDocCommentPanel } from './HtmlDocCommentPanel.tsx'
@@ -46,13 +46,12 @@ const FORBID_TAGS = [
 const FORBID_ATTR = ['contenteditable', 'autofocus', 'onfocus', 'style']
 
 /**
- * Sanitize agent-authored HTML for read-only inlining.
+ * Legacy sanitizer retained for callers that still need a stripped inline fragment.
  *
  * Relies on DOMPurify's default safe baseline (drops <script>, on* handlers and
  * javascript:/data: script URLs) and additionally strips interactive/editable elements and
  * the contenteditable attribute so the rendered doc is strictly presentational. Ordinary
- * display markup (p/div/span/headings/table/img/a/lists/code/pre/blockquote, plus
- * class/href/src) is preserved by the default allow-list; inline style is forbidden (see
+ * display markup is preserved by the default allow-list; inline style is forbidden (see
  * FORBID_ATTR) to close the CSS-value injection surface DOMPurify does not deep-clean.
  */
 export function sanitizeDocHtml(raw: string): string {
@@ -60,6 +59,64 @@ export function sanitizeDocHtml(raw: string): string {
     FORBID_TAGS,
     FORBID_ATTR,
   })
+}
+
+function resolveAbsoluteOctoDocBase(): string {
+  const pageOrigin =
+    typeof window !== 'undefined' && window.location?.origin ? window.location.origin : 'http://localhost'
+  return new URL(resolveOctoDocBase() || '/', `${pageOrigin}/`).href.replace(/\/+$/, '')
+}
+
+function resolveAbsoluteUrl(value: string): string {
+  const pageOrigin =
+    typeof window !== 'undefined' && window.location?.origin ? window.location.origin : 'http://localhost'
+  return new URL(value || '/', `${pageOrigin}/`).href
+}
+
+function isAbsoluteOrSpecialUrl(value: string): boolean {
+  return /^[a-zA-Z][a-zA-Z\d+.-]*:/.test(value) || value.startsWith('//') || value.startsWith('#')
+}
+
+function resolveDocAssetUrl(value: string, docUrl: string): string | null {
+  if (!value || isAbsoluteOrSpecialUrl(value)) return null
+  try {
+    const url = new URL(value, docUrl)
+    return /\/assets\//.test(url.pathname) ? url.href : null
+  } catch {
+    return null
+  }
+}
+
+function absolutizeAssetAttr(el: Element, attr: 'src' | 'href', docUrl: string) {
+  const raw = el.getAttribute(attr)
+  if (!raw) return
+  const value = raw.trim()
+  const resolved = resolveDocAssetUrl(value, docUrl)
+  if (resolved) el.setAttribute(attr, resolved)
+}
+
+function neutralizeEditableControls(doc: Document) {
+  doc.querySelectorAll('[contenteditable]').forEach((el) => {
+    el.setAttribute('contenteditable', 'false')
+  })
+  doc.querySelectorAll('input, textarea, select, button').forEach((el) => {
+    el.setAttribute('disabled', '')
+  })
+}
+
+/**
+ * srcdoc resolves relative URLs against about:srcdoc. Only octo-doc asset URLs are rewritten
+ * against the real document URL, and editable controls are preserved visually but disabled.
+ */
+export function absolutizeDocAssetUrls(html: string, docUrl = resolveAbsoluteOctoDocBase()): string {
+  if (typeof DOMParser === 'undefined') return html
+  const absoluteDocUrl = resolveAbsoluteUrl(docUrl)
+  const doc = new DOMParser().parseFromString(html, 'text/html')
+  doc.querySelectorAll('img[src]').forEach((el) => absolutizeAssetAttr(el, 'src', absoluteDocUrl))
+  doc.querySelectorAll('link[href]').forEach((el) => absolutizeAssetAttr(el, 'href', absoluteDocUrl))
+  neutralizeEditableControls(doc)
+  const doctype = doc.doctype ? `<!doctype ${doc.doctype.name}>` : ''
+  return `${doctype}${doc.documentElement.outerHTML}`
 }
 
 
@@ -150,7 +207,8 @@ export function HtmlDocView({ docId, space, role, slug, version = 'latest' }: Ht
   // 划词评论: the anchor lifted from the last non-collapsed selection inside the read-only
   // content. Overlay state only — the content itself is never mutated / made editable.
   const [pendingAnchor, setPendingAnchor] = useState<Anchor | null>(null)
-  const contentRef = useRef<HTMLDivElement>(null)
+  const frameRef = useRef<HTMLIFrameElement>(null)
+  const selectionDocRef = useRef<Document | null>(null)
   // Header UI state. Members/forward/more backends are not wired yet; these drive a
   // transient "coming soon" hint so the buttons render and are clearly present.
   const [membersOpen, setMembersOpen] = useState(false)
@@ -192,7 +250,7 @@ export function HtmlDocView({ docId, space, role, slug, version = 'latest' }: Ht
         if (seq !== reqSeq.current) return
         setState(
           html.trim()
-            ? { status: 'ready', html: sanitizeDocHtml(html), meta: parseOdocMeta(html) }
+            ? { status: 'ready', html: absolutizeDocAssetUrls(html, url), meta: parseOdocMeta(html) }
             : { status: 'empty' },
         )
       })
@@ -207,28 +265,45 @@ export function HtmlDocView({ docId, space, role, slug, version = 'latest' }: Ht
       })
   }, [effectiveSlug, version])
 
-  // 划词评论 watcher: after each selection change, if the human selected text INSIDE the
-  // read-only content region, derive an octo-doc anchor (element aid preferred, else text) and
-  // surface a "评论" affordance via the comment panel's pre-targeted composer. Read-only is
-  // preserved: we only READ the Selection, never mutate the DOM or set contenteditable.
-  useEffect(() => {
-    if (state.status !== 'ready') return
-    function onSelectionChange() {
-      const sel = typeof window !== 'undefined' ? window.getSelection() : null
-      const container = contentRef.current
-      if (!sel || sel.rangeCount === 0 || sel.isCollapsed || !container) {
-        return
-      }
-      // Only react to selections that live inside the read-only content region.
-      if (!container.contains(sel.getRangeAt(0).commonAncestorContainer)) {
-        return
-      }
-      const anchor = buildAnchorFromSelection(sel)
-      if (anchor) setPendingAnchor(anchor)
+  const onFrameSelectionChange = useCallback(() => {
+    const doc = frameRef.current?.contentDocument
+    const body = doc?.body
+    const sel = doc?.getSelection?.() ?? doc?.defaultView?.getSelection?.() ?? null
+    if (!sel || sel.rangeCount === 0 || sel.isCollapsed || !body) return
+    if (!body.contains(sel.getRangeAt(0).commonAncestorContainer)) return
+    const anchor = buildAnchorFromSelection(sel)
+    if (anchor) setPendingAnchor(anchor)
+  }, [])
+
+  const cleanupFrameSelectionWatcher = useCallback(() => {
+    selectionDocRef.current?.removeEventListener('selectionchange', onFrameSelectionChange)
+    selectionDocRef.current = null
+  }, [onFrameSelectionChange])
+
+  const handleFrameLoad = useCallback(() => {
+    cleanupFrameSelectionWatcher()
+    const frame = frameRef.current
+    try {
+      const doc = frame?.contentDocument
+      if (!doc) throw new Error('missing iframe document')
+      doc.addEventListener('selectionchange', onFrameSelectionChange)
+      selectionDocRef.current = doc
+    } catch (err) {
+      console.warn('[HtmlDocView] unable to initialize iframe document hooks', err)
     }
-    document.addEventListener('selectionchange', onSelectionChange)
-    return () => document.removeEventListener('selectionchange', onSelectionChange)
-  }, [state.status])
+  }, [cleanupFrameSelectionWatcher, onFrameSelectionChange])
+
+  useEffect(() => {
+    if (state.status !== 'ready') {
+      cleanupFrameSelectionWatcher()
+    }
+  }, [cleanupFrameSelectionWatcher, state.status])
+
+  useEffect(() => {
+    return () => {
+      cleanupFrameSelectionWatcher()
+    }
+  }, [cleanupFrameSelectionWatcher])
 
   // Auto-dismiss the transient header "coming soon" hint.
   useEffect(() => {
@@ -316,20 +391,20 @@ export function HtmlDocView({ docId, space, role, slug, version = 'latest' }: Ht
       )}
       {state.status === 'ready' && (
         <div className="octo-html-doc-main" data-testid="html-doc-main">
-          {/* Read-only presentation ONLY. The payload is sanitized (sanitizeDocHtml) before it
-              is inlined — the backend does not guarantee the whole Publish HTML is safe, and the
-              sanitizer also strips interactive/editable elements to keep the view read-only. */}
-          <div
-            ref={contentRef}
-            className="octo-html-doc-content"
-            // eslint-disable-next-line react/no-danger
-            dangerouslySetInnerHTML={{ __html: state.html }}
+          {/* allow-same-origin lets comments read selections; scripts stay disabled. */}
+          <iframe
+            ref={frameRef}
+            className="octo-html-doc-frame"
+            sandbox="allow-same-origin"
+            title={headerTitle}
+            srcDoc={state.html}
+            onLoad={handleFrameLoad}
           />
 
           {/*
             2b EXTENSION POINT: the read-only side comment panel + "让 AI 处理" entry mount here.
-            The panel is an overlay rail beside the sanitized content — it is NEVER injected into the
-            sanitized HTML, so the view stays strictly read-only. It only renders once the doc is
+            The panel is an overlay rail beside the iframe content — it is NEVER injected into the
+            agent HTML, so the view stays strictly read-only. It only renders once the doc is
             readable (a comment scope needs a real slug/version).
           */}
           <HtmlDocCommentPanel
