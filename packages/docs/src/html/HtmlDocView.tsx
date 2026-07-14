@@ -165,6 +165,7 @@ export function HtmlDocView({ docId, space, role, slug, version = 'latest' }: Ht
   useEffect(() => {
     const seq = ++reqSeq.current
     setState({ status: 'loading' })
+    setPendingAnchor(null)
     const url = buildOctoDocUrl(effectiveSlug, version)
     // Raw fetch (see file header): octo-doc is a separate backend; carry cookies AND the octo
     // session token so octo-doc can verify identity (author=creator) — cookies alone don't
@@ -216,15 +217,14 @@ export function HtmlDocView({ docId, space, role, slug, version = 'latest' }: Ht
       const sel = typeof window !== 'undefined' ? window.getSelection() : null
       const container = contentRef.current
       if (!sel || sel.rangeCount === 0 || sel.isCollapsed || !container) {
-        setPendingAnchor(null)
         return
       }
       // Only react to selections that live inside the read-only content region.
       if (!container.contains(sel.getRangeAt(0).commonAncestorContainer)) {
-        setPendingAnchor(null)
         return
       }
-      setPendingAnchor(buildAnchorFromSelection(sel))
+      const anchor = buildAnchorFromSelection(sel)
+      if (anchor) setPendingAnchor(anchor)
     }
     document.addEventListener('selectionchange', onSelectionChange)
     return () => document.removeEventListener('selectionchange', onSelectionChange)
@@ -315,33 +315,34 @@ export function HtmlDocView({ docId, space, role, slug, version = 'latest' }: Ht
         <div className="octo-html-doc-state">{t('docs.state.empty')}</div>
       )}
       {state.status === 'ready' && (
-        // Read-only presentation ONLY. The payload is sanitized (sanitizeDocHtml) before it
-        // is inlined — the backend does not guarantee the whole Publish HTML is safe, and the
-        // sanitizer also strips interactive/editable elements to keep the view read-only.
-        <div
-          ref={contentRef}
-          className="octo-html-doc-content"
-          // eslint-disable-next-line react/no-danger
-          dangerouslySetInnerHTML={{ __html: state.html }}
-        />
-      )}
+        <div className="octo-html-doc-main" data-testid="html-doc-main">
+          {/* Read-only presentation ONLY. The payload is sanitized (sanitizeDocHtml) before it
+              is inlined — the backend does not guarantee the whole Publish HTML is safe, and the
+              sanitizer also strips interactive/editable elements to keep the view read-only. */}
+          <div
+            ref={contentRef}
+            className="octo-html-doc-content"
+            // eslint-disable-next-line react/no-danger
+            dangerouslySetInnerHTML={{ __html: state.html }}
+          />
 
-      {/*
-        2b EXTENSION POINT: the read-only side comment panel + "让 AI 处理" entry mount here.
-        The panel is an overlay rail beside the sanitized content — it is NEVER injected into the
-        sanitized HTML, so the view stays strictly read-only. It only renders once the doc is
-        readable (a comment scope needs a real slug/version).
-      */}
-      {state.status === 'ready' && (
-        <HtmlDocCommentPanel
-          docId={docId}
-          space={space}
-          role={role}
-          slug={effectiveSlug}
-          version={version}
-          pendingAnchor={pendingAnchor}
-          onPosted={() => setPendingAnchor(null)}
-        />
+          {/*
+            2b EXTENSION POINT: the read-only side comment panel + "让 AI 处理" entry mount here.
+            The panel is an overlay rail beside the sanitized content — it is NEVER injected into the
+            sanitized HTML, so the view stays strictly read-only. It only renders once the doc is
+            readable (a comment scope needs a real slug/version).
+          */}
+          <HtmlDocCommentPanel
+            docId={docId}
+            space={space}
+            role={role}
+            slug={effectiveSlug}
+            version={version}
+            pendingAnchor={pendingAnchor}
+            onClearPendingAnchor={() => setPendingAnchor(null)}
+            onPosted={() => setPendingAnchor(null)}
+          />
+        </div>
       )}
     </div>
   )

@@ -254,7 +254,15 @@
     "orphaned": "（已失效）",
     "deleteConfirm": "删除这条评论？",
     "errorAnchor": "无法在此处锚定评论。",
-    "errorAdd": "添加评论失败。"
+    "errorAdd": "添加评论失败。",
+    "anchorDoc": "文档级评论",
+    "targetDoc": "文档级评论",
+    "targetAnchor": "将评论定位到",
+    "clearAnchor": "取消定位",
+    "placeholder": "写下评论…",
+    "send": "发送",
+    "handleWithAI": "让 AI 处理",
+    "agentInstructionTitle": "让 AI 处理评论：{{request}} (doc {{slug}} · {{target}})"
   },
   "time": {
     "justNow": "刚刚",

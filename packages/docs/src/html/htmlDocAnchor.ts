@@ -5,6 +5,7 @@
 
 import type { Anchor } from './htmlDocComments.ts'
 import type { OctoDocComment } from './htmlDocComments.ts'
+import { t } from '../octoweb/index.ts'
 
 /** How much surrounding text to snapshot for a text anchor (drift re-location aid). */
 const CONTEXT_CHARS = 40
@@ -117,7 +118,13 @@ export function buildAgentInstruction(
         ? `“${anchor.text}”`
         : 'whole-doc'
 
-  const title = `让 AI 处理评论：${comment.text} (doc ${slug} · ${target})`
+  const title = t('docs.comment.agentInstructionTitle', {
+    values: { request: comment.text, slug, target },
+  })
+  const fallbackTitle =
+    title === 'docs.comment.agentInstructionTitle'
+      ? `docs.comment.agentInstructionTitle: ${comment.text} (doc ${slug} · ${target})`
+      : title
 
   const params = new URLSearchParams({
     docId: doc.docId,
@@ -130,5 +137,5 @@ export function buildAgentInstruction(
   if (anchor?.kind === 'element') params.set('aid', anchor.aid)
   if (anchor?.kind === 'text') params.set('anchorText', anchor.text)
 
-  return { title, link: `octo-doc://agent-handle?${params.toString()}` }
+  return { title: fallbackTitle, link: `octo-doc://agent-handle?${params.toString()}` }
 }

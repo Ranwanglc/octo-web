@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { render, screen, waitFor, cleanup } from '@testing-library/react'
+import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/react'
 import {
   HtmlDocView,
   resolveOctoDocBase,
@@ -9,9 +9,9 @@ import {
 
 // HtmlDocView fetches the published octo-doc HTML from a SEPARATE backend, so we stub the
 // global fetch (not the octoweb apiClient) — mirroring the component's raw-fetch design.
-function stubFetch(impl: (url: string) => Promise<Response> | Response) {
-  const spy = vi.fn((input: RequestInfo | URL) =>
-    Promise.resolve(impl(String(input))),
+function stubFetch(impl: (url: string, init?: RequestInit) => Promise<Response> | Response) {
+  const spy = vi.fn((input: RequestInfo | URL, init?: RequestInit) =>
+    Promise.resolve(impl(String(input), init)),
   ) as unknown as typeof fetch
   vi.stubGlobal('fetch', spy)
   return spy as unknown as ReturnType<typeof vi.fn>
@@ -23,6 +23,23 @@ function htmlResponse(body: string, ok = true, status = 200): Response {
     status,
     text: async () => body,
   } as unknown as Response
+}
+
+function jsonResponse(body: unknown, ok = true, status = 200): Response {
+  return {
+    ok,
+    status,
+    json: async () => body,
+  } as unknown as Response
+}
+
+function selectNodeText(node: Node) {
+  const range = document.createRange()
+  range.selectNodeContents(node)
+  const sel = window.getSelection()
+  sel?.removeAllRanges()
+  sel?.addRange(range)
+  document.dispatchEvent(new Event('selectionchange'))
 }
 
 beforeEach(() => {
@@ -161,6 +178,84 @@ describe('HtmlDocView — read-only rendering', () => {
     render(<HtmlDocView docId="dX" space="sp" />)
     await waitFor(() => expect(screen.getByRole('alert')).toBeTruthy())
     expect(screen.getByText('https://od.test/d/dX/v/latest')).toBeTruthy()
+  })
+
+  it('lays out the sanitized content and comment panel in the ready body rail', async () => {
+    stubFetch((url) => {
+      if (url.includes('/comments')) return jsonResponse({ roots: [] })
+      return htmlResponse('<p>body</p>')
+    })
+    const { container } = render(<HtmlDocView docId="d1" space="sp" />)
+    await waitFor(() => expect(screen.getByText('body')).toBeTruthy())
+
+    const main = screen.getByTestId('html-doc-main')
+    expect(main.querySelector('.octo-html-doc-content')).toBeTruthy()
+    expect(main.querySelector('[data-testid="html-doc-comment-panel"]')).toBeTruthy()
+    expect(container.querySelector('.octo-html-doc-header')).toBeTruthy()
+  })
+
+  it('keeps a selected anchor locked when selection collapses after focusing the comment input', async () => {
+    stubFetch((url) => {
+      if (url.includes('/comments')) return jsonResponse({ roots: [] })
+      return htmlResponse('<p data-odoc-aid="a1">selected words</p>')
+    })
+    render(<HtmlDocView docId="d1" space="sp" />)
+    const anchored = await screen.findByText('selected words')
+
+    selectNodeText(anchored.firstChild ?? anchored)
+    await waitFor(() => expect(screen.getByTestId('pending-anchor').textContent).toContain('#a1'))
+
+    const input = screen.getByPlaceholderText('docs.comment.placeholder')
+    fireEvent.focus(input)
+    window.getSelection()?.removeAllRanges()
+    document.dispatchEvent(new Event('selectionchange'))
+
+    expect(screen.getByTestId('pending-anchor').textContent).toContain('#a1')
+  })
+
+  it('clears the locked anchor only through the explicit target cancel action', async () => {
+    stubFetch((url) => {
+      if (url.includes('/comments')) return jsonResponse({ roots: [] })
+      return htmlResponse('<p data-odoc-aid="a2">clearable words</p>')
+    })
+    render(<HtmlDocView docId="d1" space="sp" />)
+    const anchored = await screen.findByText('clearable words')
+
+    selectNodeText(anchored.firstChild ?? anchored)
+    await waitFor(() => expect(screen.getByTestId('pending-anchor').textContent).toContain('#a2'))
+
+    fireEvent.click(screen.getByText('docs.comment.clearAnchor'))
+
+    expect(screen.getByTestId('pending-anchor').textContent).toContain('docs.comment.targetDoc')
+    expect(screen.getByTestId('pending-anchor').textContent).not.toContain('#a2')
+  })
+
+  it('submits a comment with the locked anchor after the selection collapses', async () => {
+    const spy = stubFetch((url, init) => {
+      if ((init?.method ?? 'GET') === 'POST') return jsonResponse({ id: 'new1' })
+      if (url.includes('/comments')) return jsonResponse({ roots: [] })
+      return htmlResponse('<p data-odoc-aid="a3">post anchored words</p>')
+    })
+    render(<HtmlDocView docId="d1" space="sp" slug="slug-1" version="v4" />)
+    const anchored = await screen.findByText('post anchored words')
+
+    selectNodeText(anchored.firstChild ?? anchored)
+    await waitFor(() => expect(screen.getByTestId('pending-anchor').textContent).toContain('#a3'))
+
+    const input = screen.getByPlaceholderText('docs.comment.placeholder')
+    fireEvent.focus(input)
+    window.getSelection()?.removeAllRanges()
+    document.dispatchEvent(new Event('selectionchange'))
+    fireEvent.change(input, { target: { value: 'anchored note' } })
+    fireEvent.click(screen.getByText('docs.comment.send'))
+
+    await waitFor(() => {
+      const post = spy.mock.calls.find((c) => (c[1] as RequestInit)?.method === 'POST')
+      expect(post).toBeTruthy()
+    })
+    const post = spy.mock.calls.find((c) => (c[1] as RequestInit)?.method === 'POST') as unknown as [string, RequestInit]
+    const body = JSON.parse(String(post[1].body))
+    expect(body.anchor).toMatchObject({ kind: 'element', aid: 'a3' })
   })
 })
 

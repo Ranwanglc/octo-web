@@ -84,6 +84,38 @@ describe('HtmlDocCommentPanel — list + compose (octo-doc data layer)', () => {
       anchor: { kind: 'text', text: 'selected words' },
     })
   })
+
+  it('shows the composer target and emits an explicit clear-anchor action', async () => {
+    const onClearPendingAnchor = vi.fn()
+    stubFetch(() => jsonResponse({ roots: [] }))
+    render(
+      <HtmlDocCommentPanel
+        docId="d1"
+        space="sp"
+        slug="s"
+        version="v1"
+        pendingAnchor={{ kind: 'text', text: 'selected words' }}
+        onClearPendingAnchor={onClearPendingAnchor}
+      />,
+    )
+
+    await waitFor(() => expect(screen.getByTestId('pending-anchor')).toBeTruthy())
+    expect(screen.getByTestId('pending-anchor').textContent).toContain('docs.comment.targetAnchor')
+    expect(screen.getByTestId('pending-anchor').textContent).toContain('selected words')
+
+    fireEvent.click(screen.getByText('docs.comment.clearAnchor'))
+
+    expect(onClearPendingAnchor).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows doc-level target state when there is no pending anchor', async () => {
+    stubFetch(() => jsonResponse({ roots: [] }))
+    render(<HtmlDocCommentPanel docId="d1" space="sp" slug="s" version="v1" />)
+
+    await waitFor(() => expect(screen.getByTestId('pending-anchor')).toBeTruthy())
+
+    expect(screen.getByTestId('pending-anchor').textContent).toContain('docs.comment.targetDoc')
+  })
 })
 
 describe('HtmlDocCommentPanel — "让 AI 处理" (trigger mode C, explicit)', () => {

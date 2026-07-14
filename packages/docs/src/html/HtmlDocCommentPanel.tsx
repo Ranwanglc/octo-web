@@ -30,6 +30,8 @@ export interface HtmlDocCommentPanelProps {
    * composer pre-targets it (划词评论); cleared once the comment posts. null = doc-level note.
    */
   pendingAnchor?: Anchor | null
+  /** Explicitly switches the composer back to a doc-level comment. */
+  onClearPendingAnchor?: () => void
   /** Called after a successful post so the view can clear the floating "评论" affordance. */
   onPosted?: () => void
 }
@@ -47,6 +49,7 @@ export function HtmlDocCommentPanel({
   slug,
   version,
   pendingAnchor,
+  onClearPendingAnchor,
   onPosted,
 }: HtmlDocCommentPanelProps) {
   const [threads, setThreads] = useState<OctoDocCommentThread[]>([])
@@ -137,11 +140,24 @@ export function HtmlDocCommentPanel({
       </ul>
 
       <div className="octo-html-doc-comments-compose">
-        {pendingAnchor && (
-          <div className="octo-html-doc-comments-target" data-testid="pending-anchor">
-            {anchorLabel(pendingAnchor)}
-          </div>
-        )}
+        <div className="octo-html-doc-comments-target" data-testid="pending-anchor">
+          {pendingAnchor ? (
+            <>
+              <span>
+                {t('docs.comment.targetAnchor')}: {anchorLabel(pendingAnchor)}
+              </span>
+              <button
+                type="button"
+                className="octo-tb-btn octo-html-doc-comments-clear"
+                onClick={onClearPendingAnchor}
+              >
+                {t('docs.comment.clearAnchor')}
+              </button>
+            </>
+          ) : (
+            <span>{t('docs.comment.targetDoc')}</span>
+          )}
+        </div>
         <textarea
           className="octo-comment-input"
           value={draft}
