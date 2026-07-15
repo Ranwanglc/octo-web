@@ -472,15 +472,20 @@ export function HtmlDocView({ docId, space, role, slug, version = 'latest' }: Ht
               ⤴ {t('docs.forward.entry')}
             </button>
           )}
-          <button
-            type="button"
-            className={membersOpen ? 'octo-tb-btn is-active' : 'octo-tb-btn'}
-            aria-pressed={membersOpen}
-            title={t('docs.toolbar.members')}
-            onClick={() => setMembersOpen((v) => !v)}
-          >
-            {t('docs.toolbar.members')}
-          </button>
+          {/* Members button is author-only: a reader has no member-management capability, so
+              the entry is hidden entirely (parity with EditorShell's `{manage && …}` gate) rather
+              than rendered as a click-to-empty no-op. */}
+          {canManage && (
+            <button
+              type="button"
+              className={membersOpen ? 'octo-tb-btn is-active' : 'octo-tb-btn'}
+              aria-pressed={membersOpen}
+              title={t('docs.toolbar.members')}
+              onClick={() => setMembersOpen((v) => !v)}
+            >
+              {t('docs.toolbar.members')}
+            </button>
+          )}
           <DocMoreMenu
             creatorName={headerCreator}
             createdAt={meta?.created_at}
@@ -546,14 +551,27 @@ export function HtmlDocView({ docId, space, role, slug, version = 'latest' }: Ht
           onClose={() => setVersionsOpen(false)}
         />
       )}
-      {membersOpen && (
-        <HtmlMemberPanel
-          slug={effectiveSlug}
-          space={space}
-          creatorUid={creatorUid}
-          canManage={canManage}
-          onClose={() => setMembersOpen(false)}
-        />
+      {/* Members open in a centered modal dialog (overlay + click-outside to close), matching the
+          rich-doc member modal (EditorShell #A4) so HTML docs share the same floating-panel shape.
+          Only the panel CONTENT differs (HtmlMemberPanel → octo-doc grants), never the shell. */}
+      {membersOpen && canManage && (
+        <div className="octo-modal-overlay" role="presentation" onMouseDown={() => setMembersOpen(false)}>
+          <div
+            className="octo-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label={t('docs.member.manage')}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <HtmlMemberPanel
+              slug={effectiveSlug}
+              space={space}
+              creatorUid={creatorUid}
+              canManage={canManage}
+              onClose={() => setMembersOpen(false)}
+            />
+          </div>
+        </div>
       )}
       {state.status === 'loading' && (
         <div className="octo-html-doc-state" role="status">

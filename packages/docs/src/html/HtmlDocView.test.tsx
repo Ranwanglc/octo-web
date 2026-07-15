@@ -591,33 +591,39 @@ describe('HtmlDocView — header parity (presence / comments / members / more)',
     expect(screen.getByTestId('html-doc-comment-panel')).toBeTruthy()
   })
 
-  it('does NOT show the member management panel to a non-author viewer', async () => {
-    // Backend says not author (__ODOC_CAP__.isAuthor=false) → HtmlMemberPanel renders null,
-    // regardless of any __ODOC__.identity (which is the viewer itself, never proof of authorship).
+  it('hides the member button entirely for a non-author viewer', async () => {
+    // Members are author-only: __ODOC_CAP__.isAuthor=false → the button is not rendered at all
+    // (not merely a click-to-empty no-op). __ODOC__.identity is the viewer, never proof of authorship.
     serveDoc('<p>body</p>', { creator_uid: 'u_other' }, { isAuthor: false })
     const { container } = render(<HtmlDocView docId="d1" space="sp" />)
     await waitForFrame(container)
-    fireEvent.click(screen.getByTitle('docs.toolbar.members'))
+    expect(screen.queryByTitle('docs.toolbar.members')).toBeNull()
     expect(container.querySelector('.octo-member-panel')).toBeNull()
+    expect(container.querySelector('.octo-modal-overlay')).toBeNull()
   })
 
-  it('does NOT show member management when the author marker is absent (fail closed)', async () => {
+  it('hides the member button when the author marker is absent (fail closed)', async () => {
     // Legacy/streamed doc with no __ODOC_CAP__ → treated as non-author (the invited-viewer bug:
     // previously a missing creator_uid made every viewer an author).
     serveDoc('<p>body</p>', { creator_uid: 'u_other' })
     const { container } = render(<HtmlDocView docId="d1" space="sp" />)
     await waitForFrame(container)
-    fireEvent.click(screen.getByTitle('docs.toolbar.members'))
+    expect(screen.queryByTitle('docs.toolbar.members')).toBeNull()
     expect(container.querySelector('.octo-member-panel')).toBeNull()
   })
 
-  it('shows the member management panel when the viewer IS the author', async () => {
-    // Backend-authoritative author flag drives the gate, not any client-side uid comparison.
+  it('opens the member panel in a centered modal when the viewer IS the author', async () => {
+    // Backend-authoritative author flag drives the gate; the button opens the shared modal shell
+    // (.octo-modal-overlay > .octo-modal), matching the rich-doc member modal (EditorShell #A4).
     serveDoc('<p>body</p>', { creator_uid: 'u_owner' }, { isAuthor: true })
     const { container } = render(<HtmlDocView docId="d1" space="sp" />)
     await waitForFrame(container)
     fireEvent.click(screen.getByTitle('docs.toolbar.members'))
+    expect(container.querySelector('.octo-modal-overlay .octo-modal')).toBeTruthy()
     expect(container.querySelector('.octo-member-panel')).toBeTruthy()
+    // Clicking the overlay backdrop closes the modal (parity with EditorShell #A4).
+    fireEvent.mouseDown(container.querySelector('.octo-modal-overlay') as HTMLElement)
+    expect(container.querySelector('.octo-modal-overlay')).toBeNull()
   })
 
   it('forwards the whole-doc link via openDocForward from the header forward button', async () => {
