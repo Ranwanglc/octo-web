@@ -20,23 +20,14 @@ import DOMPurify from 'dompurify'
 import { t, getWKApp } from '../octoweb/index.ts'
 import { HtmlDocCommentPanel } from './HtmlDocCommentPanel.tsx'
 import { HtmlMemberPanel } from './HtmlMemberPanel.tsx'
-import { buildAnchorFromSelection } from './htmlDocAnchor.ts'
+import { buildAnchorFromSelection, truncateAnchorText } from './htmlDocAnchor.ts'
 import type { Anchor } from './htmlDocComments.ts'
 import './HtmlDocView.css'
 
 // Interactive/editable elements the read-only view must never render, even if DOMPurify's
 // default (script/handler) baseline would otherwise let their markup through. This enforces
 // the product's "human reads, never edits" hard constraint.
-const FORBID_TAGS = [
-  'input',
-  'button',
-  'textarea',
-  'select',
-  'option',
-  'form',
-  'label',
-  'fieldset',
-]
+const FORBID_TAGS = ['input', 'button', 'textarea', 'select', 'option', 'form', 'label', 'fieldset']
 // contenteditable would make plain elements editable; autofocus/onfocus are event-ish
 // affordances. (Generic on* handlers + javascript: URLs are already removed by DOMPurify's
 // default profile; contenteditable must be forbidden explicitly.)
@@ -104,6 +95,26 @@ function neutralizeEditableControls(doc: Document) {
   })
 }
 
+function cssAttrValue(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+}
+
+export function resolveHtmlDocAnchorText(
+  anchor: Anchor | null | undefined,
+  doc: Document | null | undefined
+): string | null {
+  if (!anchor) return null
+  if (anchor.kind === 'text') return truncateAnchorText(anchor.text)
+  if (!doc) return null
+  try {
+    const el = doc.querySelector(`[data-odoc-aid="${cssAttrValue(anchor.aid)}"]`)
+    const text = el?.textContent?.trim()
+    return text ? truncateAnchorText(text) : null
+  } catch {
+    return null
+  }
+}
+
 /**
  * srcdoc resolves relative URLs against about:srcdoc. Only octo-doc asset URLs are rewritten
  * against the real document URL, and editable controls are preserved visually but disabled.
@@ -118,7 +129,6 @@ export function absolutizeDocAssetUrls(html: string, docUrl = resolveAbsoluteOct
   const doctype = doc.doctype ? `<!doctype ${doc.doctype.name}>` : ''
   return `${doctype}${doc.documentElement.outerHTML}`
 }
-
 
 export interface HtmlDocViewProps {
   /** Doc id (used as the octo-doc slug when no explicit slug is supplied). */
@@ -150,9 +160,7 @@ export interface HtmlDocViewProps {
  */
 export function resolveOctoDocBase(): string {
   const runtime =
-    typeof window !== 'undefined'
-      ? (window as unknown as { __OCTO_DOC_BASE__?: unknown }).__OCTO_DOC_BASE__
-      : undefined
+    typeof window !== 'undefined' ? (window as unknown as { __OCTO_DOC_BASE__?: unknown }).__OCTO_DOC_BASE__ : undefined
   if (typeof runtime === 'string' && runtime.trim()) return runtime.trim().replace(/\/+$/, '')
   const env =
     typeof import.meta !== 'undefined'
@@ -209,6 +217,7 @@ export function HtmlDocView({ docId, space, role, slug, version = 'latest' }: Ht
   const [pendingAnchor, setPendingAnchor] = useState<Anchor | null>(null)
   const frameRef = useRef<HTMLIFrameElement>(null)
   const selectionDocRef = useRef<Document | null>(null)
+  const [frameReadyTick, setFrameReadyTick] = useState(0)
   // Header UI state. Members/forward/more backends are not wired yet; these drive a
   // transient "coming soon" hint so the buttons render and are clearly present.
   const [membersOpen, setMembersOpen] = useState(false)
@@ -217,13 +226,13 @@ export function HtmlDocView({ docId, space, role, slug, version = 'latest' }: Ht
   // Title: backend does not expose a human title yet → fall back to slug. Creator: prefer a
   // display name, else the creator/login uid.
   const headerTitle = meta?.title || effectiveSlug
-  const headerCreator =
-    meta?.creator_name || meta?.identity?.name || meta?.creator_uid || meta?.identity?.login || '—'
+  const headerCreator = meta?.creator_name || meta?.identity?.name || meta?.creator_uid || meta?.identity?.login || '—'
 
   useEffect(() => {
     const seq = ++reqSeq.current
     setState({ status: 'loading' })
     setPendingAnchor(null)
+    setFrameReadyTick(0)
     const url = buildOctoDocUrl(effectiveSlug, version)
     // Raw fetch (see file header): octo-doc is a separate backend; carry cookies AND the octo
     // session token so octo-doc can verify identity (author=creator) — cookies alone don't
@@ -241,7 +250,9 @@ export function HtmlDocView({ docId, space, role, slug, version = 'latest' }: Ht
           // (and whether the base is unconfigured) to make that misconfig obvious in the console.
           console.warn(
             `[HtmlDocView] octo-doc read failed (${res.status}) for ${url}` +
-              (resolveOctoDocBase() ? '' : ' — octo-doc base is unconfigured (same-origin default); set VITE_OCTO_DOC_BASE or window.__OCTO_DOC_BASE__ if octo-doc is cross-origin'),
+              (resolveOctoDocBase()
+                ? ''
+                : ' — octo-doc base is unconfigured (same-origin default); set VITE_OCTO_DOC_BASE or window.__OCTO_DOC_BASE__ if octo-doc is cross-origin')
           )
           setState({ status: 'error', url, reason: `status ${res.status}` })
           return
@@ -250,16 +261,22 @@ export function HtmlDocView({ docId, space, role, slug, version = 'latest' }: Ht
         if (seq !== reqSeq.current) return
         setState(
           html.trim()
-            ? { status: 'ready', html: absolutizeDocAssetUrls(html, url), meta: parseOdocMeta(html) }
-            : { status: 'empty' },
+            ? {
+                status: 'ready',
+                html: absolutizeDocAssetUrls(html, url),
+                meta: parseOdocMeta(html),
+              }
+            : { status: 'empty' }
         )
       })
       .catch((err) => {
         if (seq !== reqSeq.current) return
         console.warn(
           `[HtmlDocView] octo-doc request errored for ${url}` +
-            (resolveOctoDocBase() ? '' : ' — octo-doc base is unconfigured (same-origin default); set VITE_OCTO_DOC_BASE or window.__OCTO_DOC_BASE__ if octo-doc is cross-origin'),
-          err,
+            (resolveOctoDocBase()
+              ? ''
+              : ' — octo-doc base is unconfigured (same-origin default); set VITE_OCTO_DOC_BASE or window.__OCTO_DOC_BASE__ if octo-doc is cross-origin'),
+          err
         )
         setState({ status: 'error', url, reason: 'network' })
       })
@@ -281,6 +298,7 @@ export function HtmlDocView({ docId, space, role, slug, version = 'latest' }: Ht
   }, [onFrameSelectionChange])
 
   const handleFrameLoad = useCallback(() => {
+    setFrameReadyTick((v) => v + 1)
     cleanupFrameSelectionWatcher()
     const frame = frameRef.current
     try {
@@ -292,6 +310,17 @@ export function HtmlDocView({ docId, space, role, slug, version = 'latest' }: Ht
       console.warn('[HtmlDocView] unable to initialize iframe document hooks', err)
     }
   }, [cleanupFrameSelectionWatcher, onFrameSelectionChange])
+
+  const resolveAnchorText = useCallback(
+    (anchor: Anchor | null | undefined): string | null => {
+      try {
+        return resolveHtmlDocAnchorText(anchor, frameRef.current?.contentDocument)
+      } catch {
+        return null
+      }
+    },
+    [frameReadyTick]
+  )
 
   useEffect(() => {
     if (state.status !== 'ready') {
@@ -386,9 +415,7 @@ export function HtmlDocView({ docId, space, role, slug, version = 'latest' }: Ht
           )}
         </div>
       )}
-      {state.status === 'empty' && (
-        <div className="octo-html-doc-state">{t('docs.state.empty')}</div>
-      )}
+      {state.status === 'empty' && <div className="octo-html-doc-state">{t('docs.state.empty')}</div>}
       {state.status === 'ready' && (
         <div className="octo-html-doc-main" data-testid="html-doc-main">
           {/* allow-same-origin lets comments read selections; scripts stay disabled. */}
@@ -414,6 +441,7 @@ export function HtmlDocView({ docId, space, role, slug, version = 'latest' }: Ht
             slug={effectiveSlug}
             version={version}
             pendingAnchor={pendingAnchor}
+            resolveAnchorText={resolveAnchorText}
             onClearPendingAnchor={() => setPendingAnchor(null)}
             onPosted={() => setPendingAnchor(null)}
           />

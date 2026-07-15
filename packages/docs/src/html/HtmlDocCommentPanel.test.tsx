@@ -8,7 +8,7 @@ let wk: ReturnType<typeof createMockWKApp>
 
 function stubFetch(impl: (url: string, init?: RequestInit) => unknown) {
   const spy = vi.fn((input: RequestInfo | URL, init?: RequestInit) =>
-    Promise.resolve(impl(String(input), init)),
+    Promise.resolve(impl(String(input), init))
   ) as unknown as typeof fetch
   vi.stubGlobal('fetch', spy)
   return spy as unknown as ReturnType<typeof vi.fn>
@@ -37,17 +37,85 @@ describe('HtmlDocCommentPanel — list + compose (octo-doc data layer)', () => {
           {
             id: 'c1',
             text: 'first comment',
-            anchor: { kind: 'element', aid: 'a7', selector: '[data-odoc-aid="a7"]', label: 'p' },
+            anchor: {
+              kind: 'element',
+              aid: 'a7',
+              selector: '[data-odoc-aid="a7"]',
+              label: 'p',
+            },
             replies: [{ id: 'r1', text: 'a reply' }],
           },
         ],
-      }),
+      })
     )
     render(<HtmlDocCommentPanel docId="d1" space="sp" slug="s" version="v1" />)
     await waitFor(() => expect(screen.getByText('first comment')).toBeTruthy())
     expect(screen.getByText('a reply')).toBeTruthy()
     // Anchor label shows the aid.
     expect(screen.getByText(/#a7/)).toBeTruthy()
+  })
+
+  it('shows the selected source text for a text-anchored comment', async () => {
+    stubFetch(() =>
+      jsonResponse({
+        roots: [
+          {
+            id: 'c1',
+            text: 'please revise this',
+            anchor: { kind: 'text', text: 'Original selected words' },
+            replies: [],
+          },
+        ],
+      })
+    )
+    render(<HtmlDocCommentPanel docId="d1" space="sp" slug="s" version="v1" />)
+
+    await waitFor(() => expect(screen.getByText('please revise this')).toBeTruthy())
+    expect(screen.getByTestId('comment-quote').textContent).toBe('Original selected words')
+  })
+
+  it('shows resolved source text for an element-anchored comment', async () => {
+    const resolveAnchorText = vi.fn(() => 'Paragraph text from iframe')
+    stubFetch(() =>
+      jsonResponse({
+        roots: [
+          {
+            id: 'c1',
+            text: 'comment on paragraph',
+            anchor: {
+              kind: 'element',
+              aid: 'a7',
+              selector: '[data-odoc-aid="a7"]',
+              label: 'p',
+            },
+            replies: [],
+          },
+        ],
+      })
+    )
+    render(<HtmlDocCommentPanel docId="d1" space="sp" slug="s" version="v1" resolveAnchorText={resolveAnchorText} />)
+
+    await waitFor(() => expect(screen.getByText('comment on paragraph')).toBeTruthy())
+    expect(resolveAnchorText).toHaveBeenCalledWith({
+      kind: 'element',
+      aid: 'a7',
+      selector: '[data-odoc-aid="a7"]',
+      label: 'p',
+    })
+    expect(screen.getByTestId('comment-quote').textContent).toBe('Paragraph text from iframe')
+    expect(screen.queryByText(/#a7/)).toBeNull()
+  })
+
+  it('does not render a quote block for a doc-level comment', async () => {
+    stubFetch(() =>
+      jsonResponse({
+        roots: [{ id: 'c1', text: 'doc-level note', anchor: null, replies: [] }],
+      })
+    )
+    render(<HtmlDocCommentPanel docId="d1" space="sp" slug="s" version="v1" />)
+
+    await waitFor(() => expect(screen.getByText('doc-level note')).toBeTruthy())
+    expect(screen.queryByTestId('comment-quote')).toBeNull()
   })
 
   it('posts a comment through the data layer (createComment) with the pending anchor', async () => {
@@ -62,7 +130,7 @@ describe('HtmlDocCommentPanel — list + compose (octo-doc data layer)', () => {
         slug="my-slug"
         version="v2"
         pendingAnchor={{ kind: 'text', text: 'selected words' }}
-      />,
+      />
     )
     await waitFor(() => expect(screen.getByPlaceholderText('docs.comment.placeholder')).toBeTruthy())
     fireEvent.change(screen.getByPlaceholderText('docs.comment.placeholder'), {
@@ -74,7 +142,10 @@ describe('HtmlDocCommentPanel — list + compose (octo-doc data layer)', () => {
       const post = spy.mock.calls.find((c) => (c[1] as RequestInit)?.method === 'POST')
       expect(post).toBeTruthy()
     })
-    const post = spy.mock.calls.find((c) => (c[1] as RequestInit)?.method === 'POST') as unknown as [string, RequestInit]
+    const post = spy.mock.calls.find((c) => (c[1] as RequestInit)?.method === 'POST') as unknown as [
+      string,
+      RequestInit
+    ]
     expect(String(post[0])).toBe('https://od.test/comments')
     const body = JSON.parse(String(post[1].body))
     expect(body).toMatchObject({
@@ -96,7 +167,7 @@ describe('HtmlDocCommentPanel — list + compose (octo-doc data layer)', () => {
         version="v1"
         pendingAnchor={{ kind: 'text', text: 'selected words' }}
         onClearPendingAnchor={onClearPendingAnchor}
-      />,
+      />
     )
 
     await waitFor(() => expect(screen.getByTestId('pending-anchor')).toBeTruthy())
@@ -126,11 +197,15 @@ describe('HtmlDocCommentPanel — "让 AI 处理" (trigger mode C, explicit)', (
           {
             id: 'c9',
             text: 'make this formal',
-            anchor: { kind: 'element', aid: 'a3', selector: '[data-odoc-aid="a3"]' },
+            anchor: {
+              kind: 'element',
+              aid: 'a3',
+              selector: '[data-odoc-aid="a3"]',
+            },
             replies: [],
           },
         ],
-      }),
+      })
     )
     render(<HtmlDocCommentPanel docId="d1" space="sp" slug="the-slug" version="v5" />)
     await waitFor(() => expect(screen.getByText('make this formal')).toBeTruthy())
@@ -151,14 +226,15 @@ describe('HtmlDocCommentPanel — "让 AI 处理" (trigger mode C, explicit)', (
 
   it('disables "让 AI 处理" when the forward bridge is unavailable (standalone /d/ page)', async () => {
     // Remove the forward surface: no openDocForward override AND no baseContext.showConversationSelect.
-    const noForward = wk as unknown as { openDocForward?: unknown; shared: { baseContext?: unknown } }
+    const noForward = wk as unknown as {
+      openDocForward?: unknown
+      shared: { baseContext?: unknown }
+    }
     delete noForward.openDocForward
     noForward.shared.baseContext = undefined
     setWKApp(wk)
 
-    stubFetch(() =>
-      jsonResponse({ roots: [{ id: 'c1', text: 'x', replies: [] }] }),
-    )
+    stubFetch(() => jsonResponse({ roots: [{ id: 'c1', text: 'x', replies: [] }] }))
     render(<HtmlDocCommentPanel docId="d1" space="sp" slug="s" version="v1" />)
     await waitFor(() => expect(screen.getByText('x')).toBeTruthy())
 

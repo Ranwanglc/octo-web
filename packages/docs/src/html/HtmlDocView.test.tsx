@@ -6,13 +6,14 @@ import {
   buildOctoDocUrl,
   sanitizeDocHtml,
   absolutizeDocAssetUrls,
+  resolveHtmlDocAnchorText,
 } from './HtmlDocView.tsx'
 
 // HtmlDocView fetches the published octo-doc HTML from a SEPARATE backend, so we stub the
 // global fetch (not the octoweb apiClient) — mirroring the component's raw-fetch design.
 function stubFetch(impl: (url: string, init?: RequestInit) => Promise<Response> | Response) {
   const spy = vi.fn((input: RequestInfo | URL, init?: RequestInit) =>
-    Promise.resolve(impl(String(input), init)),
+    Promise.resolve(impl(String(input), init))
   ) as unknown as typeof fetch
   vi.stubGlobal('fetch', spy)
   return spy as unknown as ReturnType<typeof vi.fn>
@@ -72,8 +73,7 @@ afterEach(() => {
 
 describe('resolveOctoDocBase / buildOctoDocUrl', () => {
   it('prefers the runtime window.__OCTO_DOC_BASE__ override (trailing slash trimmed)', () => {
-    ;(window as unknown as { __OCTO_DOC_BASE__?: string }).__OCTO_DOC_BASE__ =
-      'https://octo-doc.example.com/'
+    ;(window as unknown as { __OCTO_DOC_BASE__?: string }).__OCTO_DOC_BASE__ = 'https://octo-doc.example.com/'
     expect(resolveOctoDocBase()).toBe('https://octo-doc.example.com')
   })
 
@@ -91,7 +91,7 @@ describe('absolutizeDocAssetUrls', () => {
   it('absolutizes root octo-doc img asset URLs and preserves signed query params', () => {
     const out = absolutizeDocAssetUrls(
       '<!doctype html><html><body><img src="/d/slug/assets/a.png?sig=s1&exp=9"></body></html>',
-      'https://od.test/d/slug/v/latest',
+      'https://od.test/d/slug/v/latest'
     )
     expect(out).toContain('src="https://od.test/d/slug/assets/a.png?sig=s1&amp;exp=9"')
   })
@@ -99,7 +99,7 @@ describe('absolutizeDocAssetUrls', () => {
   it('absolutizes relative asset URLs against the real document URL', () => {
     const out = absolutizeDocAssetUrls(
       '<html><head><link rel="stylesheet" href="assets/doc.css?sig=s"></head><body><img src="./assets/a.png"><img src="../assets/b.png?exp=9"></body></html>',
-      'https://od.test/d/slug/v/latest',
+      'https://od.test/d/slug/v/latest'
     )
     expect(out).toContain('href="https://od.test/d/slug/v/assets/doc.css?sig=s"')
     expect(out).toContain('src="https://od.test/d/slug/v/assets/a.png"')
@@ -109,7 +109,7 @@ describe('absolutizeDocAssetUrls', () => {
   it('leaves already absolute asset URLs and ordinary relative links untouched', () => {
     const out = absolutizeDocAssetUrls(
       '<html><head><link href="https://cdn.test/d/slug/assets/doc.css"></head><body><img src="/other/image.png"><a href="chapter.html">next</a></body></html>',
-      'https://od.test/d/slug/v/latest',
+      'https://od.test/d/slug/v/latest'
     )
     expect(out).toContain('href="https://cdn.test/d/slug/assets/doc.css"')
     expect(out).toContain('src="/other/image.png"')
@@ -119,7 +119,7 @@ describe('absolutizeDocAssetUrls', () => {
   it('neutralizes editable controls without removing their display markup', () => {
     const out = absolutizeDocAssetUrls(
       '<html><body><p>plain text remains</p><form><input value="x"><button>go</button><textarea>t</textarea><select><option>o</option></select></form><div contenteditable="true">edit me</div></body></html>',
-      'https://od.test/d/slug/v/latest',
+      'https://od.test/d/slug/v/latest'
     )
     expect(out).toContain('plain text remains')
     expect(out).toContain('<input value="x" disabled="">')
@@ -128,6 +128,75 @@ describe('absolutizeDocAssetUrls', () => {
     expect(out).toContain('<select disabled="">')
     expect(out).toContain('contenteditable="false"')
     expect(out).not.toContain('contenteditable="true"')
+  })
+})
+
+describe('resolveHtmlDocAnchorText', () => {
+  it('returns text anchors directly and null for doc-level anchors', () => {
+    const doc = new DOMParser().parseFromString('<p>unused</p>', 'text/html')
+
+    expect(resolveHtmlDocAnchorText({ kind: 'text', text: 'selected source' }, doc)).toBe('selected source')
+    expect(resolveHtmlDocAnchorText(null, doc)).toBeNull()
+  })
+
+  it('reads element anchor text by data-odoc-aid and trims it', () => {
+    const doc = new DOMParser().parseFromString('<p data-odoc-aid="a7">  Anchored paragraph text.  </p>', 'text/html')
+
+    expect(
+      resolveHtmlDocAnchorText(
+        {
+          kind: 'element',
+          aid: 'a7',
+          selector: '[data-odoc-aid="a7"]',
+          label: 'p',
+        },
+        doc
+      )
+    ).toBe('Anchored paragraph text.')
+  })
+
+  it('truncates long element anchor text to a short excerpt', () => {
+    const longText = 'a'.repeat(121)
+    const doc = new DOMParser().parseFromString(`<p data-odoc-aid="long">${longText}</p>`, 'text/html')
+
+    const out = resolveHtmlDocAnchorText(
+      {
+        kind: 'element',
+        aid: 'long',
+        selector: '[data-odoc-aid="long"]',
+        label: 'p',
+      },
+      doc
+    )
+
+    expect(out).toBe(`${'a'.repeat(120)}…`)
+  })
+
+  it('returns null when an element anchor cannot be resolved', () => {
+    const doc = new DOMParser().parseFromString('<p data-odoc-aid="a1">x</p>', 'text/html')
+
+    expect(
+      resolveHtmlDocAnchorText(
+        {
+          kind: 'element',
+          aid: 'missing',
+          selector: '[data-odoc-aid="missing"]',
+          label: 'p',
+        },
+        doc
+      )
+    ).toBeNull()
+    expect(
+      resolveHtmlDocAnchorText(
+        {
+          kind: 'element',
+          aid: 'a1',
+          selector: '[data-odoc-aid="a1"]',
+          label: 'p',
+        },
+        null
+      )
+    ).toBeNull()
   })
 })
 
@@ -180,10 +249,7 @@ describe('HtmlDocView — read-only rendering', () => {
   })
 
   it('shows an error state when the fetch rejects (network)', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(() => Promise.reject(new Error('network'))) as unknown as typeof fetch,
-    )
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('network'))) as unknown as typeof fetch)
     render(<HtmlDocView docId="d1" space="sp" />)
     await waitFor(() => expect(screen.getByRole('alert')).toBeTruthy())
   })
@@ -225,7 +291,7 @@ describe('HtmlDocView — read-only rendering', () => {
     stubFetch((url) => {
       if (url.includes('/comments')) return jsonResponse({ roots: [] })
       return htmlResponse(
-        '<p>ok</p><form><input value="x"><button>go</button><textarea></textarea></form><div contenteditable="true">edit me</div>',
+        '<p>ok</p><form><input value="x"><button>go</button><textarea></textarea></form><div contenteditable="true">edit me</div>'
       )
     })
     const { container } = render(<HtmlDocView docId="d1" space="sp" />)
@@ -265,9 +331,7 @@ describe('HtmlDocView — read-only rendering', () => {
   })
 
   it('SANITIZES when sanitizeDocHtml is used by legacy callers (strips a <script> from the payload)', () => {
-    const out = sanitizeDocHtml(
-      '<p>safe body</p><script>window.__pwned = 1</script>',
-    )
+    const out = sanitizeDocHtml('<p>safe body</p><script>window.__pwned = 1</script>')
     expect(String(out)).not.toContain('<script')
   })
 
@@ -291,6 +355,35 @@ describe('HtmlDocView — read-only rendering', () => {
     expect(main.querySelector('.octo-html-doc-frame')).toBeTruthy()
     expect(main.querySelector('[data-testid="html-doc-comment-panel"]')).toBeTruthy()
     expect(container.querySelector('.octo-html-doc-header')).toBeTruthy()
+  })
+
+  it('shows an element-anchored comment quote after the iframe document loads', async () => {
+    stubFetch((url) => {
+      if (url.includes('/comments')) {
+        return jsonResponse({
+          roots: [
+            {
+              id: 'c1',
+              text: 'check this paragraph',
+              anchor: {
+                kind: 'element',
+                aid: 'a4',
+                selector: '[data-odoc-aid="a4"]',
+                label: 'p',
+              },
+              replies: [],
+            },
+          ],
+        })
+      }
+      return htmlResponse('<p data-odoc-aid="a4">quoted paragraph from iframe</p>')
+    })
+    const { container } = render(<HtmlDocView docId="d1" space="sp" />)
+    const frame = await waitForFrame(container)
+
+    writeIframeBody(frame, '<p data-odoc-aid="a4">quoted paragraph from iframe</p>')
+
+    await waitFor(() => expect(screen.getByTestId('comment-quote').textContent).toBe('quoted paragraph from iframe'))
   })
 
   it('keeps a selected anchor locked when selection collapses after focusing the comment input', async () => {
@@ -358,7 +451,10 @@ describe('HtmlDocView — read-only rendering', () => {
       const post = spy.mock.calls.find((c) => (c[1] as RequestInit)?.method === 'POST')
       expect(post).toBeTruthy()
     })
-    const post = spy.mock.calls.find((c) => (c[1] as RequestInit)?.method === 'POST') as unknown as [string, RequestInit]
+    const post = spy.mock.calls.find((c) => (c[1] as RequestInit)?.method === 'POST') as unknown as [
+      string,
+      RequestInit
+    ]
     const body = JSON.parse(String(post[1].body))
     expect(body.anchor).toMatchObject({ kind: 'element', aid: 'a3' })
   })
@@ -371,7 +467,7 @@ describe('sanitizeDocHtml', () => {
         '<script>alert(1)</script>' +
         '<img src="x" onerror="alert(2)">' +
         '<a href="javascript:alert(3)">bad link</a>' +
-        '<div onclick="alert(4)">clicky</div>',
+        '<div onclick="alert(4)">clicky</div>'
     )
     expect(out).not.toContain('<script')
     expect(out.toLowerCase()).not.toContain('onerror')
@@ -388,7 +484,7 @@ describe('sanitizeDocHtml', () => {
         '<button>go</button>' +
         '<textarea>t</textarea>' +
         '<form><select><option>o</option></select></form>' +
-        '<div contenteditable="true">editable</div>',
+        '<div contenteditable="true">editable</div>'
     )
     for (const tag of ['<input', '<button', '<textarea', '<form', '<select', '<option']) {
       expect(out.toLowerCase()).not.toContain(tag)
@@ -415,7 +511,7 @@ describe('sanitizeDocHtml', () => {
 
   it('preserves ordinary display markup (headings/paragraph/table/safe links)', () => {
     const out = sanitizeDocHtml(
-      '<h1>Report</h1><p>Body</p><table><tr><td>cell</td></tr></table><a href="https://ok.test">link</a>',
+      '<h1>Report</h1><p>Body</p><table><tr><td>cell</td></tr></table><a href="https://ok.test">link</a>'
     )
     expect(out).toContain('<h1>')
     expect(out).toContain('<p>')

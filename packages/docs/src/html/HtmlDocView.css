@@ -97,6 +97,20 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.octo-html-doc-comment-quote {
+  margin: 0 0 6px;
+  padding: 6px 8px;
+  border-left: 3px solid var(--octo-doc-accent, var(--semi-color-primary, currentColor));
+  background: var(--octo-doc-quote-bg, var(--semi-color-fill-0, transparent));
+  color: var(--octo-doc-fg-muted, var(--semi-color-text-2, inherit));
+  font-size: 12px;
+  line-height: 1.5;
+  font-style: italic;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
 .octo-html-doc-comment-text {
   margin: 4px 0;
   font-size: 13px;

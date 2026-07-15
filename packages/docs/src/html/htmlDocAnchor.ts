@@ -10,6 +10,14 @@ import { t } from '../octoweb/index.ts'
 /** How much surrounding text to snapshot for a text anchor (drift re-location aid). */
 const CONTEXT_CHARS = 40
 
+// Cap anchor excerpts (comment quote) so a long selection/element never bloats the DOM/title.
+const ANCHOR_TEXT_LIMIT = 120
+export function truncateAnchorText(value: string): string {
+  const chars = Array.from(value)
+  if (chars.length <= ANCHOR_TEXT_LIMIT) return value
+  return `${chars.slice(0, ANCHOR_TEXT_LIMIT).join('')}…`
+}
+
 /**
  * Walk up from a node to the nearest ancestor element carrying a stable `data-odoc-aid`.
  * Returns null if the selection is inside plain agent HTML with no aid on any ancestor.

@@ -11,13 +11,8 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { canForwardToChat, openDocForward, t } from '../octoweb/index.ts'
-import {
-  createComment,
-  listComments,
-  type Anchor,
-  type OctoDocCommentThread,
-} from './htmlDocComments.ts'
-import { buildAgentInstruction, type AgentInstructionDoc } from './htmlDocAnchor.ts'
+import { createComment, listComments, type Anchor, type OctoDocCommentThread } from './htmlDocComments.ts'
+import { buildAgentInstruction, truncateAnchorText, type AgentInstructionDoc } from './htmlDocAnchor.ts'
 
 export interface HtmlDocCommentPanelProps {
   docId: string
@@ -34,6 +29,8 @@ export interface HtmlDocCommentPanelProps {
   onClearPendingAnchor?: () => void
   /** Called after a successful post so the view can clear the floating "评论" affordance. */
   onPosted?: () => void
+  /** Resolves the full anchored source text from the iframe document when available. */
+  resolveAnchorText?: (anchor: Anchor | null | undefined) => string | null
 }
 
 /** Short human label for how a comment is anchored (element aid / selected text / doc-level). */
@@ -43,12 +40,17 @@ function anchorLabel(anchor: Anchor | null | undefined): string {
   return `“${anchor.text}”`
 }
 
+function fallbackAnchorText(anchor: Anchor | null | undefined): string | null {
+  return anchor?.kind === 'text' ? truncateAnchorText(anchor.text) : null
+}
+
 export function HtmlDocCommentPanel({
   docId,
   space,
   slug,
   version,
   pendingAnchor,
+  resolveAnchorText,
   onClearPendingAnchor,
   onPosted,
 }: HtmlDocCommentPanelProps) {
@@ -115,28 +117,39 @@ export function HtmlDocCommentPanel({
       )}
 
       <ul className="octo-html-doc-comments-list">
-        {threads.map((thread) => (
-          <li key={thread.id} className="octo-html-doc-comment" data-testid="html-doc-comment">
-            <div className="octo-html-doc-comment-anchor" title={anchorLabel(thread.anchor)}>
-              {anchorLabel(thread.anchor)}
-            </div>
-            <p className="octo-html-doc-comment-text">{thread.text}</p>
-            {thread.replies?.map((r) => (
-              <p key={r.id} className="octo-html-doc-comment-reply">
-                {r.text}
-              </p>
-            ))}
-            <button
-              type="button"
-              className="octo-tb-btn octo-html-doc-comment-ai"
-              disabled={!canForward}
-              title={forwardDisabledReason}
-              onClick={() => handleWithAI(thread)}
-            >
-              {t('docs.comment.handleWithAI')}
-            </button>
-          </li>
-        ))}
+        {threads.map((thread) => {
+          const quoteText = resolveAnchorText?.(thread.anchor) ?? fallbackAnchorText(thread.anchor)
+          const label = anchorLabel(thread.anchor)
+
+          return (
+            <li key={thread.id} className="octo-html-doc-comment" data-testid="html-doc-comment">
+              {quoteText ? (
+                <blockquote className="octo-html-doc-comment-quote" data-testid="comment-quote" title={quoteText}>
+                  {quoteText}
+                </blockquote>
+              ) : thread.anchor ? (
+                <div className="octo-html-doc-comment-anchor" title={label}>
+                  {label}
+                </div>
+              ) : null}
+              <p className="octo-html-doc-comment-text">{thread.text}</p>
+              {thread.replies?.map((r) => (
+                <p key={r.id} className="octo-html-doc-comment-reply">
+                  {r.text}
+                </p>
+              ))}
+              <button
+                type="button"
+                className="octo-tb-btn octo-html-doc-comment-ai"
+                disabled={!canForward}
+                title={forwardDisabledReason}
+                onClick={() => handleWithAI(thread)}
+              >
+                {t('docs.comment.handleWithAI')}
+              </button>
+            </li>
+          )
+        })}
       </ul>
 
       <div className="octo-html-doc-comments-compose">
@@ -146,11 +159,7 @@ export function HtmlDocCommentPanel({
               <span>
                 {t('docs.comment.targetAnchor')}: {anchorLabel(pendingAnchor)}
               </span>
-              <button
-                type="button"
-                className="octo-tb-btn octo-html-doc-comments-clear"
-                onClick={onClearPendingAnchor}
-              >
+              <button type="button" className="octo-tb-btn octo-html-doc-comments-clear" onClick={onClearPendingAnchor}>
                 {t('docs.comment.clearAnchor')}
               </button>
             </>
@@ -164,12 +173,7 @@ export function HtmlDocCommentPanel({
           placeholder={t('docs.comment.placeholder')}
           onChange={(e) => setDraft(e.target.value)}
         />
-        <button
-          type="button"
-          className="octo-tb-btn"
-          disabled={busy || draft.trim() === ''}
-          onClick={submit}
-        >
+        <button type="button" className="octo-tb-btn" disabled={busy || draft.trim() === ''} onClick={submit}>
           {t('docs.comment.send')}
         </button>
       </div>
