@@ -33,7 +33,7 @@ describe('HtmlDocCommentPanel — list + compose (octo-doc data layer)', () => {
   it('renders the fetched comment threads with anchor labels', async () => {
     stubFetch(() =>
       jsonResponse({
-        roots: [
+        data: [
           {
             id: 'c1',
             text: 'first comment',
@@ -58,7 +58,7 @@ describe('HtmlDocCommentPanel — list + compose (octo-doc data layer)', () => {
   it('shows the selected source text for a text-anchored comment', async () => {
     stubFetch(() =>
       jsonResponse({
-        roots: [
+        data: [
           {
             id: 'c1',
             text: 'please revise this',
@@ -78,7 +78,7 @@ describe('HtmlDocCommentPanel — list + compose (octo-doc data layer)', () => {
     const resolveAnchorText = vi.fn(() => 'Paragraph text from iframe')
     stubFetch(() =>
       jsonResponse({
-        roots: [
+        data: [
           {
             id: 'c1',
             text: 'comment on paragraph',
@@ -109,7 +109,7 @@ describe('HtmlDocCommentPanel — list + compose (octo-doc data layer)', () => {
   it('does not render a quote block for a doc-level comment', async () => {
     stubFetch(() =>
       jsonResponse({
-        roots: [{ id: 'c1', text: 'doc-level note', anchor: null, replies: [] }],
+        data: [{ id: 'c1', text: 'doc-level note', anchor: null, replies: [] }],
       })
     )
     render(<HtmlDocCommentPanel docId="d1" space="sp" slug="s" version="v1" />)
@@ -121,7 +121,7 @@ describe('HtmlDocCommentPanel — list + compose (octo-doc data layer)', () => {
   it('posts a comment through the data layer (createComment) with the pending anchor', async () => {
     const spy = stubFetch((url, init) => {
       if ((init?.method ?? 'GET') === 'POST') return jsonResponse({ id: 'new1' })
-      return jsonResponse({ roots: [] })
+      return jsonResponse({ data: [] })
     })
     render(
       <HtmlDocCommentPanel
@@ -158,7 +158,7 @@ describe('HtmlDocCommentPanel — list + compose (octo-doc data layer)', () => {
 
   it('shows the composer target and emits an explicit clear-anchor action', async () => {
     const onClearPendingAnchor = vi.fn()
-    stubFetch(() => jsonResponse({ roots: [] }))
+    stubFetch(() => jsonResponse({ data: [] }))
     render(
       <HtmlDocCommentPanel
         docId="d1"
@@ -180,7 +180,7 @@ describe('HtmlDocCommentPanel — list + compose (octo-doc data layer)', () => {
   })
 
   it('shows doc-level target state when there is no pending anchor', async () => {
-    stubFetch(() => jsonResponse({ roots: [] }))
+    stubFetch(() => jsonResponse({ data: [] }))
     render(<HtmlDocCommentPanel docId="d1" space="sp" slug="s" version="v1" />)
 
     await waitFor(() => expect(screen.getByTestId('pending-anchor')).toBeTruthy())
@@ -193,7 +193,7 @@ describe('HtmlDocCommentPanel — "让 AI 处理" (trigger mode C, explicit)', (
   it('forwards a correctly-built instruction via openDocForward when available', async () => {
     stubFetch(() =>
       jsonResponse({
-        roots: [
+        data: [
           {
             id: 'c9',
             text: 'make this formal',
@@ -234,7 +234,7 @@ describe('HtmlDocCommentPanel — "让 AI 处理" (trigger mode C, explicit)', (
     noForward.shared.baseContext = undefined
     setWKApp(wk)
 
-    stubFetch(() => jsonResponse({ roots: [{ id: 'c1', text: 'x', replies: [] }] }))
+    stubFetch(() => jsonResponse({ data: [{ id: 'c1', text: 'x', replies: [] }] }))
     render(<HtmlDocCommentPanel docId="d1" space="sp" slug="s" version="v1" />)
     await waitFor(() => expect(screen.getByText('x')).toBeTruthy())
 

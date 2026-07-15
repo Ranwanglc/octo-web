@@ -204,7 +204,7 @@ describe('HtmlDocView — read-only rendering', () => {
   it('renders the published octo-doc HTML in a sandboxed iframe (fetched from the octo-doc backend)', async () => {
     ;(window as unknown as { __OCTO_DOC_BASE__?: string }).__OCTO_DOC_BASE__ = 'https://od.test'
     const spy = stubFetch((url) => {
-      if (url.includes('/comments')) return jsonResponse({ roots: [] })
+      if (url.includes('/comments')) return jsonResponse({ data: [] })
       return htmlResponse('<h1>Agent Report</h1><p style="color:red">Generated content.</p>')
     })
 
@@ -224,7 +224,7 @@ describe('HtmlDocView — read-only rendering', () => {
 
   it('uses an explicit slug + version when provided', async () => {
     const spy = stubFetch((url) => {
-      if (url.includes('/comments')) return jsonResponse({ roots: [] })
+      if (url.includes('/comments')) return jsonResponse({ data: [] })
       return htmlResponse('<p>ok</p>')
     })
     const { container } = render(<HtmlDocView docId="d1" space="sp" slug="published-slug" version="v7" />)
@@ -262,7 +262,7 @@ describe('HtmlDocView — read-only rendering', () => {
 
   it('is READ-ONLY: renders no editing controls in the host document body', async () => {
     stubFetch((url) => {
-      if (url.includes('/comments')) return jsonResponse({ roots: [] })
+      if (url.includes('/comments')) return jsonResponse({ data: [] })
       return htmlResponse('<h1>Title</h1><button>payload button</button><input value="payload">')
     })
     const { container } = render(<HtmlDocView docId="d1" space="sp" />)
@@ -277,7 +277,7 @@ describe('HtmlDocView — read-only rendering', () => {
 
   it('keeps raw HTML in srcdoc while sandbox blocks scripts from running', async () => {
     stubFetch((url) => {
-      if (url.includes('/comments')) return jsonResponse({ roots: [] })
+      if (url.includes('/comments')) return jsonResponse({ data: [] })
       return htmlResponse('<p>safe body</p><script>window.__pwned = 1</script>')
     })
     const { container } = render(<HtmlDocView docId="d1" space="sp" />)
@@ -289,7 +289,7 @@ describe('HtmlDocView — read-only rendering', () => {
 
   it('neutralizes interactive payload markup inside srcdoc instead of inlining it into the host DOM', async () => {
     stubFetch((url) => {
-      if (url.includes('/comments')) return jsonResponse({ roots: [] })
+      if (url.includes('/comments')) return jsonResponse({ data: [] })
       return htmlResponse(
         '<p>ok</p><form><input value="x"><button>go</button><textarea></textarea></form><div contenteditable="true">edit me</div>'
       )
@@ -310,7 +310,7 @@ describe('HtmlDocView — read-only rendering', () => {
   it('absolutizes asset URLs before assigning iframe srcdoc', async () => {
     ;(window as unknown as { __OCTO_DOC_BASE__?: string }).__OCTO_DOC_BASE__ = 'https://od.test'
     stubFetch((url) => {
-      if (url.includes('/comments')) return jsonResponse({ roots: [] })
+      if (url.includes('/comments')) return jsonResponse({ data: [] })
       return htmlResponse('<img src="/d/slug/assets/a.png?sig=s1&exp=9"><a href="note.html">note</a>')
     })
     const { container } = render(<HtmlDocView docId="d1" space="sp" slug="slug" />)
@@ -321,7 +321,7 @@ describe('HtmlDocView — read-only rendering', () => {
 
   it('lets the iframe own document scrolling instead of assigning measured inline height', async () => {
     stubFetch((url) => {
-      if (url.includes('/comments')) return jsonResponse({ roots: [] })
+      if (url.includes('/comments')) return jsonResponse({ data: [] })
       return htmlResponse('<main style="height:3000px">long body</main>')
     })
     const { container } = render(<HtmlDocView docId="d1" space="sp" />)
@@ -345,7 +345,7 @@ describe('HtmlDocView — read-only rendering', () => {
 
   it('lays out the iframe content and comment panel in the ready body rail', async () => {
     stubFetch((url) => {
-      if (url.includes('/comments')) return jsonResponse({ roots: [] })
+      if (url.includes('/comments')) return jsonResponse({ data: [] })
       return htmlResponse('<p>body</p>')
     })
     const { container } = render(<HtmlDocView docId="d1" space="sp" />)
@@ -361,7 +361,7 @@ describe('HtmlDocView — read-only rendering', () => {
     stubFetch((url) => {
       if (url.includes('/comments')) {
         return jsonResponse({
-          roots: [
+          data: [
             {
               id: 'c1',
               text: 'check this paragraph',
@@ -388,7 +388,7 @@ describe('HtmlDocView — read-only rendering', () => {
 
   it('keeps a selected anchor locked when selection collapses after focusing the comment input', async () => {
     stubFetch((url) => {
-      if (url.includes('/comments')) return jsonResponse({ roots: [] })
+      if (url.includes('/comments')) return jsonResponse({ data: [] })
       return htmlResponse('<p data-odoc-aid="a1">selected words</p>')
     })
     const { container } = render(<HtmlDocView docId="d1" space="sp" />)
@@ -409,7 +409,7 @@ describe('HtmlDocView — read-only rendering', () => {
 
   it('clears the locked anchor only through the explicit target cancel action', async () => {
     stubFetch((url) => {
-      if (url.includes('/comments')) return jsonResponse({ roots: [] })
+      if (url.includes('/comments')) return jsonResponse({ data: [] })
       return htmlResponse('<p data-odoc-aid="a2">clearable words</p>')
     })
     const { container } = render(<HtmlDocView docId="d1" space="sp" />)
@@ -429,7 +429,7 @@ describe('HtmlDocView — read-only rendering', () => {
   it('submits a comment with the locked anchor after the selection collapses', async () => {
     const spy = stubFetch((url, init) => {
       if ((init?.method ?? 'GET') === 'POST') return jsonResponse({ id: 'new1' })
-      if (url.includes('/comments')) return jsonResponse({ roots: [] })
+      if (url.includes('/comments')) return jsonResponse({ data: [] })
       return htmlResponse('<p data-odoc-aid="a3">post anchored words</p>')
     })
     const { container } = render(<HtmlDocView docId="d1" space="sp" slug="slug-1" version="v4" />)

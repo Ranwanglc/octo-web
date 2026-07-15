@@ -26,9 +26,9 @@ afterEach(() => {
 })
 
 describe('listComments (octo-doc backend)', () => {
-  it('GETs <base>/comments?slug&version with credentials and returns roots', async () => {
+  it('GETs <base>/comments?slug&version with credentials and returns data', async () => {
     const spy = stubFetch(() =>
-      jsonResponse({ roots: [{ id: 'c1', text: 'hi', replies: [] }] }),
+      jsonResponse({ data: [{ id: 'c1', text: 'hi', replies: [] }] }),
     )
     const roots = await listComments('my-slug', 'v3')
     expect(roots).toHaveLength(1)

@@ -95,8 +95,9 @@ export async function listComments(
     headers: octoDocHeaders({ Accept: 'application/json' }),
   })
   if (!res.ok) throw new Error(`octo-doc listComments failed: ${res.status}`)
-  const data = (await res.json()) as Partial<ListCommentsResponse> | null
-  return data?.roots ?? []
+  const data = (await res.json()) as { data?: OctoDocCommentThread[] } | null
+  // Backend list envelope is {data, pagination} (writeList), not {roots}.
+  return data?.data ?? []
 }
 
 export interface CreateCommentInput {
