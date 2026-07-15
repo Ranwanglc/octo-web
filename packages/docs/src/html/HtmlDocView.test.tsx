@@ -546,11 +546,13 @@ describe('HtmlDocView — header parity (presence / comments / members / more)',
 
   function serveDoc(htmlBody: string, meta?: Record<string, unknown>, opts?: { isAuthor?: boolean }) {
     const inline = meta ? `<script>window.__ODOC__ = ${JSON.stringify(meta)};</script>` : ''
-    // Authorship is backend-decided and inlined as __ODOC_CAP__.isAuthor (see parseOdocCap).
+    // Authorship is backend-decided and inlined as __ODOC_CAP__ = {isAuthor: true} — a JS object
+    // literal with an UNQUOTED key (NOT JSON), matching the Go injectCapMarker output exactly so
+    // the parser is tested against the real wire format.
     const cap =
       opts?.isAuthor === undefined
         ? ''
-        : `<script>window.__ODOC_CAP__ = ${JSON.stringify({ isAuthor: opts.isAuthor })};</script>`
+        : `<script>window.__ODOC_CAP__ = {isAuthor: ${opts.isAuthor ? 'true' : 'false'}};</script>`
     return stubFetch((url) => {
       if (url.includes('/comments')) return jsonResponse({ data: [] })
       return htmlResponse(`${cap}${inline}${htmlBody}`)

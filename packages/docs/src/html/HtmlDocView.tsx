@@ -247,17 +247,13 @@ function parseOdocMeta(html: string): OctoDocMeta | null {
 }
 
 // Authorship is decided by the backend (resolveCap: viewer Login == doc CreatorUID → CapAuthor)
-// and inlined as window.__ODOC_CAP__ = {isAuthor}. This is the ONLY trustworthy author signal on
-// the client — __ODOC__ carries no creator_uid, so any viewer-side uid comparison is wrong.
-// Missing/unparseable marker → not author (fail closed: hide manage/delete rather than leak them).
+// and inlined as window.__ODOC_CAP__ = {isAuthor: true}. ⚠️ That marker is a JS object literal
+// (unquoted key), NOT valid JSON — JSON.parse would throw and make EVERY viewer non-author
+// (incl. the real author). Read the boolean directly. This is the only trustworthy author signal
+// on the client (__ODOC__ carries no creator_uid). Missing marker → not author (fail closed).
 function parseOdocCap(html: string): boolean {
-  const m = html.match(/__ODOC_CAP__\s*=\s*(\{[\s\S]*?\});/)
-  if (!m) return false
-  try {
-    return (JSON.parse(m[1]) as { isAuthor?: boolean }).isAuthor === true
-  } catch {
-    return false
-  }
+  const m = html.match(/__ODOC_CAP__\s*=\s*\{[^}]*\bisAuthor\b\s*:\s*(true|false)/)
+  return m?.[1] === 'true'
 }
 
 export function HtmlDocView({ docId, space, role, slug, version = 'latest' }: HtmlDocViewProps) {
