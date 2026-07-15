@@ -17,7 +17,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import DOMPurify from 'dompurify'
-import { canForwardToChat, getCurrentUid, openDocForward, t, getWKApp } from '../octoweb/index.ts'
+import { canForwardToChat, openDocForward, t, getWKApp } from '../octoweb/index.ts'
 import { HtmlDocCommentPanel } from './HtmlDocCommentPanel.tsx'
 import { HtmlMemberPanel } from './HtmlMemberPanel.tsx'
 import { HtmlPresenceBar } from './HtmlPresenceBar.tsx'
@@ -217,11 +217,13 @@ type LoadState =
   | { status: 'loading' }
   | { status: 'error'; url?: string; reason?: string }
   | { status: 'empty' }
-  | { status: 'ready'; html: string; meta: OctoDocMeta | null }
+  | { status: 'ready'; html: string; meta: OctoDocMeta | null; isAuthor: boolean }
 
 // Minimal metadata the render page injects as window.__ODOC__ (see doc-side render).
-// Used to populate the header (title/creator/version). Fields the backend does not yet
-// expose (human title, creator display name) are absent and fall back gracefully.
+// ⚠️ identity here is the CURRENT VIEWER's session identity (identityFromSession), NOT the
+// doc creator. __ODOC__ (core.OverlayConfig) does NOT carry creator_uid — so never derive
+// authorship by comparing viewer uid against identity.login (that is always the viewer =
+// always true). Authorship comes from window.__ODOC_CAP__.isAuthor (see parseOdocCap).
 interface OctoDocMeta {
   slug?: string
   title?: string
@@ -241,6 +243,20 @@ function parseOdocMeta(html: string): OctoDocMeta | null {
     return JSON.parse(m[1]) as OctoDocMeta
   } catch {
     return null
+  }
+}
+
+// Authorship is decided by the backend (resolveCap: viewer Login == doc CreatorUID → CapAuthor)
+// and inlined as window.__ODOC_CAP__ = {isAuthor}. This is the ONLY trustworthy author signal on
+// the client — __ODOC__ carries no creator_uid, so any viewer-side uid comparison is wrong.
+// Missing/unparseable marker → not author (fail closed: hide manage/delete rather than leak them).
+function parseOdocCap(html: string): boolean {
+  const m = html.match(/__ODOC_CAP__\s*=\s*(\{[\s\S]*?\});/)
+  if (!m) return false
+  try {
+    return (JSON.parse(m[1]) as { isAuthor?: boolean }).isAuthor === true
+  } catch {
+    return false
   }
 }
 
@@ -269,15 +285,17 @@ export function HtmlDocView({ docId, space, role, slug, version = 'latest' }: Ht
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
   const meta = state.status === 'ready' ? state.meta : null
+  // Backend-authoritative authorship (resolveCap → window.__ODOC_CAP__.isAuthor). Do NOT compare
+  // viewer uid to any __ODOC__ field: identity there is the viewer itself and creator_uid is absent,
+  // so a client-side comparison would make every viewer an "author" (the invited-viewer-as-owner bug).
+  const isAuthor = state.status === 'ready' ? state.isAuthor : false
   // Title: backend does not expose a human title yet → fall back to slug. Creator: prefer a
   // display name, else the creator/login uid.
   const headerTitle = meta?.title || effectiveSlug
-  const headerCreator = meta?.creator_name || meta?.identity?.name || meta?.creator_uid || meta?.identity?.login || '—'
-  // Permission gate mirrors HtmlMemberPanel.canManage: only the author (viewer uid === creator)
-  // manages members / deletes the doc. creatorUid falls back to the publisher identity login.
-  const creatorUid = meta?.creator_uid || meta?.identity?.login
-  const viewerUid = getCurrentUid()
-  const canManage = !!viewerUid && !!creatorUid && viewerUid === creatorUid
+  const headerCreator = meta?.creator_name || meta?.creator_uid || '—'
+  // Author-only affordances (member management, delete) gate on the backend flag, never on uid math.
+  const creatorUid = meta?.creator_uid
+  const canManage = isAuthor
   // Browser-openable address for this doc (new-page / forward). window.location keeps whatever
   // route the viewer is on; buildOctoDocUrl is the canonical /d/{slug}/v/{version} fallback.
   const docUrl =
@@ -355,6 +373,7 @@ export function HtmlDocView({ docId, space, role, slug, version = 'latest' }: Ht
                 // (background/url()) and any other relative/root resources resolve to the real origin.
                 html: injectBaseHref(absolutizeDocAssetUrls(html, url), resolveAbsoluteOctoDocBase()),
                 meta: parseOdocMeta(html),
+                isAuthor: parseOdocCap(html),
               }
             : { status: 'empty' }
         )
@@ -435,7 +454,7 @@ export function HtmlDocView({ docId, space, role, slug, version = 'latest' }: Ht
           {headerTitle}
         </div>
         <div className="octo-doc-header-right">
-          <HtmlPresenceBar name={meta?.identity?.name} />
+          <HtmlPresenceBar />
           <button
             type="button"
             className={commentsOpen ? 'octo-tb-btn is-active' : 'octo-tb-btn'}
@@ -536,7 +555,7 @@ export function HtmlDocView({ docId, space, role, slug, version = 'latest' }: Ht
           slug={effectiveSlug}
           space={space}
           creatorUid={creatorUid}
-          currentUid={viewerUid}
+          canManage={canManage}
           onClose={() => setMembersOpen(false)}
         />
       )}

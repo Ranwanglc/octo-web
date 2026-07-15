@@ -544,11 +544,16 @@ describe('injectBaseHref', () => {
 describe('HtmlDocView — header parity (presence / comments / members / more)', () => {
   let wk: ReturnType<typeof createMockWKApp>
 
-  function serveDoc(htmlBody: string, meta?: Record<string, unknown>) {
+  function serveDoc(htmlBody: string, meta?: Record<string, unknown>, opts?: { isAuthor?: boolean }) {
     const inline = meta ? `<script>window.__ODOC__ = ${JSON.stringify(meta)};</script>` : ''
+    // Authorship is backend-decided and inlined as __ODOC_CAP__.isAuthor (see parseOdocCap).
+    const cap =
+      opts?.isAuthor === undefined
+        ? ''
+        : `<script>window.__ODOC_CAP__ = ${JSON.stringify({ isAuthor: opts.isAuthor })};</script>`
     return stubFetch((url) => {
       if (url.includes('/comments')) return jsonResponse({ data: [] })
-      return htmlResponse(`${inline}${htmlBody}`)
+      return htmlResponse(`${cap}${inline}${htmlBody}`)
     })
   }
 
@@ -585,7 +590,18 @@ describe('HtmlDocView — header parity (presence / comments / members / more)',
   })
 
   it('does NOT show the member management panel to a non-author viewer', async () => {
-    // viewer uid (u_viewer) ≠ creator uid → HtmlMemberPanel.canManage=false → renders null.
+    // Backend says not author (__ODOC_CAP__.isAuthor=false) → HtmlMemberPanel renders null,
+    // regardless of any __ODOC__.identity (which is the viewer itself, never proof of authorship).
+    serveDoc('<p>body</p>', { creator_uid: 'u_other' }, { isAuthor: false })
+    const { container } = render(<HtmlDocView docId="d1" space="sp" />)
+    await waitForFrame(container)
+    fireEvent.click(screen.getByTitle('docs.toolbar.members'))
+    expect(container.querySelector('.octo-member-panel')).toBeNull()
+  })
+
+  it('does NOT show member management when the author marker is absent (fail closed)', async () => {
+    // Legacy/streamed doc with no __ODOC_CAP__ → treated as non-author (the invited-viewer bug:
+    // previously a missing creator_uid made every viewer an author).
     serveDoc('<p>body</p>', { creator_uid: 'u_other' })
     const { container } = render(<HtmlDocView docId="d1" space="sp" />)
     await waitForFrame(container)
@@ -594,9 +610,8 @@ describe('HtmlDocView — header parity (presence / comments / members / more)',
   })
 
   it('shows the member management panel when the viewer IS the author', async () => {
-    wk.loginInfo.uid = 'u_owner'
-    setWKApp(wk)
-    serveDoc('<p>body</p>', { creator_uid: 'u_owner' })
+    // Backend-authoritative author flag drives the gate, not any client-side uid comparison.
+    serveDoc('<p>body</p>', { creator_uid: 'u_owner' }, { isAuthor: true })
     const { container } = render(<HtmlDocView docId="d1" space="sp" />)
     await waitForFrame(container)
     fireEvent.click(screen.getByTitle('docs.toolbar.members'))
@@ -623,6 +638,14 @@ describe('HtmlDocView — header parity (presence / comments / members / more)',
     // The neutral rows are present.
     expect(screen.getByText('docs.toolbar.history')).toBeTruthy()
     expect(screen.getByText('docs.standalone.openInNewPage')).toBeTruthy()
+  })
+
+  it('offers delete to the author in the ≡ menu', async () => {
+    serveDoc('<p>body</p>', { creator_uid: 'u_owner' }, { isAuthor: true })
+    const { container } = render(<HtmlDocView docId="d1" space="sp" />)
+    await waitForFrame(container)
+    fireEvent.click(container.querySelector('.octo-doc-more-btn') as HTMLElement)
+    expect(screen.getByText('docs.doc.deleteEntry')).toBeTruthy()
   })
 
   it('loads the version list when 历史版本 is chosen from the ≡ menu', async () => {

@@ -17,7 +17,7 @@ export function HtmlMemberPanel({
   slug,
   space,
   creatorUid,
-  currentUid,
+  canManage,
   onClose,
 }: {
   slug: string
@@ -25,16 +25,15 @@ export function HtmlMemberPanel({
   space?: string
   /** The doc creator (author). Shown as a locked owner row; never removable. */
   creatorUid?: string
-  /** The viewer's uid; management is offered only to the creator (author). */
-  currentUid?: string
+  /** Backend-authoritative author flag (window.__ODOC_CAP__.isAuthor). Management is offered
+   *  only when true; a viewer-side uid comparison is unsafe (see HtmlDocView parseOdocCap). */
+  canManage?: boolean
   onClose?: () => void
 }) {
   const [grants, setGrants] = useState<HtmlGrant[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [busy, setBusy] = useState(false)
-
-  const canManage = !!creatorUid && !!currentUid && creatorUid === currentUid
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -107,7 +106,7 @@ export function HtmlMemberPanel({
         <MemberPicker
           space={space}
           existingUids={existingUids}
-          hideUids={new Set([currentUid, creatorUid].filter(Boolean) as string[])}
+          hideUids={new Set([creatorUid].filter(Boolean) as string[])}
           onAdd={(uids: string[], _role: Role) => onAdd(uids)}
           busy={busy}
         />
