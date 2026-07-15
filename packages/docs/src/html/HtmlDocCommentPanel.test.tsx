@@ -240,7 +240,7 @@ describe('HtmlDocCommentPanel — "让 AI 处理" (trigger mode C, explicit)', (
         ],
       })
     )
-    render(<HtmlDocCommentPanel docId="d1" space="sp" slug="the-slug" version="v5" />)
+    render(<HtmlDocCommentPanel docId="d1" space="sp" slug="the-slug" version="v5" isAuthor />)
     await waitFor(() => expect(screen.getByText('make this formal')).toBeTruthy())
 
     const btn = screen.getByText('docs.comment.handleWithAI') as HTMLButtonElement
@@ -268,7 +268,7 @@ describe('HtmlDocCommentPanel — "让 AI 处理" (trigger mode C, explicit)', (
     setWKApp(wk)
 
     stubFetch(() => jsonResponse({ data: [{ id: 'c1', text: 'x', replies: [] }] }))
-    render(<HtmlDocCommentPanel docId="d1" space="sp" slug="s" version="v1" />)
+    render(<HtmlDocCommentPanel docId="d1" space="sp" slug="s" version="v1" isAuthor />)
     await waitFor(() => expect(screen.getByText('x')).toBeTruthy())
 
     const btn = screen.getByText('docs.comment.handleWithAI') as HTMLButtonElement
@@ -276,5 +276,19 @@ describe('HtmlDocCommentPanel — "让 AI 处理" (trigger mode C, explicit)', (
     fireEvent.click(btn)
     // No forward attempted even if clicked.
     expect(wk.openDocForwardCalls).toHaveLength(0)
+  })
+
+  it('hides "让 AI 处理" from non-authors (read-only viewers): button not rendered at all', async () => {
+    stubFetch(() => jsonResponse({ data: [{ id: 'c1', text: 'viewer sees no AI btn', replies: [] }] }))
+    render(<HtmlDocCommentPanel docId="d1" space="sp" slug="s" version="v1" isAuthor={false} />)
+    await waitFor(() => expect(screen.getByText('viewer sees no AI btn')).toBeTruthy())
+    expect(screen.queryByText('docs.comment.handleWithAI')).toBeNull()
+  })
+
+  it('renders "让 AI 处理" for authors', async () => {
+    stubFetch(() => jsonResponse({ data: [{ id: 'c1', text: 'author sees AI btn', replies: [] }] }))
+    render(<HtmlDocCommentPanel docId="d1" space="sp" slug="s" version="v1" isAuthor />)
+    await waitFor(() => expect(screen.getByText('author sees AI btn')).toBeTruthy())
+    expect(screen.getByText('docs.comment.handleWithAI')).toBeTruthy()
   })
 })

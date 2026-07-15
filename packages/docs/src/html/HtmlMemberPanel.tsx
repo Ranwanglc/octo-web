@@ -107,6 +107,7 @@ export function HtmlMemberPanel({
           space={space}
           existingUids={existingUids}
           hideUids={new Set([creatorUid].filter(Boolean) as string[])}
+          roles={['reader']}
           onAdd={(uids: string[], _role: Role) => onAdd(uids)}
           busy={busy}
         />

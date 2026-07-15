@@ -26,6 +26,9 @@ export interface HtmlDocCommentPanelProps {
   docId: string
   space: string
   role?: string
+  /** Backend-authoritative authorship (window.__ODOC_CAP__.isAuthor). Read-only viewers must not
+   *  see the "让 AI 处理" entry at all — it is an author-only forward to chat, not a viewer action. */
+  isAuthor?: boolean
   slug: string
   version: string
   /**
@@ -80,6 +83,7 @@ function CommentMeta({ author, createdAt }: { author?: OctoDocAuthor | null; cre
 export function HtmlDocCommentPanel({
   docId,
   space,
+  isAuthor,
   slug,
   version,
   pendingAnchor,
@@ -173,15 +177,17 @@ export function HtmlDocCommentPanel({
                   <p className="octo-html-doc-comment-reply-text">{r.text}</p>
                 </div>
               ))}
-              <button
-                type="button"
-                className="octo-tb-btn octo-html-doc-comment-ai"
-                disabled={!canForward}
-                title={forwardDisabledReason}
-                onClick={() => handleWithAI(thread)}
-              >
-                {t('docs.comment.handleWithAI')}
-              </button>
+              {isAuthor && (
+                <button
+                  type="button"
+                  className="octo-tb-btn octo-html-doc-comment-ai"
+                  disabled={!canForward}
+                  title={forwardDisabledReason}
+                  onClick={() => handleWithAI(thread)}
+                >
+                  {t('docs.comment.handleWithAI')}
+                </button>
+              )}
             </li>
           )
         })}

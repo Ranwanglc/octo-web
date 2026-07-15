@@ -256,7 +256,7 @@ function parseOdocCap(html: string): boolean {
   return m?.[1] === 'true'
 }
 
-export function HtmlDocView({ docId, space, role, slug, version = 'latest' }: HtmlDocViewProps) {
+export function HtmlDocView({ docId, space, slug, version = 'latest' }: HtmlDocViewProps) {
   const [state, setState] = useState<LoadState>({ status: 'loading' })
   // Guards a late fetch resolve from overwriting state after the docId/slug changed.
   const reqSeq = useRef(0)
@@ -611,7 +611,7 @@ export function HtmlDocView({ docId, space, role, slug, version = 'latest' }: Ht
             <HtmlDocCommentPanel
               docId={docId}
               space={space}
-              role={role}
+              isAuthor={isAuthor}
               slug={effectiveSlug}
               version={version}
               pendingAnchor={pendingAnchor}
