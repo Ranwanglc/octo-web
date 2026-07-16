@@ -173,8 +173,8 @@ describe('resolveDocTarget', () => {
   it('captures a forwarded /docs?doc= link at boot so a first-time recipient opens the doc, not the empty list (XIN-328)', () => {
     // End-to-end regression for the forward defect: unlike the "second blocker" test above,
     // the RECIPIENT has never opened this doc, so nothing is pre-persisted. The code-split
-    // DocsHome only mounts AFTER the host's pageshow re-push has already collapsed the URL to
-    // `/docs?sid=…`, so resolveDocTarget at mount time sees no `?doc=` and — without the boot
+    // DocsHome only mounts AFTER the host's pageshow route normalization has already removed
+    // the query, so resolveDocTarget at mount time sees no `?doc=` and — without the boot
     // capture — would return null → empty document list (the reported symptom).
     //
     // captureDocTargetDeepLink() runs at DocsModule.init() (app boot, BEFORE the re-push) and
@@ -182,7 +182,7 @@ describe('resolveDocTarget', () => {
     // the doc from that mirror even though the query is already wiped.
     window.location.search = '?space=sp9&folder=fd9&doc=d_forwarded'
     captureDocTargetDeepLink()
-    // Host RouteManager re-pushes pathname-only → URL collapses to /docs?sid=… (no doc).
+    // Host RouteManager re-pushes pathname-only → URL no longer carries doc addressing.
     window.location.search = '?sid=abc123'
     const opened = resolveDocTarget(window.location.search)
     expect(opened).toEqual({
@@ -403,11 +403,10 @@ describe('DocsHome navigation (split-pane)', () => {
     expect(assignSpy).not.toHaveBeenCalled()
   })
 
-  it('XIN-513/519: the standalone link opens with `?sp` (doc space) but no `?sid`, even when the in-shell URL carries a sid', async () => {
+  it('XIN-513/519: the standalone link opens with `?sp` (doc space) but no `?sid`, even when the shell has a session sid', async () => {
     const openSpy = vi.fn()
     Object.defineProperty(window, 'open', { configurable: true, writable: true, value: openSpy })
-    // In-shell URL carries the active session's sid (the host's RouteManager re-push collapses the
-    // docs route to `/docs?sid=…`). The opened standalone link must NOT copy that sid forward: an
+    // The shell has an active session sid. The opened standalone link must NOT copy that sid forward: an
     // already-logged-in user's session is recovered from storage independently of the URL (XIN-513),
     // so a sid-less `/d/:docId` opens the document directly. It MUST, however, carry `?sp` (the doc's
     // real space) so the recipient's standalone preflight can address the doc's own space — dropping
@@ -1642,6 +1641,159 @@ describe('DocsHome — type distinction + filter (XIN-1188)', () => {
         .filter((c) => c.method === 'get' && c.url.startsWith('/docs/recent?'))
         .at(-1)
       expect(lastRecent?.url).toContain('type=html')
+    })
+  })
+})
+
+// XIN-1236 (merged design): recent rows keep the creator on its own line, then show ONE merged
+// time line reporting only the LATEST event — "<updater> updated X" when the doc was updated after
+// the user last viewed it, otherwise "you viewed X". The two timestamps are never stacked, so the
+// creator's name can never be misread as the viewer/updater.
+describe('DocsHome — recent row merges viewed/updated into the latest event (XIN-1236)', () => {
+  function mountList(rows: Array<Record<string, unknown>>) {
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url.startsWith('/docs/recent/creators')) {
+        return { data: { creators: [{ uid: 'u_owner', name: 'Owner Name' }] }, status: 200 }
+      }
+      if (method === 'get' && url.startsWith('/docs/recent')) {
+        return { data: { total: rows.length, items: rows, nextCursor: null }, status: 200 }
+      }
+      if (method === 'get' && url.startsWith('/docs')) {
+        return { data: { total: 0, items: [] }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+    render(<DocsHome />)
+    return wk
+  }
+
+  async function rowFor(title: string): Promise<HTMLElement> {
+    return waitFor(() => {
+      const el = screen.getByText(title).closest('.octo-docs-list-item')
+      expect(el).toBeTruthy()
+      return el as HTMLElement
+    })
+  }
+
+  it('shows the creator line plus a single "you viewed" line when the view is the latest event', async () => {
+    // viewedAt (07-15) is newer than updatedAt (07-14): the merged line is the VIEW.
+    mountList([
+      {
+        docId: 'd_view',
+        title: 'Viewed Latest',
+        ownerId: 'u_owner',
+        role: 'admin',
+        docType: 'doc',
+        viewedAt: '2026-07-15T06:00:00.000Z',
+        updatedAt: '2026-07-14T06:00:00.000Z',
+        updatedBy: { uid: 'u_editor', name: 'Editor Name' },
+      },
+    ])
+    const row = await rowFor('Viewed Latest')
+
+    const creator = row.querySelector('.octo-docs-list-row-creator')
+    expect(creator).toBeTruthy()
+    expect(creator!.textContent).toContain('docs.list.createdBy')
+    expect(creator!.textContent).toContain('Owner Name')
+
+    // The view wins → a single "you viewed" line, and NO updated line stacked beneath it.
+    const viewed = row.querySelector('.octo-docs-list-row-viewed')
+    expect(viewed).toBeTruthy()
+    expect(viewed!.textContent).toContain('docs.list.viewedBySelf')
+    expect(row.querySelector('.octo-docs-list-row-updated')).toBeNull()
+  })
+
+  it('shows "<updater> updated X" (with the updater name) when the update is the latest event', async () => {
+    // updatedAt (07-16) is newer than viewedAt (07-15): the merged line is the UPDATE, labelled
+    // with the last-updater's name (XIN-1240 updatedBy), never the creator's.
+    mountList([
+      {
+        docId: 'd_upd',
+        title: 'Updated Latest',
+        ownerId: 'u_owner',
+        role: 'admin',
+        docType: 'doc',
+        viewedAt: '2026-07-15T06:00:00.000Z',
+        updatedAt: '2026-07-16T06:00:00.000Z',
+        updatedBy: { uid: 'u_editor', name: 'Editor Name' },
+      },
+    ])
+    const row = await rowFor('Updated Latest')
+
+    // The update wins → the updated line uses the named "updatedBy" label; no viewed line remains.
+    const updated = row.querySelector('.octo-docs-list-row-updated')
+    expect(updated).toBeTruthy()
+    expect(updated!.textContent).toContain('docs.list.updatedBy')
+    expect(updated!.getAttribute('title')).toBeTruthy()
+    expect(row.querySelector('.octo-docs-list-row-viewed')).toBeNull()
+    // Creator line still present and independent.
+    expect(row.querySelector('.octo-docs-list-row-creator')).toBeTruthy()
+  })
+
+  it('falls back to an unnamed "updated X" line when the update wins but updatedBy is null', async () => {
+    mountList([
+      {
+        docId: 'd_upd_anon',
+        title: 'Updated No Author',
+        ownerId: 'u_owner',
+        role: 'admin',
+        docType: 'doc',
+        viewedAt: '2026-07-15T06:00:00.000Z',
+        updatedAt: '2026-07-16T06:00:00.000Z',
+        updatedBy: null,
+      },
+    ])
+    const row = await rowFor('Updated No Author')
+
+    const updated = row.querySelector('.octo-docs-list-row-updated')
+    expect(updated).toBeTruthy()
+    // No updater name to show → the plain "updated" label, NOT the named "updatedBy" one.
+    expect(updated!.textContent).toContain('docs.list.updatedAt')
+    expect(updated!.textContent).not.toContain('docs.list.updatedBy')
+    expect(row.querySelector('.octo-docs-list-row-viewed')).toBeNull()
+  })
+
+  it('prefers the view when the two timestamps are equal (equal/very-close → viewed)', async () => {
+    mountList([
+      {
+        docId: 'd_eq',
+        title: 'Equal Times',
+        ownerId: 'u_owner',
+        role: 'admin',
+        docType: 'doc',
+        viewedAt: '2026-07-15T06:00:00.000Z',
+        updatedAt: '2026-07-15T06:00:00.000Z',
+        updatedBy: { uid: 'u_editor', name: 'Editor Name' },
+      },
+    ])
+    const row = await rowFor('Equal Times')
+
+    expect(row.querySelector('.octo-docs-list-row-viewed')).toBeTruthy()
+    expect(row.querySelector('.octo-docs-list-row-updated')).toBeNull()
+  })
+
+  it('omits recent-only markers on the "mine" tab (updated is shown inline there instead)', async () => {
+    mountList([
+      {
+        docId: 'd_view',
+        title: 'Viewed Latest',
+        ownerId: 'u_owner',
+        role: 'admin',
+        docType: 'doc',
+        viewedAt: '2026-07-15T06:00:00.000Z',
+        updatedAt: '2026-07-14T06:00:00.000Z',
+      },
+    ])
+    await waitFor(() => expect(screen.getByText('Viewed Latest')).toBeTruthy())
+
+    fireEvent.click(screen.getByText('docs.tab.mine'))
+    // The mine tab lists nothing here, so no recent-only markers should linger on screen.
+    await waitFor(() => {
+      expect(document.querySelector('.octo-docs-list-row-creator')).toBeNull()
+      expect(document.querySelector('.octo-docs-list-row-viewed')).toBeNull()
+      expect(document.querySelector('.octo-docs-list-row-updated')).toBeNull()
     })
   })
 })

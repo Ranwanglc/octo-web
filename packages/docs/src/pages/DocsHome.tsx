@@ -52,8 +52,8 @@ const IMPORT_ENABLED = true
  *
  * Why this exists: the octo host's self-built RouteManager (dmworkbase Service/Route.tsx)
  * handles `pageshow`/`popstate` by re-pushing `window.location.pathname` ONLY — it drops the
- * query string. So immediately after we navigate to `/docs?…&doc=<id>` the host re-pushes
- * `/docs` and the browser URL collapses to `/docs?sid=…`, wiping `?doc=`. That re-push fires
+ * query string. So immediately after we navigate to `/docs?…&doc=<id>` the host can normalize
+ * the browser URL back to the route pathname, wiping `?doc=`. That re-push fires
  * repeatedly, each time re-rendering DocsHome with an empty query. We cannot patch the host
  * (shared infra), so we mirror the target here: a deep-link or an in-app open writes it, and
  * resolveDocTarget falls back to it whenever the query no longer carries a doc. It is cleared
@@ -161,7 +161,7 @@ export function resolveDocTarget(search: string, uid?: string): DocTarget | null
   }
 
   // 1. Deep-link via query. Persist it so the editor stays addressable after the host's
-  //    pathname-only re-push wipes `?doc=` (the second-blocker root cause). Addressing stays a
+  //    pathname-only route normalization wipes `?doc=` (the second-blocker root cause). Addressing stays a
   //    single `?doc=` param (three-party-fixed), so the kind is resolved from the local board
   //    registry rather than a separate query param.
   if (queryDoc) {
@@ -659,13 +659,31 @@ function DocsList({
           : iconKind === 'html'
             ? t('docs.list.kindHtml')
             : t('docs.list.kindDoc')
-    // Recent rows show the creator inline + when the doc was VIEWED; mine rows keep the "updated"
-    // sub-line (frontend-design §2.1 / §5.1).
+    // Recent rows put the creator on its OWN line, then a SINGLE merged time line reporting only
+    // the LATEST event (XIN-1236 merged design). Mine rows keep the plain "updated" sub-line
+    // (frontend-design §2.1 / §5.1).
     const creator =
       activeView === 'recent'
         ? creatorName(d.ownerId, recentView.creatorOptions, nameFallback)
         : ''
-    const stampIso = activeView === 'recent' ? d.viewedAt || d.updatedAt : d.updatedAt
+    // Compare the current user's view time against the document's own update time; the later of
+    // the two is the event we surface. Equal / very-close / missing-update all prefer the VIEW
+    // (boss decision), so the update only "wins" when it is strictly newer than the view.
+    const viewedTime = d.viewedAt ? Date.parse(d.viewedAt) : NaN
+    const updatedTime = d.updatedAt ? Date.parse(d.updatedAt) : NaN
+    const updateIsLatest =
+      activeView === 'recent' &&
+      Number.isFinite(updatedTime) &&
+      (!Number.isFinite(viewedTime) || updatedTime > viewedTime)
+    // When the update wins, label it with WHO last updated the doc (XIN-1240 `updatedBy`={uid,name}).
+    // Prefer the backend-resolved name, fall back to the space member-name map by uid, and when no
+    // updater is known drop to an unnamed "更新于 X" line rather than guessing (never borrow the
+    // creator's name for the updater).
+    const updaterName =
+      (d.updatedBy?.name || '').trim() ||
+      (d.updatedBy?.uid ? nameFallback(d.updatedBy.uid) || '' : '')
+    // "mine" rows keep their existing single "updated" sub-line, unchanged.
+    const mineStampIso = activeView === 'mine' ? d.updatedAt : undefined
     return (
       <li
         key={d.docId}
@@ -708,23 +726,42 @@ function DocsList({
             >
               {label}
             </span>
-            {(creator || stampIso) && (
-              <span
-                className="octo-docs-list-row-sub"
-                title={stampIso ? formatAbsolute(stampIso) : undefined}
-              >
-                {activeView === 'recent' ? (
-                  <>
-                    {creator}
-                    {creator && stampIso ? ' · ' : ''}
-                    {stampIso ? `${t('docs.list.viewedAt')} ${formatRelative(stampIso)}` : ''}
-                  </>
-                ) : stampIso ? (
-                  <>
-                    {t('docs.list.updatedAt')} {formatRelative(stampIso)}
-                  </>
+            {activeView === 'recent' ? (
+              // Recent rows: creator on its own line, then ONE merged time line showing only the
+              // latest event — "<updater> 更新于 X" when the doc was updated AFTER the user last
+              // viewed it, otherwise "你查看于 X". Collapsing the two timestamps into a single
+              // most-recent line keeps the creator's name away from any "…于 X" time so the row can
+              // never be misread as "the creator viewed it" (XIN-1236 merged design).
+              <>
+                {creator && (
+                  <span className="octo-docs-list-row-sub octo-docs-list-row-creator">
+                    {t('docs.list.createdBy')} {creator}
+                  </span>
+                )}
+                {updateIsLatest && d.updatedAt ? (
+                  <span
+                    className="octo-docs-list-row-sub octo-docs-list-row-updated"
+                    title={formatAbsolute(d.updatedAt)}
+                  >
+                    {updaterName
+                      ? `${t('docs.list.updatedBy', { values: { name: updaterName } })} ${formatRelative(d.updatedAt)}`
+                      : `${t('docs.list.updatedAt')} ${formatRelative(d.updatedAt)}`}
+                  </span>
+                ) : d.viewedAt ? (
+                  <span
+                    className="octo-docs-list-row-sub octo-docs-list-row-viewed"
+                    title={formatAbsolute(d.viewedAt)}
+                  >
+                    {t('docs.list.viewedBySelf')} {formatRelative(d.viewedAt)}
+                  </span>
                 ) : null}
-              </span>
+              </>
+            ) : (
+              mineStampIso && (
+                <span className="octo-docs-list-row-sub" title={formatAbsolute(mineStampIso)}>
+                  {t('docs.list.updatedAt')} {formatRelative(mineStampIso)}
+                </span>
+              )
             )}
           </span>
         </button>
