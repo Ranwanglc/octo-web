@@ -1070,7 +1070,7 @@ export function DocsHome() {
     ) => {
       // Read-only HTML: NO editor/collab wiring — a human may only view it (comments arrive in 2b).
       if (docType === 'html') {
-        return <HtmlDocView key={docId} docId={docId} slug={octoDocSlug} space={space} />
+        return <HtmlDocView key={docId} docId={docId} slug={octoDocSlug} space={space} onDeleted={onDocDeleted} />
       }
       if (docType === 'sheet') {
         return (

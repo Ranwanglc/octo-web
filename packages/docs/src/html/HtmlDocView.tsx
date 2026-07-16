@@ -177,6 +177,8 @@ export interface HtmlDocViewProps {
   slug?: string
   /** Published version to render. Defaults to `latest` (octo-doc resolves the newest). */
   version?: string
+  /** Called after the doc is deleted so the shell returns to the list + refreshes it (mirror of SheetView). */
+  onDeleted?: (docId: string) => void
 }
 
 /**
@@ -253,7 +255,7 @@ function parseOdocCap(html: string): boolean {
   return m?.[1] === 'true'
 }
 
-export function HtmlDocView({ docId, space, slug, version = 'latest' }: HtmlDocViewProps) {
+export function HtmlDocView({ docId, space, slug, version = 'latest', onDeleted }: HtmlDocViewProps) {
   const [state, setState] = useState<LoadState>({ status: 'loading' })
   // Guards a late fetch resolve from overwriting state after the docId/slug changed.
   const reqSeq = useRef(0)
@@ -305,12 +307,14 @@ export function HtmlDocView({ docId, space, slug, version = 'latest' }: HtmlDocV
     deleteDoc(effectiveSlug)
       .then(() => {
         setConfirmDelete(false)
-        // No onBack prop on this surface → return to the previous page after delete.
-        if (typeof window !== 'undefined') window.history.back()
+        // Prefer the shell's onDeleted (returns to the list + refreshes it, mirror of SheetView);
+        // only fall back to history.back() on the standalone /d/ surface where no shell is present.
+        if (onDeleted) onDeleted(docId)
+        else if (typeof window !== 'undefined') window.history.back()
       })
       .catch(() => setDeleteError(t('docs.state.error')))
       .finally(() => setDeleting(false))
-  }, [effectiveSlug])
+  }, [effectiveSlug, onDeleted, docId])
 
   useEffect(() => {
     const seq = ++reqSeq.current
