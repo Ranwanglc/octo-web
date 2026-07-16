@@ -11,8 +11,14 @@
     "comingSoon": "即将上线",
     "kindDoc": "文档",
     "kindBoard": "画板",
+    "kindSheet": "表格",
     "back": "全部文档",
-    "updatedAt": "更新于"
+    "updatedAt": "更新于",
+    "viewedAt": "查看于",
+    "loadingMore": "加载中…",
+    "end": "没有更多了",
+    "loadMoreFailed": "加载更多失败",
+    "retry": "重试"
   },
   "board": {
     "readOnly": "只读",
@@ -138,6 +144,8 @@
     "highlight": "高亮",
     "textColor": "文字颜色",
     "customColor": "自定义颜色",
+    "hexInput": "十六进制颜色",
+    "hexPlaceholder": "#rrggbb",
     "table": "表格",
     "image": "图片",
     "file": "文件",
@@ -170,7 +178,25 @@
     "exportPdf": "导出为 PDF",
     "exportError": "导出文档失败，请重试。",
     "export": "导出",
-    "exportSignedLinkNotice": "此文档包含共享链接，请注意访问权限"
+    "exportSignedLinkNotice": "此文档包含共享链接，请注意访问权限",
+    "importCorrupt": "导入内容已损坏或无法解析，未能载入。"
+  },
+  "import": {
+    "word": "从 Word 导入",
+    "wordError": "无法解析该 Word 文档，请确认是有效的 .docx",
+    "wordTooLarge": "该 Word 文档过大或结构过于复杂，无法导入",
+    "markdown": "从 Markdown 导入",
+    "pdf": "从 PDF 导入",
+    "pdfError": "无法解析该 PDF，请确认是带文本层的有效 PDF",
+    "localImagesSkipped": "{{count}} 张本地图片未导入（仅支持网络图片 URL）",
+    "imageNotImported": "[图片: {{name}} 未导入]",
+    "imageMigrateFailed": "图片未能迁移到新文档（{{reason}}）",
+    "imagesMigratePartial": "部分图片未能迁移到新文档",
+    "externalImagesLinked": "部分外部图片未能保存到文档，已改为链接",
+    "mdOnly": "仅支持导入 Markdown 文件（.md / .markdown）",
+    "noFileChosen": "未选择文件",
+    "fileReadFailed": "文件读取失败",
+    "cancelled": "用户取消"
   },
   "slash": {
     "groupBasic": "基础",
@@ -193,7 +219,8 @@
     "bookmark": "书签",
     "collapsible": "折叠块",
     "callout": "标注",
-    "mathBlock": "公式块"
+    "mathBlock": "公式块",
+    "freeze": "冻结窗格"
   },
   "table": {
     "addRowBefore": "在上方插入行",
@@ -204,7 +231,14 @@
     "deleteColumn": "删除列",
     "deleteTable": "删除表格",
     "pickerHint": "选择尺寸",
-    "pickerLabel": "表格尺寸"
+    "pickerLabel": "表格尺寸",
+    "freeze": "冻结",
+    "freezeHeaderRow": "冻结首行",
+    "freezeThroughRow": "冻结到当前行",
+    "freezeFirstColumn": "冻结首列",
+    "freezeThroughColumn": "冻结到当前列",
+    "unfreeze": "取消冻结",
+    "reorderConflict": "表格已被协同修改，换序已取消，请重试。"
   },
   "callout": {
     "info": "信息",
@@ -372,6 +406,22 @@
     "reader": "只读",
     "writer": "可编辑",
     "admin": "管理员"
+  },
+  "share": {
+    "title": "链接分享范围",
+    "restricted": "仅协作者",
+    "restrictedHint": "仅协作者可访问",
+    "anyoneInSpace": "同空间任何人",
+    "anyoneInSpaceHint": "同空间任何人可访问",
+    "permission": "权限",
+    "role": {
+      "read": "可查看",
+      "edit": "可编辑"
+    },
+    "error": "更新分享设置失败，请重试。",
+    "loading": "正在加载分享设置…",
+    "loadError": "加载分享设置失败——当前分享范围未知。",
+    "retry": "重试"
   },
   "state": {
     "loading": "正在加载文档…",
@@ -542,5 +592,31 @@
     "pendingError": "加载待审批申请失败。",
     "approve": "同意",
     "deny": "拒绝"
+  },
+  "tab": {
+    "recent": "最近查看",
+    "mine": "我的文档"
+  },
+  "search": {
+    "placeholder": "按文件名搜索"
+  },
+  "filter": {
+    "creator": "创建者",
+    "type": "类型",
+    "clearAll": "清除全部",
+    "noCreators": "暂无创建者"
+  },
+  "empty": {
+    "recentNone": "你还没查看过任何文档",
+    "recentNoneCta": "去打开一篇文档",
+    "myDocsNone": "你还没有创建文档",
+    "myDocsNoneCta": "新建文档",
+    "searchNone": "没有匹配 “{{kw}}” 的文档",
+    "searchNoneCta": "清空搜索",
+    "filterNone": "所选创建者下没有你查看过的文档",
+    "filterNoneCta": "清除过滤",
+    "typeNone": "所选类型下没有文档",
+    "typeNoneCta": "清除类型",
+    "combinedNone": "无匹配结果"
   }
 }

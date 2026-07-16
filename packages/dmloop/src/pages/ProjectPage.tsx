@@ -12,8 +12,9 @@ import AssigneePicker from "../ui/AssigneePicker";
 import { confirmDelete } from "../ui/confirmDelete";
 import { formatRelativeTime } from "../ui/time";
 import { readView, writeView } from "../ui/viewMode";
+import { useIsWorkspaceAdmin } from "../ui/useWorkspaceAdmin";
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 type ViewMode = "list" | "card";
 const VIEW_KEY = "loop.project.viewMode";
@@ -44,6 +45,7 @@ function Ring({ done, total }: { done: number; total: number }) {
 
 export default function ProjectPage() {
   const { t, format } = useI18n();
+  const isAdmin = useIsWorkspaceAdmin();
   const [rows, setRows] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [keyword, setKeyword] = useState("");
@@ -146,14 +148,16 @@ export default function ProjectPage() {
           <span className="loop-project-list__cell loop-project-list__time loop-project-list__cell--muted">
             {formatRelativeTime(p.created_at, format)}
           </span>
-          <Button
-            theme="borderless"
-            type="danger"
-            size="small"
-            className="loop-project-list__del"
-            icon={<Trash2 size={14} />}
-            onClick={(e) => { e.stopPropagation(); confirmRemove(p.id); }}
-          />
+          {isAdmin && (
+            <Button
+              theme="borderless"
+              type="danger"
+              size="small"
+              className="loop-project-list__del"
+              icon={<Trash2 size={14} />}
+              onClick={(e) => { e.stopPropagation(); confirmRemove(p.id); }}
+            />
+          )}
         </div>
       ))}
     </div>
@@ -174,14 +178,16 @@ export default function ProjectPage() {
             </div>
             <div className="loop-project-card__sub">{p.lead_name ?? t("loop.assignee.unassigned")}</div>
           </div>
-          <Button
-            theme="borderless"
-            type="danger"
-            size="small"
-            className="loop-project-card__del"
-            icon={<Trash2 size={14} />}
-            onClick={(e) => { e.stopPropagation(); confirmRemove(p.id); }}
-          />
+          {isAdmin && (
+            <Button
+              theme="borderless"
+              type="danger"
+              size="small"
+              className="loop-project-card__del"
+              icon={<Trash2 size={14} />}
+              onClick={(e) => { e.stopPropagation(); confirmRemove(p.id); }}
+            />
+          )}
         </div>
       ))}
     </div>
@@ -190,7 +196,7 @@ export default function ProjectPage() {
   return (
     <div className="loop-page">
       <div className="loop-page__head">
-        <Title heading={4}>{t("loop.nav.project")}</Title>
+        <h2 className="loop-page__title">{t("loop.nav.project")}</h2>
         <Text type="tertiary" style={{ fontSize: 13 }}>{rows.length}</Text>
         <div className="loop-page__spacer" />
         <LoopButton icon={<Plus size={14} />} onClick={() => setCreateOpen(true)}>{t("loop.action.newProject")}</LoopButton>

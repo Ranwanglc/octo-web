@@ -366,6 +366,34 @@
   opacity: 0;
   cursor: pointer;
 }
+/* Inline hex entry (#719): an OS-independent way to type/paste an arbitrary #rrggbb alongside the
+   preset swatches and the native wheel. Sized to sit inline in the popover row; the invalid state
+   flags a hex that failed to parse (see normalizeHexColor) so it reads before the user hits Enter. */
+.octo-color-hex {
+  width: 74px;
+  height: 22px;
+  padding: 0 6px;
+  font-size: 12px;
+  color: var(--octo-fg);
+  background: var(--octo-bg);
+  border: 1px solid var(--octo-border);
+  border-radius: 4px;
+  box-sizing: border-box;
+}
+.octo-color-hex:focus {
+  outline: none;
+  border-color: var(--octo-accent);
+}
+/* Reuse the same invalid-input red the link field uses, so a rejected value reads consistently
+   across the toolbar. It is an intentional literal signal colour, not a themeable UI token —
+   declared as an exception to the hardcoded-colour policy (stylelint.ci.config.mjs → color-no-hex),
+   matching .octo-link-field.is-invalid. */
+/* stylelint-disable color-no-hex */
+.octo-color-hex-invalid,
+.octo-color-hex-invalid:focus {
+  border-color: #eb5757;
+}
+/* stylelint-enable color-no-hex */
 .octo-code-lang {
   border: 1px solid var(--octo-border);
   border-radius: 6px;
@@ -509,6 +537,41 @@
   line-height: 1;
   white-space: nowrap;
 }
+/* Trailing expander caret on a submenu-trigger row (#755 Freeze), pushed to the right edge. */
+.octo-tb-btn-caret {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--octo-muted, #8a919e);
+}
+/* Inline "Freeze" submenu inside the right-click menu (#755): a click-toggled accordion (no hover
+   flyout, no portal) so the sub-options open reliably. Indented under the Freeze row to read as a
+   nested group. */
+.octo-table-submenu {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  padding-left: 10px;
+  margin-left: 2px;
+  border-left: 2px solid var(--octo-border);
+}
+/* Freeze popover launched from the ribbon button (#755): same vertical row layout as the context
+   menu, floated under the toolbar button via the shared color-popover frame. */
+.octo-table-freeze-popover {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  min-width: 176px;
+}
+.octo-table-freeze-popover .octo-tb-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  width: 100%;
+  padding: 4px 8px;
+  text-align: left;
+}
 
 /* Grid picker for inserting a table at a chosen size (replaces the fixed 3×3). Floats under the
    toolbar button via the shared .octo-color-control / .octo-color-popover pattern. */
@@ -619,6 +682,62 @@
   background: var(--octo-hover);
   color: var(--octo-fg);
 }
+/* Table row/column reorder handles (octo-docs-backend#76). Slim grab bars pinned to the
+   row-left / column-top edges of the hovered cell by the TableReorderHandle plugin; dragging
+   one reorders that row/column. They live in the editor wrapper (outside the document) and are
+   positioned inline by the plugin. Kept clear of the column-resize handle (interior right edge)
+   and the block drag handle (further out in the left gutter). */
+.octo-table-reorder {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: var(--octo-hover);
+  border: 1px solid var(--octo-border);
+  border-radius: 4px;
+  color: var(--octo-muted, #8a919e);
+  z-index: 5;
+  box-sizing: border-box;
+}
+.octo-table-reorder:hover {
+  background: var(--octo-accent, #3370ff);
+  border-color: var(--octo-accent, #3370ff);
+  color: #fff;
+}
+.octo-table-reorder--col {
+  cursor: grab;
+}
+.octo-table-reorder--row {
+  cursor: grab;
+}
+.octo-table-reorder:active {
+  cursor: grabbing;
+}
+/* Grip dots: a row of dots on the column bar, a column of dots on the row bar. */
+.octo-table-reorder--col::before {
+  content: '⋯';
+  font-size: 14px;
+  line-height: 1;
+}
+.octo-table-reorder--row::before {
+  content: '⋮';
+  font-size: 14px;
+  line-height: 1;
+}
+/* Insertion caret shown while dragging: an accent line at the boundary the row/column lands on. */
+.octo-table-reorder-indicator {
+  display: none;
+  background: var(--octo-accent, #3370ff);
+  border-radius: 1px;
+  z-index: 6;
+  pointer-events: none;
+}
+/* While a reorder drag is in flight, suppress text selection everywhere so dragging over the
+   prose does not paint a selection, and force the grabbing cursor. */
+body.octo-table-reordering {
+  cursor: grabbing !important;
+  user-select: none !important;
+}
+
 /* Document outline / table of contents (LEFT rail, #3). Rendered before the editor main
    column so it sits to its left; default collapsed to a slim title bar. */
 .octo-outline {
@@ -1919,18 +2038,83 @@
   opacity: 0.12;
   pointer-events: none;
 }
+/* #749: the resize handle is the visible drag affordance. Keep the coloured bar thin
+   (2px) but stretch the interactive box to ~10px via a transparent hit area straddling
+   the border, so the pointer grabs the border comfortably instead of needing pixel-exact
+   aim. The visible bar is painted by the ::before pseudo-element; the element itself is
+   transparent padding. right:-5px centres the 10px box on the cell border (last column's
+   right edge included). z-index is intentionally NOT set here — the #755 freeze feature
+   owns lifting this handle above sticky frozen cells. */
 .octo-prose table .column-resize-handle {
   position: absolute;
-  right: -2px;
+  right: -5px;
   top: 0;
   bottom: 0;
-  width: 4px;
-  background: var(--octo-accent);
+  width: 10px;
+  background: transparent;
   cursor: col-resize;
   user-select: none;
 }
+.octo-prose table .column-resize-handle::before {
+  content: '';
+  position: absolute;
+  right: 3px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--octo-accent);
+}
+/* prosemirror-tables toggles `resize-cursor` on the editor root while the pointer is
+   armed over a column border. Without an explicit rule the col-resize cursor feedback
+   was missing, so users had no signal where the grab zone was (#749). */
+.octo-prose .ProseMirror.resize-cursor {
+  cursor: col-resize;
+}
 .octo-prose .tableWrapper {
   overflow-x: auto;
+}
+
+/* Table freeze panes (#755, XIN-1096). Freeze is VIEW-STATE: the TableFreeze plugin marks the first
+   N rows / columns of a table position:sticky (offsets measured + set inline by its view), so they
+   stay put while the body scrolls. Nothing is written to the Y.Doc — freeze is per-client and not
+   persisted across reload (see PR notes). The rules here supply the opaque backgrounds sticky cells
+   need (so scrolled content does not show through), the scroll box a frozen header sticks within,
+   and the separate-border treatment sticky cells require; positioning + z-index are set inline. */
+.octo-prose table td.octo-frozen-cell {
+  background: var(--octo-bg, #fff);
+}
+.octo-prose table th.octo-frozen-cell {
+  background: var(--octo-hover, #f2f3f5);
+}
+/* A frozen table must not use border-collapse:collapse (Chromium ignores position:sticky on
+   <td>/<th> under collapsed borders) and must not be its own scroll container (the default
+   overflow:hidden captures the sticky offset so the band scrolls away anyway — both confirmed in
+   the browser). Switch a frozen table to separate borders with no spacing, then redraw single 1px
+   lines: the table paints the outer top + left, each cell paints its own right + bottom. The class
+   is added by the plugin only while a table is frozen, so normal tables are untouched. */
+.octo-prose table.octo-frozen-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  overflow: visible;
+  border-top: 1px solid var(--octo-border);
+  border-left: 1px solid var(--octo-border);
+}
+.octo-prose table.octo-frozen-table td,
+.octo-prose table.octo-frozen-table th {
+  border-width: 0 1px 1px 0;
+}
+/* A frozen header needs a bounded vertical scroll container to stick within (the wrapper already
+   scrolls horizontally). Only applied while at least one row is frozen, so default tables that flow
+   in the page are unchanged. */
+.octo-prose .tableWrapper.octo-has-frozen-rows {
+  max-height: 60vh;
+  overflow-y: auto;
+}
+/* #749 interplay: sticky frozen cells create stacking contexts (z-index ≤ 4, set inline) that would
+   otherwise occlude the un-z-indexed column-resize handle at right:-2px, so a frozen column could
+   not be resized. Lift the handle above every frozen cell to keep column-width dragging working. */
+.octo-prose table .column-resize-handle {
+  z-index: 6;
 }
 
 /* Image node (SCHEMA-SPEC §2). The NodeView renders a wrapper + <img>; alignment is
@@ -2285,6 +2469,11 @@
   flex-direction: column;
   height: 100%;
   min-height: 0;
+  /* Establish an inline-size container so the toolbar can compact its filter
+     buttons based on the list's own width (it may render in a narrow panel,
+     not just the full viewport). Width is parent-driven, so this is layout-safe. */
+  container-type: inline-size;
+  container-name: octo-docs-list;
 }
 .octo-docs-list-header {
   display: flex;
@@ -2493,6 +2682,230 @@
   cursor: pointer;
   color: inherit;
 }
+
+/* ── FEAT-B: tabs + toolbar (search / creator filter) + infinite-scroll footer + empty states ──
+   Reuses the existing octo-docs list visual language (borders / radii / muted text colours); no
+   control library is introduced (frontend-design §4 / §5). */
+.octo-docs-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 0 4px;
+  margin-bottom: 8px;
+}
+.octo-docs-tab {
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  color: var(--octo-fg-3, #86909c);
+  border-bottom: 2px solid transparent;
+  transition: color 0.12s ease, border-color 0.12s ease;
+}
+.octo-docs-tab:hover {
+  color: var(--octo-fg, #1f2329);
+}
+.octo-docs-tab-active {
+  color: var(--octo-active-fg, #1664ff);
+  border-bottom-color: var(--octo-active-fg, #1664ff);
+}
+
+.octo-docs-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+.octo-docs-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 140px;
+  min-width: 96px;
+  border: 1px solid var(--octo-border, #e5e6eb);
+  border-radius: 6px;
+  padding: 4px 8px;
+  background: var(--octo-bg, #fff);
+}
+.octo-docs-search-icon {
+  display: inline-flex;
+  color: var(--octo-fg-3, #86909c);
+}
+.octo-docs-search-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 13px;
+  color: var(--octo-fg, #1f2329);
+}
+.octo-docs-search-clear {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  color: var(--octo-fg-3, #86909c);
+  padding: 0 2px;
+}
+.octo-docs-search-clear:hover {
+  color: var(--octo-fg, #1f2329);
+}
+
+.octo-docs-filter-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+.octo-docs-filter {
+  position: relative;
+  flex: 0 0 auto;
+}
+.octo-docs-filter-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--octo-border, #e5e6eb);
+  background: var(--octo-bg, #fff);
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--octo-fg, #1f2329);
+}
+.octo-docs-filter-btn:hover {
+  background: var(--octo-hover-bg, #f2f3f5);
+}
+.octo-docs-filter-btn-active {
+  border-color: var(--octo-active-fg, #1664ff);
+  color: var(--octo-active-fg, #1664ff);
+}
+/* Narrow tier: tighten the filter buttons so search + both filters hold one
+   more width step before the filter group wraps to a second row. */
+@container octo-docs-list (max-width: 340px) {
+  .octo-docs-filter-btn {
+    padding: 4px 8px;
+    gap: 3px;
+  }
+}
+.octo-docs-filter-caret {
+  font-size: 9px;
+  opacity: 0.9;
+}
+.octo-docs-filter-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--octo-fg, #1f2329);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.octo-docs-filter-option:hover {
+  background: var(--octo-hover-bg, #f2f3f5);
+}
+.octo-docs-filter-option-empty {
+  color: var(--octo-fg-3, #86909c);
+  cursor: default;
+}
+.octo-docs-filter-option-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+}
+.octo-docs-filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 0 4px;
+  margin-bottom: 8px;
+}
+.octo-docs-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--octo-active-bg, #e8f3ff);
+  color: var(--octo-active-fg, #1664ff);
+  border-radius: 12px;
+  padding: 2px 6px 2px 10px;
+  font-size: 12px;
+}
+.octo-docs-filter-chip-x {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: inherit;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 2px;
+}
+.octo-docs-filter-clear {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--octo-fg-3, #86909c);
+  text-decoration: underline;
+}
+.octo-docs-filter-clear:hover {
+  color: var(--octo-fg, #1f2329);
+}
+
+/* Infinite-scroll footer (sentinel row): loading / end / retry. No Suspense. */
+.octo-docs-list-more,
+.octo-docs-list-end {
+  list-style: none;
+  text-align: center;
+  padding: 12px 10px;
+  font-size: 12px;
+  color: var(--octo-fg-3, #86909c);
+}
+.octo-docs-list-more-error {
+  color: var(--octo-danger, #f53f3f);
+}
+.octo-docs-list-more-btn {
+  border: 1px solid var(--octo-border, #e5e6eb);
+  background: transparent;
+  border-radius: 6px;
+  padding: 4px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  color: inherit;
+}
+
+/* Empty states A–E: title + CTA button(s). */
+.octo-docs-empty-title {
+  margin: 0 0 12px;
+  color: var(--octo-fg-2, #4e5969);
+  font-size: 14px;
+}
+.octo-docs-empty-cta {
+  border: 1px solid var(--octo-active-fg, #1664ff);
+  background: transparent;
+  color: var(--octo-active-fg, #1664ff);
+  border-radius: 6px;
+  padding: 6px 16px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.octo-docs-empty-cta:hover {
+  background: var(--octo-active-bg, #e8f3ff);
+}
+.octo-docs-empty-actions {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+}
+
 
 /* ─────────────────────────────────────────────────────────────────────────
    Batch-3 schema toolbar items (SCHEMA_VERSION 5–13)
@@ -2750,7 +3163,8 @@
 .octo-file-status,
 .octo-file-error,
 .octo-bookmark-status,
-.octo-bookmark-error {
+.octo-bookmark-error,
+.octo-table-reorder-error {
   position: fixed;
   bottom: 16px;
   left: 50%;
@@ -2767,7 +3181,8 @@
   background: var(--octo-accent, #1664ff);
 }
 .octo-file-error,
-.octo-bookmark-error {
+.octo-bookmark-error,
+.octo-table-reorder-error {
   background: #e03131;
 }
 
