@@ -17,6 +17,10 @@
  *     不埋 TODO 注释，见 issue comment。
  */
 import React, { useRef, useState } from "react";
+// 只引 i18n 叶子实例（instance.ts 仅依赖 I18nService + JSON，不触达 React /
+// @douyinfe/semi-ui / lottie 重链），保持 DocTab 作为纯骨架叶子组件——与本仓
+// "避免引入 lottie 链" 的既有约定一致，不污染 DocTab.test 的 import 图。
+import { t } from "../../i18n/instance";
 
 export interface DocTabProps {
   /** doc 服务渲染 URL，如 https://d.example.com/d/<slug>/v/1 或首页 /me。 */
@@ -36,8 +40,8 @@ export interface DocTabProps {
  */
 const DocTab: React.FC<DocTabProps> = ({
   src,
-  emptyText = "暂无文档",
-  loadingText = "加载中…",
+  emptyText,
+  loadingText,
   className,
   title = "octo-doc",
 }) => {
@@ -49,7 +53,7 @@ const DocTab: React.FC<DocTabProps> = ({
   if (!src) {
     return (
       <div className={`${rootCls} wk-doc-tab--empty`} data-testid="doc-tab-empty">
-        {emptyText}
+        {emptyText ?? t("base.docTab.empty")}
       </div>
     );
   }
@@ -58,7 +62,7 @@ const DocTab: React.FC<DocTabProps> = ({
     <div className={rootCls} data-testid="doc-tab">
       {loading && (
         <div className="wk-doc-tab__loading" data-testid="doc-tab-loading">
-          {loadingText}
+          {loadingText ?? t("base.docTab.loading")}
         </div>
       )}
       <iframe
