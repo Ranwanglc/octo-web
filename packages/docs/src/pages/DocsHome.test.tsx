@@ -1568,6 +1568,7 @@ describe('DocsHome — type distinction + filter (XIN-1188)', () => {
     { docId: 'd_doc', title: 'A Doc', ownerId: 'u_o', role: 'admin', docType: 'doc', viewedAt: '2026-07-15T06:00:00.000Z' },
     { docId: 'd_sheet', title: 'A Sheet', ownerId: 'u_o', role: 'admin', docType: 'sheet', viewedAt: '2026-07-15T05:00:00.000Z' },
     { docId: 'd_board', title: 'A Board', ownerId: 'u_o', role: 'admin', docType: 'board', viewedAt: '2026-07-15T04:00:00.000Z' },
+    { docId: 'd_html', title: 'A Web Page', ownerId: 'u_o', role: 'admin', docType: 'html', octoDocSlug: 'sp/fd/html-slug', viewedAt: '2026-07-15T03:00:00.000Z' },
   ]
 
   function mountList() {
@@ -1599,6 +1600,13 @@ describe('DocsHome — type distinction + filter (XIN-1188)', () => {
     expect(screen.getByLabelText('docs.list.kindBoard')).toBeTruthy()
   })
 
+  it('renders the HTML row with its own kindHtml icon (distinct from doc/sheet/board)', async () => {
+    mountList()
+    await waitFor(() => expect(screen.getByText('A Web Page')).toBeTruthy())
+    // The html row carries its own aria-label/title on the row icon (HtmlRowIcon).
+    expect(screen.getByLabelText('docs.list.kindHtml')).toBeTruthy()
+  })
+
   it('shows the type filter on both tabs and drives a multi-select OR request', async () => {
     const wk = mountList()
     await waitFor(() => expect(screen.getByText('A Sheet')).toBeTruthy())
@@ -1620,5 +1628,20 @@ describe('DocsHome — type distinction + filter (XIN-1188)', () => {
     // Switch to the mine tab — the type filter is still rendered there.
     fireEvent.click(screen.getByText('docs.tab.mine'))
     await waitFor(() => expect(screen.getByText('docs.filter.type')).toBeTruthy())
+  })
+
+  it('offers html as a selectable type-filter option driving a type=html request', async () => {
+    const wk = mountList()
+    await waitFor(() => expect(screen.getByText('A Web Page')).toBeTruthy())
+
+    // Open the type dropdown — the html option is present alongside doc/sheet/board.
+    fireEvent.click(screen.getByText('docs.filter.type'))
+    fireEvent.click(screen.getByText('docs.list.kindHtml'))
+    await waitFor(() => {
+      const lastRecent = wk.apiClient.calls
+        .filter((c) => c.method === 'get' && c.url.startsWith('/docs/recent?'))
+        .at(-1)
+      expect(lastRecent?.url).toContain('type=html')
+    })
   })
 })

@@ -9,12 +9,12 @@ import type { Role } from '../auth/roles.ts'
 
 /**
  * Document kind enum — the wire contract for `doc_type`, authored in lockstep with the backend
- * (octo-docs-backend `DOC_TYPES` in src/db/docType.ts and the `doc_meta.doc_type` column). The three
+ * (octo-docs-backend `DOC_TYPES` in src/db/docType.ts and the `doc_meta.doc_type` column). These
  * values are the single source of truth on BOTH sides: the list distinguishes them by row icon and
  * the type filter narrows the recent/mine feeds on them (`?type=doc&type=sheet`). Never mock a value
  * that the backend does not persist — a drifting enum is exactly the assumed-wire trap FEAT-B avoids.
  */
-export const DOC_TYPES = ['doc', 'sheet', 'board'] as const
+export const DOC_TYPES = ['doc', 'sheet', 'board', 'html'] as const
 export type DocType = (typeof DOC_TYPES)[number]
 
 export interface DocListItem {

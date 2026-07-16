@@ -12,6 +12,7 @@
     "kindDoc": "Document",
     "kindBoard": "Board",
     "kindSheet": "Spreadsheet",
+    "kindHtml": "HTML",
     "back": "All documents",
     "updatedAt": "Updated",
     "viewedAt": "Viewed",

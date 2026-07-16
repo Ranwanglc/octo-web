@@ -317,6 +317,26 @@ function SheetRowIcon(): React.ReactElement {
 }
 
 /**
+ * HTML row glyph — a document outline with a `</>` angle-bracket mark in the center to identify a
+ * web/HTML doc, drawn in the same stroked style (no fill blocks) as the doc/board/sheet glyphs so a
+ * `docType==='html'` row reads as a peer of the other three kinds.
+ */
+function HtmlRowIcon(): React.ReactElement {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M4 1.5h5L12.5 5v9a.5.5 0 0 1-.5.5H4a.5.5 0 0 1-.5-.5V2a.5.5 0 0 1 .5-.5Z"
+        stroke="currentColor"
+        strokeWidth="1"
+        fill="none"
+      />
+      <path d="M9 1.5V5h3.5" stroke="currentColor" strokeWidth="1" fill="none" />
+      <path d="M7 8.5 5.5 10 7 11.5M9 8.5 10.5 10 9 11.5" stroke="currentColor" strokeWidth="1" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+/**
  * Layered empty states A–F (frontend-design §5.3). Each variant carries its OWN i18n title + CTA
  * keys — A ("看", browse) and B ("建", create) are deliberately NOT merged (product MF1). C/D/F cover
  * a single "condition matched nothing" (search / creator / type) and offer that one clear
@@ -624,17 +644,21 @@ function DocsList({
     // plain doc — the three-way distinction so a spreadsheet never renders as a document icon
     // (XIN-1188). Independent of `knownKind` above, which stays `undefined` for an unresolved
     // shared row so openDoc can still resolve the authoritative shell via getDoc.
-    const iconKind: 'board' | 'sheet' | 'doc' = board
+    const iconKind: 'board' | 'sheet' | 'html' | 'doc' = board
       ? 'board'
       : d.docType === 'sheet'
         ? 'sheet'
-        : 'doc'
+        : d.docType === 'html'
+          ? 'html'
+          : 'doc'
     const kindLabel =
       iconKind === 'board'
         ? t('docs.list.kindBoard')
         : iconKind === 'sheet'
           ? t('docs.list.kindSheet')
-          : t('docs.list.kindDoc')
+          : iconKind === 'html'
+            ? t('docs.list.kindHtml')
+            : t('docs.list.kindDoc')
     // Recent rows show the creator inline + when the doc was VIEWED; mine rows keep the "updated"
     // sub-line (frontend-design §2.1 / §5.1).
     const creator =
@@ -668,6 +692,8 @@ function DocsList({
               <BoardRowIcon />
             ) : iconKind === 'sheet' ? (
               <SheetRowIcon />
+            ) : iconKind === 'html' ? (
+              <HtmlRowIcon />
             ) : (
               <DocRowIcon />
             )}
