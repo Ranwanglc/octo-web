@@ -3123,3 +3123,26 @@
   font-style: normal;
 }
 
+
+/* Prominent primary action button for html-doc UI (send comment / add member / handle-with-AI).
+   Defined here (globally loaded) so MemberPicker in members/ picks it up too.
+   Mirrors the existing primary范式 .octo-docs-list-new: color via --octo-active-fg token; this
+   octo-* CSS subsystem has no radius/spacing/size tokens, so those reuse the same范式 literals. */
+.octo-doc-primary-btn {
+  border: none;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  color: #fff;
+  background: var(--octo-active-fg, #1664ff);
+  transition: background 0.15s ease;
+}
+.octo-doc-primary-btn:hover:not(:disabled) {
+  background: var(--octo-active-fg-hover, #0e4fd6);
+}
+.octo-doc-primary-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}

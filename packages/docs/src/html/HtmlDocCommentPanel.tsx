@@ -205,7 +205,7 @@ export function HtmlDocCommentPanel({
               {isAuthor && (
                 <button
                   type="button"
-                  className="octo-tb-btn octo-html-doc-comment-ai"
+                  className="octo-html-doc-comment-ai octo-doc-primary-btn"
                   disabled={!canForward}
                   title={forwardDisabledReason}
                   onClick={() => handleWithAI(thread)}
@@ -239,7 +239,7 @@ export function HtmlDocCommentPanel({
           placeholder={t('docs.comment.placeholder')}
           onChange={(e) => setDraft(e.target.value)}
         />
-        <button type="button" className="octo-tb-btn" disabled={busy || draft.trim() === ''} onClick={submit}>
+        <button type="button" className="octo-doc-primary-btn" disabled={busy || draft.trim() === ''} onClick={submit}>
           {t('docs.comment.send')}
         </button>
       </div>

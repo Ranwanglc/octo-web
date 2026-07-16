@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type { Role } from '../auth/roles.ts'
 import { t } from '../octoweb/index.ts'
 import { MemberPicker } from '../members/MemberPicker.tsx'
+import { useMemberNames } from '../members/useMemberNames.ts'
 import { listGrants, addGrant, removeGrant, type HtmlGrant } from './htmlGrantsApi.ts'
 
 // Member panel for HTML docs. Reuses the rich-doc MemberPicker (selection UI) and
@@ -30,6 +31,8 @@ export function HtmlMemberPanel({
   canManage?: boolean
   onClose?: () => void
 }) {
+  // uid → display name for member rows (falls back to uid until the roster resolves).
+  const names = useMemberNames(space ?? '')
   const [grants, setGrants] = useState<HtmlGrant[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -125,7 +128,7 @@ export function HtmlMemberPanel({
           return (
             <div className="octo-member-row" key={m.uid}>
               <span className="octo-uid">
-                {m.uid}{' '}
+                {names.get(m.uid) || m.uid}{' '}
                 {isOwner && <span className="octo-owner-badge">{t('docs.member.ownerBadge')}</span>}
                 {!isOwner && <small style={{ color: 'var(--octo-muted)' }}> · {t('docs.role.reader')}</small>}
               </span>
