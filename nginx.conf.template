@@ -98,6 +98,72 @@ server {
             client_max_body_size 100m;
         }
 
+        # octo-doc HTML render + agent-auth token passthrough. Upstream is env-driven
+        # (${DOC_APP_URL}) so the image ports to any environment via .env, no conf edit.
+        # The `token` header carries the octo login token for doc-side identity verify.
+        location /d/ {
+            proxy_pass ${DOC_APP_URL};
+            proxy_set_header token $http_token;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        }
+
+        # octo-doc HTML comments/reactions: frontend calls same-origin /comments|/reactions
+        # (no /v1); rewrite to the doc's /v1/* and pass the octo token for identity.
+        location /comments {
+            rewrite ^/comments(.*)$ /v1/comments$1 break;
+            proxy_pass ${DOC_APP_URL};
+            proxy_set_header token $http_token;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        }
+        location /reactions {
+            rewrite ^/reactions(.*)$ /v1/reactions$1 break;
+            proxy_pass ${DOC_APP_URL};
+            proxy_set_header token $http_token;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        }
+
+        # octo-doc HTML per-doc reader grants: frontend calls same-origin
+        # /grants/{slug}[/{uid}]; rewrite to the doc's /v1/docs/{slug}/grants[/{uid}]
+        # and pass the octo token for identity. Top-level /grants prefix avoids the
+        # SPA's own /docs route. DELETE .../{uid} rewrite must precede GET/PUT.
+        location /grants/ {
+            rewrite ^/grants/([^/]+)/(.+)$ /v1/docs/$1/grants/$2 break;
+            rewrite ^/grants/([^/]+)$      /v1/docs/$1/grants      break;
+            proxy_pass ${DOC_APP_URL};
+            proxy_set_header token $http_token;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        }
+
+        # octo-doc HTML doc admin (delete): frontend calls same-origin /docs-admin/{slug};
+        # rewrite to the doc's /v1/docs/{slug} and pass the octo token for identity. Top-level
+        # /docs-admin prefix avoids the SPA's /docs route and the /v1/ block below (proxied to
+        # octo-server, which has no doc delete endpoint).
+        location /docs-admin/ {
+            rewrite ^/docs-admin/(.+)$ /v1/docs/$1 break;
+            proxy_pass ${DOC_APP_URL};
+            proxy_set_header token $http_token;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        }
+
+        # octo-docs-backend (doc_meta list/registration). Env-driven upstream ${DOCS_BACKEND_URL}.
+        location /api/v1/docs {
+            proxy_pass ${DOCS_BACKEND_URL};
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            client_max_body_size 1000m;
+        }
+
         location /api/ {
             proxy_pass  ${API_URL}/;
             client_max_body_size 1000m;
