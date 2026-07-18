@@ -189,9 +189,11 @@ export interface HtmlDocViewProps {
  *   1. `window.__OCTO_DOC_BASE__` — runtime injection (host config / index.html), so the
  *      same bundle points at different octo-doc origins per environment without a rebuild.
  *   2. `import.meta.env.VITE_OCTO_DOC_BASE` — build-time override.
- *   3. Empty string — resolve RELATIVE to the page origin (i.e. octo-doc reverse-proxied
- *      under the same host). This is a safe default; a deployment where octo-doc lives
- *      elsewhere must set one of the two overrides above.
+ *   3. Default `/docs-html` — a same-origin unified prefix. All web→octo-doc traffic
+ *      (render `/d/…`, comments, reactions, grants, docs-admin, versions) is namespaced
+ *      under this one prefix so it is easy to govern and cannot collide with SPA or other
+ *      service routes. The web nginx reverse-proxies `/docs-html/*` to octo-doc (stripping
+ *      the prefix). A deployment where octo-doc lives elsewhere sets one of the overrides above.
  */
 export function resolveOctoDocBase(): string {
   const runtime =
@@ -202,8 +204,8 @@ export function resolveOctoDocBase(): string {
       ? (import.meta as unknown as { env?: { VITE_OCTO_DOC_BASE?: string } }).env?.VITE_OCTO_DOC_BASE
       : undefined
   if (typeof env === 'string' && env.trim()) return env.trim().replace(/\/+$/, '')
-  // Same-origin default: octo-doc proxied under the current host.
-  return ''
+  // Same-origin unified prefix: octo-doc reverse-proxied under /docs-html (see web nginx).
+  return '/docs-html'
 }
 
 /** Build the octo-doc read-only render URL: `<base>/d/{slug}/v/{version}`. */

@@ -80,8 +80,8 @@ describe('resolveOctoDocBase / buildOctoDocUrl', () => {
     expect(resolveOctoDocBase()).toBe('https://octo-doc.example.com')
   })
 
-  it('defaults to same-origin (empty base) when nothing is configured', () => {
-    expect(resolveOctoDocBase()).toBe('')
+  it('defaults to the same-origin /docs-html unified prefix when nothing is configured', () => {
+    expect(resolveOctoDocBase()).toBe('/docs-html')
   })
 
   it('builds the octo-doc read-only URL `<base>/d/{slug}/v/{version}`', () => {
@@ -232,7 +232,7 @@ describe('HtmlDocView — read-only rendering', () => {
     })
     const { container } = render(<HtmlDocView docId="d1" space="sp" slug="published-slug" version="v7" />)
     await waitForFrame(container)
-    expect(String(spy.mock.calls[0][0])).toBe('/d/published-slug/v/v7')
+    expect(String(spy.mock.calls[0][0])).toBe('/docs-html/d/published-slug/v/v7')
   })
 
   it('shows a loading state before the fetch resolves', async () => {
