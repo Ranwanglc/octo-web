@@ -44,6 +44,7 @@ export function MemberPicker({
   existingUids,
   hideUids,
   roles = DEFAULT_ROLES,
+  disabledRoles,
   onAdd,
   busy,
 }: {
@@ -57,6 +58,10 @@ export function MemberPicker({
   /** Grantable roles for the dropdown. Default = all three (rich-doc unchanged). HTML docs pass
    *  ['reader'] so only the single "只读" option shows — backend grants only accept reader there. */
   roles?: Role[]
+  /** Roles rendered but non-selectable (option shown greyed). HTML surfaces writer/admin here
+   *  so the dropdown communicates the role model without letting the caller pick one — the
+   *  backend still only accepts reader (three fences: dropdown, initial state, addGrant literal). */
+  disabledRoles?: Role[]
   /** Add the chosen members (one or many) with the chosen role. */
   onAdd: (uids: string[], role: Role) => Promise<void> | void
   /** True while a parent add/refresh is in flight (disables the Add button). */
@@ -64,15 +69,20 @@ export function MemberPicker({
 }) {
   // An empty roles={[]} would yield an undefined role + empty dropdown; fall back to defaults.
   const effectiveRoles = roles.length > 0 ? roles : DEFAULT_ROLES
+  const disabledSet = useMemo(() => new Set(disabledRoles ?? []), [disabledRoles])
   const [members, setMembers] = useState<SpaceMemberLite[]>([])
   const [loading, setLoading] = useState(false)
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<Set<string>>(new Set())
-  // Default to 'writer' when offered (keeps rich-doc's prior initial), else the sole/first role
-  // so a single-role dropdown ('reader' for HTML) is selected without an empty state.
-  const [role, setRole] = useState<Role>(
-    effectiveRoles.includes('writer') ? 'writer' : effectiveRoles[0],
-  )
+  // Initial role: prefer 'writer' (rich-doc's prior default), else the first offered role.
+  // Skip disabledRoles first so HTML (roles=[reader,writer,admin] + disabled=[writer,admin])
+  // starts at reader instead of a greyed writer; fall back to effectiveRoles if the filter
+  // empties the pool (caller misconfig — a valid role beats undefined).
+  const [role, setRole] = useState<Role>(() => {
+    const selectable = effectiveRoles.filter((r) => !disabledSet.has(r))
+    const pool = selectable.length > 0 ? selectable : effectiveRoles
+    return pool.includes('writer') ? 'writer' : pool[0]
+  })
 
   useEffect(() => {
     let active = true
@@ -186,7 +196,7 @@ export function MemberPicker({
       <div className="octo-member-picker-actions">
         <select value={role} onChange={(e) => setRole(e.target.value as Role)}>
           {effectiveRoles.map((r) => (
-            <option key={r} value={r}>
+            <option key={r} value={r} disabled={disabledSet.has(r)}>
               {t(`docs.role.${r}`)}
             </option>
           ))}

@@ -115,6 +115,44 @@ describe('MemberPicker (Problem 1)', () => {
     expect(onAdd).toHaveBeenCalledWith(['u_ada'], 'reader')
   })
 
+  it('renders disabledRoles as greyed <option>s (HTML: reader/writer/admin + disabled writer/admin)', async () => {
+    render(
+      <MemberPicker
+        space="s_1"
+        existingUids={new Set()}
+        roles={['reader', 'writer', 'admin']}
+        disabledRoles={['writer', 'admin']}
+        onAdd={() => {}}
+      />,
+    )
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeTruthy())
+    const roleOptions = (screen.getAllByRole('option') as HTMLElement[]).filter(
+      (o) => o.tagName === 'OPTION',
+    ) as HTMLOptionElement[]
+    expect(roleOptions.map((o) => o.value)).toEqual(['reader', 'writer', 'admin'])
+    const byValue = Object.fromEntries(roleOptions.map((o) => [o.value, o]))
+    expect(byValue.reader.disabled).toBe(false)
+    expect(byValue.writer.disabled).toBe(true)
+    expect(byValue.admin.disabled).toBe(true)
+  })
+
+  it('initial role skips disabledRoles so onAdd carries reader (HTML three-fence)', async () => {
+    const onAdd = vi.fn()
+    render(
+      <MemberPicker
+        space="s_1"
+        existingUids={new Set()}
+        roles={['reader', 'writer', 'admin']}
+        disabledRoles={['writer', 'admin']}
+        onAdd={onAdd}
+      />,
+    )
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeTruthy())
+    fireEvent.click(screen.getByText('Ada Lovelace'))
+    fireEvent.click(screen.getByText('docs.member.add').closest('button') as HTMLButtonElement)
+    expect(onAdd).toHaveBeenCalledWith(['u_ada'], 'reader')
+  })
+
   it('falls back to the three default roles when roles={[]} (empty is a no-op, not a foot-gun)', async () => {
     const onAdd = vi.fn()
     render(<MemberPicker space="s_1" existingUids={new Set()} roles={[]} onAdd={onAdd} />)
