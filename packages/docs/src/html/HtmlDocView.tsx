@@ -23,6 +23,7 @@ import { HtmlDocCommentPanel } from './HtmlDocCommentPanel.tsx'
 import { HtmlMemberPanel } from './HtmlMemberPanel.tsx'
 import { HtmlPresenceBar } from './HtmlPresenceBar.tsx'
 import { deleteDoc } from './htmlDocAdmin.ts'
+import { htmlGrantForwardMany } from './htmlGrantsApi.ts'
 import { ConfirmModal } from '../editor/ConfirmModal.tsx'
 import {
   DocMoreMenu,
@@ -317,10 +318,19 @@ export function HtmlDocView({ docId, space, slug, version = 'latest', onDeleted 
 
   const doForward = useCallback(() => {
     if (!canForward) return
-    // Doc-level forward: the whole document link (not a specific comment). canGrant=false — this
-    // shares a read link, not an access grant.
-    openDocForward({ docId, title: headerTitle, link: docUrl, canGrant: false })
-  }, [canForward, docId, headerTitle, docUrl])
+    // Owner (isAuthor) may grant reader on forward; others only send the link. isAuthor is the
+    // backend-authoritative flag — __ODOC__ carries no creator_uid, so a viewer-uid compare is a bug.
+    const canGrant = isAuthor
+    openDocForward({
+      docId,
+      title: headerTitle,
+      link: docUrl,
+      canGrant,
+      defaultRole: 'reader',
+      disabledReason: t('docs.forward.grantDisabledReason'),
+      grantAccess: canGrant ? (uids, role) => htmlGrantForwardMany(effectiveSlug, uids, role) : undefined,
+    })
+  }, [canForward, docId, headerTitle, docUrl, isAuthor, effectiveSlug])
 
   const confirmDeleteDoc = useCallback(() => {
     setDeleting(true)

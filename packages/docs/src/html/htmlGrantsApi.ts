@@ -13,6 +13,7 @@
 
 import { resolveOctoDocBase } from './HtmlDocView.tsx'
 import { getWKApp } from '../octoweb/index.ts'
+import type { DocForwardGrantResult } from '../octoweb/types.ts'
 
 // octo-doc verifies identity via the `token` header (octo convention, not
 // Authorization) — same scheme as the render/comment fetches.
@@ -71,4 +72,25 @@ export async function removeGrant(slug: string, uid: string): Promise<void> {
     headers: grantHeaders({ Accept: 'application/json' }),
   })
   if (!res.ok) throw new Error(`octo-doc removeGrant failed: ${res.status}`)
+}
+
+// Aggregate per-uid addGrant (throw-on-error) into openDocForward's grantAccess contract
+// {granted, failed, failures?}; part-failures do not roll back (parity with forward/api.grantForwardMany).
+export async function htmlGrantForwardMany(
+  slug: string,
+  uids: string[],
+  role: 'reader' | 'writer',
+): Promise<DocForwardGrantResult> {
+  const unique = [...new Set(uids.map((u) => u?.trim()).filter(Boolean) as string[])]
+  let granted = 0
+  const failures: string[] = []
+  for (const uid of unique) {
+    try {
+      await addGrant(slug, uid, role)
+      granted++
+    } catch {
+      failures.push(uid)
+    }
+  }
+  return failures.length ? { granted, failed: failures.length, failures } : { granted, failed: 0 }
 }

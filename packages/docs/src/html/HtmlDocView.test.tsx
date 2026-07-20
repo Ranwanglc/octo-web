@@ -649,14 +649,67 @@ describe('HtmlDocView — header parity (presence / comments / members / more)',
     expect(container.querySelector('.octo-modal-overlay')).toBeNull()
   })
 
-  it('forwards the whole-doc link via openDocForward from the header forward button', async () => {
-    serveDoc('<p>body</p>', { title: 'My Doc' })
+  it('forwards a non-owner (isAuthor=false) with canGrant=false and no grantAccess', async () => {
+    // Non-owner path: link only, no grant callback (parity with startDocForward). disabledReason is
+    // supplied so the host can grey the 授权区 with the same i18n text as rich docs.
+    serveDoc('<p>body</p>', { title: 'My Doc' }, { isAuthor: false })
     const { container } = render(<HtmlDocView docId="d1" space="sp" slug="the-slug" version="v2" />)
     await waitForFrame(container)
     fireEvent.click(screen.getByTitle('docs.forward.entry'))
     expect(wk.openDocForwardCalls).toHaveLength(1)
-    expect(wk.openDocForwardCalls[0]).toMatchObject({ docId: 'd1', title: 'My Doc', canGrant: false })
-    expect(typeof wk.openDocForwardCalls[0].link).toBe('string')
+    const call = wk.openDocForwardCalls[0]
+    expect(call).toMatchObject({
+      docId: 'd1',
+      title: 'My Doc',
+      canGrant: false,
+      defaultRole: 'reader',
+      disabledReason: 'docs.forward.grantDisabledReason',
+    })
+    expect(call.grantAccess).toBeUndefined()
+    expect(typeof call.link).toBe('string')
+  })
+
+  it('forwards an owner (isAuthor=true) with canGrant=true, defaultRole=reader, and a grantAccess wrapper', async () => {
+    // Owner path: the backend-authoritative isAuthor flag flips canGrant on and injects the
+    // htmlGrantForwardMany wrapper (not the rich-doc grantForwardMany — different backend).
+    serveDoc('<p>body</p>', { title: 'Owner Doc' }, { isAuthor: true })
+    const { container } = render(<HtmlDocView docId="d1" space="sp" slug="the-slug" version="v2" />)
+    await waitForFrame(container)
+    fireEvent.click(screen.getByTitle('docs.forward.entry'))
+    expect(wk.openDocForwardCalls).toHaveLength(1)
+    const call = wk.openDocForwardCalls[0]
+    expect(call).toMatchObject({
+      canGrant: true,
+      defaultRole: 'reader',
+      disabledReason: 'docs.forward.grantDisabledReason',
+    })
+    expect(typeof call.grantAccess).toBe('function')
+  })
+
+  it('grantAccess aggregates addGrant per-uid results into {granted, failed, failures}', async () => {
+    // Round-trip the wrapper: intercept the per-uid PUT /v1/docs/{slug}/grants and prove that
+    // one 200 + one 500 collapses to {granted:1, failed:1, failures:['u_bad']} — no rollback.
+    const grantHits: Array<{ uid: string }> = []
+    const cap = '<script>window.__ODOC_CAP__ = {isAuthor: true};</script>'
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.includes('/comments')) return jsonResponse({ data: [] })
+      if (url.includes('/v1/docs/') && url.endsWith('/grants') && init?.method === 'PUT') {
+        const body = JSON.parse(String(init.body ?? '{}')) as { uid: string }
+        grantHits.push({ uid: body.uid })
+        return jsonResponse({}, body.uid !== 'u_bad', body.uid === 'u_bad' ? 500 : 200)
+      }
+      return htmlResponse(`${cap}<p>body</p>`)
+    }) as unknown as typeof fetch)
+    const { container } = render(<HtmlDocView docId="d1" space="sp" slug="the-slug" version="v2" />)
+    await waitForFrame(container)
+    fireEvent.click(screen.getByTitle('docs.forward.entry'))
+    await waitFor(() => expect(wk.openDocForwardCalls).toHaveLength(1))
+    const { grantAccess } = wk.openDocForwardCalls[0]
+    expect(typeof grantAccess).toBe('function')
+    const res = await grantAccess!(['u_good', ' u_good ', '', 'u_bad'], 'reader')
+    expect(res).toEqual({ granted: 1, failed: 1, failures: ['u_bad'] })
+    expect(grantHits.map((g) => g.uid).sort()).toEqual(['u_bad', 'u_good'])
   })
 
   it('offers delete only to the author in the ≡ menu', async () => {
