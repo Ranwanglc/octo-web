@@ -653,8 +653,9 @@ describe('HtmlDocView — header parity (presence / comments / members / more)',
     // docs-backend GET /docs/:id supplies the LIVE role + ownerId startDocForward consumes; a reader
     // whose uid ≠ owner produces canGrant=false, matching the prior sharing-only behaviour.
     wk.apiClient.responder = (method, url) => {
-      if (method === 'get' && url === '/docs/the-slug') {
-        return { data: { docId: 'the-slug', ownerId: 'u_owner', role: 'reader' }, status: 200 }
+      // docs-backend is keyed by docId (d1), NEVER by the octo-doc slug (the-slug).
+      if (method === 'get' && url === '/docs/d1') {
+        return { data: { docId: 'd1', ownerId: 'u_owner', role: 'reader' }, status: 200 }
       }
       return { data: {}, status: 200 }
     }
@@ -662,7 +663,7 @@ describe('HtmlDocView — header parity (presence / comments / members / more)',
     const { container } = render(<HtmlDocView docId="d1" space="sp" slug="the-slug" version="v2" />)
     await waitForFrame(container)
     // Wait for the role to land so the click is not early-returned by the `!role` guard.
-    await waitFor(() => expect(wk.apiClient.calls.some((c) => c.url === '/docs/the-slug')).toBe(true))
+    await waitFor(() => expect(wk.apiClient.calls.some((c) => c.url === '/docs/d1')).toBe(true))
     fireEvent.click(screen.getByTitle('docs.forward.entry'))
     await waitFor(() => expect(wk.openDocForwardCalls).toHaveLength(1))
     expect(wk.openDocForwardCalls[0]).toMatchObject({ docId: 'd1', title: 'My Doc', canGrant: false })
@@ -675,15 +676,16 @@ describe('HtmlDocView — header parity (presence / comments / members / more)',
     // Owner (uid === ownerId) satisfies computeCanGrant regardless of role; grantAccess must be
     // wired to the /docs/{docId}/forward-grant loop so the modal授权区 fires the per-uid grants.
     wk.apiClient.responder = (method, url) => {
-      if (method === 'get' && url === '/docs/the-slug') {
-        return { data: { docId: 'the-slug', ownerId: 'u_viewer', role: 'admin' }, status: 200 }
+      // docs-backend is keyed by docId (d1), NEVER by the octo-doc slug (the-slug).
+      if (method === 'get' && url === '/docs/d1') {
+        return { data: { docId: 'd1', ownerId: 'u_viewer', role: 'admin' }, status: 200 }
       }
       return { data: {}, status: 200 }
     }
     serveDoc('<p>body</p>', { title: 'My Doc' })
     const { container } = render(<HtmlDocView docId="d1" space="sp" slug="the-slug" version="v2" />)
     await waitForFrame(container)
-    await waitFor(() => expect(wk.apiClient.calls.some((c) => c.url === '/docs/the-slug')).toBe(true))
+    await waitFor(() => expect(wk.apiClient.calls.some((c) => c.url === '/docs/d1')).toBe(true))
     fireEvent.click(screen.getByTitle('docs.forward.entry'))
     await waitFor(() => expect(wk.openDocForwardCalls).toHaveLength(1))
     expect(wk.openDocForwardCalls[0]).toMatchObject({ docId: 'd1', canGrant: true })
@@ -816,6 +818,47 @@ describe('HtmlDocView — creator/created head sourced from docs-backend (OCT-19
     // ≡ menu opens without crashing; the creator row shows the '—' placeholder (ownerId undefined).
     fireEvent.click(container.querySelector('.octo-doc-more-btn') as HTMLElement)
     expect(document.querySelector('.octo-doc-more-name')?.textContent).toBe('—')
+  })
+
+  it('OCT-198 regression: standalone slug≠docId hits docs-backend by docId (not slug); owner/created/role resolve', async () => {
+    // StandaloneDocPage passes docId=meta.docId + slug=meta.octoDocSlug as TWO different ids.
+    // The bug: getDoc was called with effectiveSlug (=slug), so `/docs/{slug}` 404'd and silently
+    // wiped ownerId/createdAt/role — creator display + forward授权 broke on every published html
+    // doc with a distinct octo-doc slug. Guard the fix: docs-backend receives docId, slug is
+    // reserved for octo-doc render (`/d/{slug}/v/{ver}`) + comment/asset/grant paths.
+    wk.apiClient.responder = (method, url) => {
+      // docs-backend keyed by docId. A slug-shaped call here is the pre-fix bug returning.
+      if (method === 'get' && url === '/docs/doc_abc') {
+        return {
+          data: { docId: 'doc_abc', ownerId: 'u_owner', role: 'admin', createdAt: '2026-07-20T00:00:00Z' },
+          status: 200,
+        }
+      }
+      if (method === 'get' && url === '/users/u_owner') {
+        return { data: { name: 'Nick', real_name: 'Alice Owner' }, status: 200 }
+      }
+      // Explicit trap: a call to `/docs/{slug}` means the bug regressed.
+      if (method === 'get' && url === '/docs/published-slug-xyz') {
+        throw new Error('OCT-198 regression: getDoc called with slug instead of docId')
+      }
+      return { data: {}, status: 200 }
+    }
+    serveDoc('<p>body</p>')
+    const { container } = render(
+      <HtmlDocView docId="doc_abc" space="sp_1" slug="published-slug-xyz" version="v2" />
+    )
+    await waitForFrame(container)
+    // 1) docs-backend addressed by docId, never by slug.
+    await waitFor(() => expect(wk.apiClient.calls.some((c) => c.url === '/docs/doc_abc')).toBe(true))
+    expect(wk.apiClient.calls.some((c) => c.url === '/docs/published-slug-xyz')).toBe(false)
+    // 2) octo-doc render path still uses the slug (unchanged).
+    const octoCalls = (globalThis.fetch as unknown as { mock: { calls: [string, RequestInit?][] } }).mock.calls
+    expect(octoCalls.some(([u]) => String(u).includes('/d/published-slug-xyz/v/v2'))).toBe(true)
+    // 3) ownerId/createdAt/role landed — so the creator name resolves and forward授权 unblocks.
+    await waitFor(() => expect(wk.apiClient.calls.some((c) => c.url === '/users/u_owner')).toBe(true))
+    fireEvent.click(container.querySelector('.octo-doc-more-btn') as HTMLElement)
+    await waitFor(() => expect(screen.getByText('Alice Owner')).toBeTruthy())
+    expect(screen.getByText(/2026-07-20/)).toBeTruthy()
   })
 })
 
