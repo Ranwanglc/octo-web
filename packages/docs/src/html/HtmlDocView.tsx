@@ -332,7 +332,12 @@ export function HtmlDocView({ docId, space, slug, version = 'latest', onDeleted,
     // standalone /d/:docId mounts before the space is restored, so the request interceptor injects
     // no X-Space-Id; pass it explicitly (same as EditorShell's getDoc call).
     const opts = space ? { spaceId: space } : undefined
-    getDoc(effectiveSlug, opts)
+    // docs-backend `/docs/{docId}` is keyed by docId — MUST NOT be effectiveSlug/slug. Standalone
+    // /d/:docId passes docId=meta.docId + slug=meta.octoDocSlug as two distinct identifiers, so a
+    // slug lookup 404s and silently zeroes ownerId/createdAt/role (creator display + forward授权
+    // break). octo-doc render/comment/asset paths keep using effectiveSlug; only this docs-backend
+    // hop is docId-keyed.
+    getDoc(docId, opts)
       .then((m) => {
         if (cancelled) return
         if (typeof m?.ownerId === 'string' && m.ownerId) setOwnerId(m.ownerId)
@@ -345,7 +350,7 @@ export function HtmlDocView({ docId, space, slug, version = 'latest', onDeleted,
     return () => {
       cancelled = true
     }
-  }, [effectiveSlug, space])
+  }, [docId, space])
 
   // Resolve creator display name (parity with EditorShell): in-shell prefers the already-loaded
   // space-member map (free), then falls back to GET /users/:uid for a verified real name. The
