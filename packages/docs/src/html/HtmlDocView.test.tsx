@@ -649,6 +649,42 @@ describe('HtmlDocView — header parity (presence / comments / members / more)',
     expect(container.querySelector('.octo-modal-overlay')).toBeNull()
   })
 
+  it('admin-not-author viewer never sees author-only slots and never lists octo-doc grants (OCT-216 regression)', async () => {
+    // Two gates, two authorities: octo-doc author manages /v1/docs/{slug}/grants (Slot 2/5);
+    // docs-backend admin manages Share/Invite/Requests (Slot 1/3/4). Merging them at the parent
+    // would leak author-only slots to a non-author admin AND drive a 403 on the author-only
+    // listGrants endpoint. HtmlDocView must forward isAuthor + role WITHOUT collapsing them into
+    // the legacy `canManage` prop.
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d1') {
+        return { data: { docId: 'd1', ownerId: 'u_owner', role: 'admin' }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+    const fetchSpy = serveDoc('<p>body</p>', { creator_uid: 'u_owner' }, { isAuthor: false })
+    const { container } = render(<HtmlDocView docId="d1" space="sp" slug="the-slug" />)
+    await waitForFrame(container)
+    // Wait for docs-backend role to land so the panel's backend gate can render its slots.
+    await waitFor(() => expect(wk.apiClient.calls.some((c) => c.url === '/docs/d1')).toBe(true))
+    // Admin still gets the entry (canOpenPanel = isAuthor OR admin) and the modal opens.
+    fireEvent.click(screen.getByTitle('docs.toolbar.members'))
+    await waitFor(() =>
+      expect(container.querySelector('.octo-modal-overlay .octo-member-panel')).toBeTruthy()
+    )
+    // Backend slot 1 (ShareScope) heading is present so we know the panel finished rendering.
+    await waitFor(() => expect(screen.queryByText('docs.share.title')).toBeTruthy())
+    // Author-only slots must stay hidden — the leaked-merge bug rendered both of these.
+    expect(screen.queryByText('docs.member.addMember')).toBeNull()
+    expect(screen.queryByText('docs.member.currentMembers')).toBeNull()
+    // And the author-only octo-doc grants endpoint must never be called (it would 403 and drive
+    // the "docs.member.errorLoad" banner into the panel).
+    const grantsCalls = (fetchSpy.mock.calls as unknown as Array<[unknown]>)
+      .map((c) => String(c[0]))
+      .filter((u) => u.includes('/v1/docs/') && u.includes('/grants'))
+    expect(grantsCalls).toEqual([])
+    expect(screen.queryByText('docs.member.errorLoad')).toBeNull()
+  })
+
   it('forwards the whole-doc link via startDocForward from the header forward button (non-admin viewer: canGrant=false)', async () => {
     // docs-backend GET /docs/:id supplies the LIVE role + ownerId startDocForward consumes; a reader
     // whose uid ≠ owner produces canGrant=false, matching the prior sharing-only behaviour.

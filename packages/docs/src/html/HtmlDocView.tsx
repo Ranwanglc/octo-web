@@ -386,11 +386,19 @@ export function HtmlDocView({ docId, space, slug, version = 'latest', onDeleted,
   // Creator display: resolved name → short uid → placeholder. Never blank, never crashes.
   const headerCreator = creatorName || (ownerId ? ownerId.slice(0, 8) : '—')
   const creatorAvatarUrl = avatarUrlForUid(ownerId)
-  // Members panel opens for the doc author (author gate on octo-doc /grants) OR any docs-backend
-  // admin (docs-backend Share/Invites/Access-Requests). role=null → short-circuits to isAuthor,
-  // so a still-loading role fails soft (no premature open for a demoted admin).
+  // Two independent gates, kept separate on purpose (合并 = UI 骗人):
+  //   - canManageBackend: docs-backend admin, drives Share/Invite/Requests inside the panel.
+  //     role=null (still resolving) collapses to false — the panel renders a loading placeholder
+  //     for those slots rather than a half-baked admin UI.
+  //   - canOpenPanel: entry-visibility union — either authority is enough to see the button and
+  //     open the modal. When role is still resolving, canOpenPanel short-circuits on isAuthor so
+  //     a non-author viewer never gets a flashed entry that later disappears.
+  // The panel itself derives canManageAuthorGrants from isAuthor alone; we intentionally stop
+  // forwarding the legacy `canManage` prop so a merged authority can never leak the author-only
+  // slots (Add member / Current Members) or trigger the author-only listGrants 403.
   const creatorUid = ownerId
-  const canOpenPanel = isAuthor || (role != null && canManage(role))
+  const canManageBackend = role != null && canManage(role)
+  const canOpenPanel = isAuthor || canManageBackend
   // Browser-openable address for forwarding this doc to chat. Build the PATH-style standalone
   // link (/d/<docId>?sp=<space>) like every other kind (buildDocLink), NOT window.location.href:
   // the in-shell address is the legacy /docs?doc= query form, whose docId is wiped by the host's
@@ -654,7 +662,6 @@ export function HtmlDocView({ docId, space, slug, version = 'latest', onDeleted,
               slug={effectiveSlug}
               space={space}
               creatorUid={creatorUid}
-              canManage={canOpenPanel}
               onClose={() => setMembersOpen(false)}
               docId={docId}
               role={role}
