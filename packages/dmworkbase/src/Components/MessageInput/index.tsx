@@ -338,8 +338,17 @@ export interface MessageInputContext {
   getAttachmentFiles: () => File[];
   text: () => string | undefined;
   focus: () => void;
-  /** Programmatically trigger send (same as pressing Enter) */
-  send: () => void;
+  /**
+   * Programmatically trigger send (same as pressing Enter).
+   *
+   * Returns the underlying send promise so an orchestrator (e.g. the Conversation initialCompose
+   * consumer) can await completion AND read the real outcome: the resolved boolean is
+   * `editorConsumed` — `true` when the compose was actually sent, `false` when the send was
+   * rejected / preserved as a draft (so the orchestrator can report 'failed' instead of a false
+   * 'sent'). `undefined` is only possible before the send handler is wired. Keyboard/Enter callers
+   * ignore the return value, so this does NOT change interactive send behaviour.
+   */
+  send: () => void | Promise<boolean | void> | undefined;
   /** Clear editor content without sending */
   clear: () => void;
 }
@@ -471,7 +480,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
   const isDirectChannelRef = useRef(
     props.context.channel().channelType === ChannelTypePerson,
   );
-  const sendRef = useRef<(() => void | Promise<void>) | null>(null);
+  const sendRef = useRef<(() => Promise<boolean>) | null>(null);
   // 发送进行中标志：onSend 现在被 await，发送窗口内防止重复触发 (octo-web#227)。
   const sendingRef = useRef(false);
   const mentionActiveRef = useRef(false);
@@ -878,6 +887,8 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
         getAttachmentFiles,
         text: () => (editor ? extractMentionsFromEditor(editor) : undefined),
         focus: () => editor?.commands.focus(),
+        // 把真实发送结果（editorConsumed boolean）一路传到 context.send，
+        // 供编排器区分 sent / failed；未 ready 时返回 undefined。
         send: () => sendRef.current?.(),
         clear: () => {
           editor?.commands.clearContent(true);
@@ -943,18 +954,18 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     [editor]
   );
 
-  const send = useCallback(async () => {
-    if (!editor) return;
+  const send = useCallback(async (): Promise<boolean> => {
+    if (!editor) return false;
     // 重入保护：onSend 现在被 await，发送期间可能再次触发 Enter/快捷键，
     // 避免同一份草稿被发送两次 (octo-web#227)。
-    if (sendingRef.current) return;
+    if (sendingRef.current) return false;
 
     const text = editor.getText();
     if (text.length > MAX_MESSAGE_LENGTH) {
       Notification.error({
         content: t("base.messageInput.validation.maxLength", { values: { max: MAX_MESSAGE_LENGTH } }),
       });
-      return;
+      return false;
     }
 
     // 从编辑器提取附件（粘贴的图片）
@@ -982,8 +993,9 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     const hasAttachments = allAttachments.length > 0;
 
     // 没有 onSend 或没有任何内容时无需发送，直接退出（不清空，保持现状）。
+    // 视为未发送（editorConsumed=false），供编排器判定真实结果。
     if (!props.onSend || (!hasText && !hasAttachments)) {
-      return;
+      return false;
     }
 
     // 从编辑器提取带格式的文本（包含 @[uid:name] 格式的 mention）。
@@ -1012,7 +1024,10 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     const allTopIds = topItemsAtSend.map((item) => item.id);
     sendingRef.current = true;
     try {
-      await runSendWithCleanup(
+      // runSendWithCleanup 返回 editor 是否被消费（true=发送成功，false=保留草稿/发送失败）。
+      // 把真实结果 return 出去，供 initialCompose 编排器区分 sent / failed；
+      // 键盘/Enter 发送路径忽略返回值，行为不变。
+      const editorConsumed = await runSendWithCleanup(
         () =>
           props.onSend!(
             content,
@@ -1059,6 +1074,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
           },
         }
       );
+      return editorConsumed;
     } finally {
       sendingRef.current = false;
     }

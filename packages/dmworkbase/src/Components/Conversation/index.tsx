@@ -54,6 +54,12 @@ import MessageInput, {
   EditorContentBlock,
 } from "../MessageInput";
 import { SendResultDetail } from "../MessageInput/sendFlow";
+import {
+  tryConsumeInitialCompose,
+  type ComposeHost,
+  type InitialCompose,
+  type InitialComposeState,
+} from "./initialCompose";
 import { BotCommand } from "../SlashCommandMenu";
 import ContextMenus, { ContextMenusContext } from "../ContextMenus";
 import classNames from "classnames";
@@ -416,6 +422,17 @@ export interface ConversationProps {
   inputNotice?: React.ReactNode;
   /** 当前会话发送完成后的回调。 */
   onMessageSent?: () => void;
+  /**
+   * 一次性初始编排（plan Task 4）：挂载/就绪后按 restoreDraft → addPendingAttachments → send
+   * 顺序装入并可自动发送恰好一次。同一 requestId 只消费一次；已有草稿/待发送附件则拒绝覆盖。
+   */
+  initialCompose?: InitialCompose;
+  /** 初始编排状态变化回调（prepared/sent/failed）。 */
+  onInitialComposeStateChange?: (
+    requestId: string,
+    state: InitialComposeState,
+    reason?: string
+  ) => void;
   /** 当前正在预览的文件消息 ID（用于文件卡片激活态） */
   activePreviewMessageId?: string | null;
 }
@@ -476,6 +493,9 @@ export class Conversation
     files: File[],
     source?: "paste" | "upload"
   ) => void;
+  // plan Task 4: instance-level one-shot guard so a re-render / remount / prop re-pass of the
+  // SAME requestId never re-loads or re-sends the initial compose (§5 risk 1).
+  private _consumedComposeIds: Set<string> = new Set();
   private onOpenThreadPanel?: (
     threadChannelId: string,
     threadName: string
@@ -1337,6 +1357,39 @@ export class Conversation
     // 此方法保留以兼容接口
   }
 
+  /**
+   * 尝试消费一次性 initialCompose（plan Task 4）。
+   *
+   * 在 MessageInput 就绪（onContext 设好 _messageInputContext / _addAttachmentFn）后、以及收到新
+   * requestId 的 componentDidUpdate 中调用。真正的原子装入 + 去重逻辑在 initialCompose.ts 里，
+   * 这里只把 Conversation 的 MessageInput/附件能力适配成 ComposeHost。绝不绕过 MessageInput 直接 sendMessage。
+   */
+  private tryConsumeInitialCompose(): void {
+    const compose = this.props.initialCompose;
+    if (!compose) return;
+    if (this._consumedComposeIds.has(compose.requestId)) return;
+    // 未就绪（onContext 尚未回调）时不消费，等待下一次 ready-retry。
+    if (!this._messageInputContext) return;
+
+    const host: ComposeHost = {
+      isReady: () => !!this._messageInputContext,
+      currentDraftText: () => this._messageInputContext?.text() ?? "",
+      pendingAttachmentCount: () => this.getPendingAttachments().length,
+      restoreDraft: (text: string) => this._messageInputContext?.restoreDraft(text),
+      // 复用唯一附件权威校验（扩展名/100MB 总量），失败返回错误描述。
+      addPendingAttachments: (files: File[]) => this.addPendingAttachments(files),
+      // 经 MessageInput 发送（与回车发送同一路径），保留上传/ACK/失败保留语义。
+      send: () => this._messageInputContext?.send(),
+    };
+
+    void tryConsumeInitialCompose(
+      compose,
+      host,
+      this._consumedComposeIds,
+      this.props.onInitialComposeStateChange
+    );
+  }
+
   channel(): Channel {
     return this.vm.channel;
   }
@@ -1503,6 +1556,17 @@ export class Conversation
     };
 
     this.vm.markUnread();
+  }
+
+  componentDidUpdate(prevProps: ConversationProps) {
+    // 收到新的 initialCompose.requestId 时再次尝试消费（plan Task 4）。ready 前只记录 pending：
+    // tryConsumeInitialCompose 内部已判断 _messageInputContext 是否 ready 与 requestId 是否已消费，
+    // 所以相同 requestId 的重渲染不会重发。
+    const prev = prevProps.initialCompose?.requestId;
+    const next = this.props.initialCompose?.requestId;
+    if (next && next !== prev) {
+      this.tryConsumeInitialCompose();
+    }
   }
 
   componentWillUnmount() {
@@ -2953,6 +3017,9 @@ export class Conversation
                           ctx.insertText(this._pendingInsertText);
                           this._pendingInsertText = undefined;
                         }
+                        // MessageInput 就绪（context + _addAttachmentFn 已设）后才尝试一次性初始编排，
+                        // 避免在 componentDidMount 时 onContext / _addAttachmentFn 尚未 ready 就发送（plan Task 4）。
+                        this.tryConsumeInitialCompose();
                       }}
                       toolbar={this.chatToolbarUI()}
                       context={this}
