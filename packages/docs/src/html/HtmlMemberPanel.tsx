@@ -143,74 +143,89 @@ export function HtmlMemberPanel({
         )}
       </div>
 
-      {/* Link share scope: rendered while role is resolving so the admin isn't hit with a flash of
-          empty panel. `null` role → loading placeholder; admin resolves → real controls; reader
-          resolves → hidden by the gate below. */}
+      {/* Section order mirrors rich-doc MemberPanel (OCT-195):
+          Slot 1 ShareScope → Slot 2 Add member → Slot 3 Invite → Slot 4 PendingRequests → Slot 5 Current Members.
+          The two independent gates (canManageBackend / canManageAuthorGrants) stay layered — empty
+          slots collapse to null, so an author-only or admin-only viewer sees a subset in the same
+          order. */}
+
+      {/* Slot 1: ShareScope (backend gate). Loading placeholder here represents the whole backend
+          group's pending state — Slots 3/4 share the same `role` and stay hidden until it resolves,
+          so a single loading line here is enough (no duplicate placeholders below). */}
       {role == null ? (
         <p className="octo-loading">{t('docs.member.loading')}</p>
       ) : canManageBackend ? (
-        <>
-          <ShareScopePanel docId={docId} allowedRoles={['read']} />
-          <div className="octo-member-section">
-            <h4 className="octo-member-subtitle">{t('docs.member.inviteTitle')}</h4>
-            <InvitePanel docId={docId} role={role} allowedRoles={['reader']} />
-          </div>
-          <PendingRequests
-            requests={accessRequests.requests}
-            loading={accessRequests.loading}
-            error={accessRequests.error}
-            approve={accessRequests.approve}
-            deny={accessRequests.deny}
-            displayName={(uid) => names.get(uid) || uid}
-            allowedRoles={['reader']}
-          />
-        </>
+        <ShareScopePanel docId={docId} allowedRoles={['read']} />
       ) : null}
 
+      {/* Slot 2: Add member (author gate). Independent of backend role — an octo-doc author
+          without docs-backend admin still manages reader grants. */}
       {canManageAuthorGrants && (
-        <>
-          <div className="octo-member-section">
-            <h4 className="octo-member-subtitle">{t('docs.member.addMember')}</h4>
-            <MemberPicker
-              space={space}
-              existingUids={existingUids}
-              hideUids={new Set([creatorUid].filter(Boolean) as string[])}
-              roles={['reader']}
-              onAdd={(uids: string[], _role: Role) => onAdd(uids)}
-              busy={busy}
-            />
-            {error && <p className="octo-member-error">{error}</p>}
-          </div>
+        <div className="octo-member-section">
+          <h4 className="octo-member-subtitle">{t('docs.member.addMember')}</h4>
+          <MemberPicker
+            space={space}
+            existingUids={existingUids}
+            hideUids={new Set([creatorUid].filter(Boolean) as string[])}
+            roles={['reader']}
+            onAdd={(uids: string[], _role: Role) => onAdd(uids)}
+            busy={busy}
+          />
+          {error && <p className="octo-member-error">{error}</p>}
+        </div>
+      )}
 
-          <div className="octo-member-section">
-            <h4 className="octo-member-subtitle">{t('docs.member.currentMembers')}</h4>
-            {loading && <p className="octo-loading">{t('docs.member.loading')}</p>}
-            {!loading && rows.length === 0 && (
-              <p className="octo-member-empty">{t('docs.member.empty')}</p>
-            )}
-            {rows.map((m) => {
-              const isOwner = m.source === 'owner'
-              return (
-                <div className="octo-member-row" key={m.uid}>
-                  <span className="octo-uid">
-                    {names.get(m.uid) || m.uid}{' '}
-                    {isOwner && <span className="octo-owner-badge">{t('docs.member.ownerBadge')}</span>}
-                    {!isOwner && <small style={{ color: 'var(--octo-muted)' }}> · {t('docs.role.reader')}</small>}
-                  </span>
-                  {!isOwner && (
-                    <button
-                      type="button"
-                      className="octo-tb-btn"
-                      onClick={() => onRemove(m.uid)}
-                    >
-                      {t('docs.member.remove')}
-                    </button>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        </>
+      {/* Slot 3: Invite (backend gate). No local loading — Slot 1 already carries it. */}
+      {role != null && canManageBackend && (
+        <div className="octo-member-section">
+          <h4 className="octo-member-subtitle">{t('docs.member.inviteTitle')}</h4>
+          <InvitePanel docId={docId} role={role} allowedRoles={['reader']} />
+        </div>
+      )}
+
+      {/* Slot 4: Pending access requests (backend gate). No heading of its own. */}
+      {role != null && canManageBackend && (
+        <PendingRequests
+          requests={accessRequests.requests}
+          loading={accessRequests.loading}
+          error={accessRequests.error}
+          approve={accessRequests.approve}
+          deny={accessRequests.deny}
+          displayName={(uid) => names.get(uid) || uid}
+          allowedRoles={['reader']}
+        />
+      )}
+
+      {/* Slot 5: Current Members (author gate). */}
+      {canManageAuthorGrants && (
+        <div className="octo-member-section">
+          <h4 className="octo-member-subtitle">{t('docs.member.currentMembers')}</h4>
+          {loading && <p className="octo-loading">{t('docs.member.loading')}</p>}
+          {!loading && rows.length === 0 && (
+            <p className="octo-member-empty">{t('docs.member.empty')}</p>
+          )}
+          {rows.map((m) => {
+            const isOwner = m.source === 'owner'
+            return (
+              <div className="octo-member-row" key={m.uid}>
+                <span className="octo-uid">
+                  {names.get(m.uid) || m.uid}{' '}
+                  {isOwner && <span className="octo-owner-badge">{t('docs.member.ownerBadge')}</span>}
+                  {!isOwner && <small style={{ color: 'var(--octo-muted)' }}> · {t('docs.role.reader')}</small>}
+                </span>
+                {!isOwner && (
+                  <button
+                    type="button"
+                    className="octo-tb-btn"
+                    onClick={() => onRemove(m.uid)}
+                  >
+                    {t('docs.member.remove')}
+                  </button>
+                )}
+              </div>
+            )
+          })}
+        </div>
       )}
     </section>
   )
