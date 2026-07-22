@@ -4016,3 +4016,351 @@ div:has(> .octo-bubble-menu),
 div:has(> .octo-link-bubble) {
   z-index: 50;
 }
+
+/* ── New-HTML (embedded bot DM) flow (plan Task 3 / Task 5) ──────────────────────────────────
+   UI-SPEC binding: brand primary #1C1C23 (never blue as primary); AI purple #7F3BF5 reserved for
+   AI/thread accents only; Alpha tokens for surfaces/borders (no parent opacity for colour steps);
+   4px grid spacing; 12px modal radius, 8px card radius, full-round buttons; semantic HTML.
+   Tokens are declared on the modal/chat roots (not globally) so they never bleed into docs. */
+.octo-html-create-overlay,
+.octo-docs-bot-chat {
+  --wk-brand-primary: #1c1c23;
+  --wk-brand-primary-hover: #2a2a33;
+  --wk-color-accent: #7f3bf5;
+  --wk-color-error: #f54a45;
+  --wk-surface: #fff;
+  --wk-on-accent: #fff;
+  --wk-brand-alpha-04: rgba(28, 28, 35, 0.04);
+  --wk-brand-alpha-06: rgba(28, 28, 35, 0.06);
+  --wk-brand-alpha-08: rgba(28, 28, 35, 0.08);
+  --wk-brand-alpha-10: rgba(28, 28, 35, 0.1);
+  --wk-brand-alpha-15: rgba(28, 28, 35, 0.15);
+  --wk-brand-alpha-20: rgba(28, 28, 35, 0.2);
+  --wk-brand-alpha-35: rgba(28, 28, 35, 0.35);
+  --wk-brand-alpha-40: rgba(28, 28, 35, 0.4);
+  --wk-brand-alpha-60: rgba(28, 28, 35, 0.6);
+  --wk-brand-alpha-90: rgba(28, 28, 35, 0.9);
+  --wk-accent-alpha-06: rgba(127, 59, 245, 0.06);
+  --wk-accent-alpha-08: rgba(127, 59, 245, 0.08);
+  --wk-accent-alpha-25: rgba(127, 59, 245, 0.25);
+  --wk-black-alpha-06: rgba(0, 0, 0, 0.06);
+  --wk-black-alpha-08: rgba(0, 0, 0, 0.08);
+  --wk-black-alpha-12: rgba(0, 0, 0, 0.12);
+  /* Modal scrim per UI-SPEC §4.10. */
+  --wk-scrim: rgba(17, 19, 24, 0.36);
+  --wk-modal-shadow: 0 0 0 1px var(--wk-black-alpha-06), 0 8px 24px var(--wk-black-alpha-12);
+  --wk-focus-ring: 0 0 0 3px var(--wk-brand-alpha-20);
+}
+
+.octo-html-create-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  /* Modal scrim per UI-SPEC §4.10 (rgba(17,19,24,.36)). */
+  background: var(--wk-scrim);
+}
+/* UI-SPEC §4.10: legal Modal width 640, radius 12px, min-height 232. */
+.octo-html-create-modal {
+  width: 100%;
+  max-width: 640px;
+  min-height: 232px;
+  display: flex;
+  flex-direction: column;
+  background: var(--wk-surface);
+  color: var(--wk-brand-alpha-90);
+  border: none;
+  padding: 0;
+  border-radius: 12px;
+  box-shadow: var(--wk-modal-shadow);
+  box-sizing: border-box;
+}
+/* Header 56px, 16px padding, H3 16/24 semibold (UI-SPEC §4.10 / §2.2). */
+.octo-html-create-header {
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  padding: 16px;
+  border-bottom: 1px solid var(--wk-black-alpha-08);
+}
+.octo-html-create-title {
+  margin: 0;
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 600;
+  color: var(--wk-brand-primary);
+}
+.octo-html-create-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+}
+.octo-html-create-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.octo-html-create-label {
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 600;
+  color: var(--wk-brand-alpha-90);
+}
+/* Composer-like textarea: 8px radius (NOT capsule), Alpha border, focus ring via Alpha. */
+.octo-html-create-textarea {
+  width: 100%;
+  min-height: 96px;
+  resize: vertical;
+  box-sizing: border-box;
+  padding: 8px 12px;
+  font: inherit;
+  font-size: 14px;
+  line-height: 21px;
+  color: var(--wk-brand-alpha-90);
+  background: var(--wk-surface);
+  border: 1px solid var(--wk-brand-alpha-10);
+  border-radius: 8px;
+}
+.octo-html-create-textarea::placeholder {
+  color: var(--wk-brand-alpha-40);
+}
+.octo-html-create-textarea:focus-visible {
+  outline: none;
+  border-color: var(--wk-brand-alpha-40);
+  box-shadow: var(--wk-focus-ring);
+}
+.octo-html-create-counter {
+  align-self: flex-end;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--wk-brand-alpha-40);
+}
+.octo-html-create-hint {
+  margin: 0;
+  font-size: 14px;
+  line-height: 21px;
+  color: var(--wk-brand-alpha-60);
+}
+.octo-html-create-error {
+  margin: 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--wk-color-error);
+}
+.octo-html-create-inline-error {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+  color: var(--wk-color-error);
+}
+/* Bot radio list: 8px card radius items, selected uses AI-purple alpha (a bot = AI accent). */
+.octo-html-create-bot-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+.octo-html-create-bot-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--wk-brand-alpha-08);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.octo-html-create-bot-item:hover {
+  background: var(--wk-brand-alpha-04);
+}
+.octo-html-create-bot-item:has(input:checked) {
+  background: var(--wk-accent-alpha-06);
+  border-color: var(--wk-accent-alpha-25);
+}
+.octo-html-create-bot-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.octo-html-create-bot-name {
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 600;
+  color: var(--wk-brand-alpha-90);
+}
+.octo-html-create-bot-desc {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--wk-brand-alpha-60);
+}
+.octo-html-create-file-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.octo-html-create-file-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--wk-brand-alpha-08);
+  border-radius: 8px;
+  font-size: 14px;
+}
+.octo-html-create-file-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--wk-brand-alpha-90);
+}
+.octo-html-create-file-size {
+  flex: 0 0 auto;
+  color: var(--wk-brand-alpha-40);
+  font-size: 12px;
+}
+.octo-html-create-file-remove {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 9999px;
+  background: transparent;
+  color: var(--wk-brand-alpha-60);
+  cursor: pointer;
+}
+.octo-html-create-file-remove:hover {
+  background: var(--wk-brand-alpha-08);
+  color: var(--wk-brand-alpha-90);
+}
+/* Footer 60px min, 16px padding, right-aligned, 8px gap (UI-SPEC §4.10). */
+.octo-html-create-footer {
+  margin-top: auto;
+  min-height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 16px;
+  border-top: 1px solid var(--wk-black-alpha-08);
+}
+/* Primary submit: opaque brand black, white text, full-round (UI-SPEC §4.1). */
+.octo-html-create-submit {
+  color: var(--wk-on-accent);
+  background: var(--wk-brand-primary);
+  border-color: var(--wk-brand-primary);
+  border-radius: 9999px;
+  padding: 0 16px;
+}
+.octo-html-create-submit:hover:not(:disabled) {
+  background: var(--wk-brand-primary-hover);
+  border-color: var(--wk-brand-primary-hover);
+}
+.octo-html-create-submit:disabled {
+  background: var(--wk-brand-alpha-15);
+  border-color: transparent;
+  color: var(--wk-brand-alpha-35);
+  cursor: not-allowed;
+}
+
+/* ── Docs right-pane bot chat shell (plan Task 5) ── */
+.octo-docs-bot-chat {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--wk-surface);
+}
+.octo-docs-bot-chat-header {
+  flex: 0 0 auto;
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--wk-black-alpha-08);
+}
+.octo-docs-bot-chat-avatar {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--wk-on-accent);
+  background: var(--wk-color-accent);
+}
+.octo-docs-bot-chat-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.octo-docs-bot-chat-name {
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 600;
+  color: var(--wk-brand-alpha-90);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.octo-docs-bot-chat-context {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--wk-color-accent);
+}
+.octo-docs-bot-chat-close {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: 9999px;
+  background: transparent;
+  color: var(--wk-brand-alpha-60);
+  cursor: pointer;
+}
+.octo-docs-bot-chat-close:hover {
+  background: var(--wk-brand-alpha-08);
+  color: var(--wk-brand-alpha-90);
+}
+.octo-docs-bot-chat-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.octo-docs-bot-chat-status {
+  padding: 8px 16px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--wk-brand-alpha-60);
+}
+.octo-docs-bot-chat-status[data-state='failed'] {
+  color: var(--wk-color-error);
+}
