@@ -611,7 +611,10 @@ export function HtmlDocView({ docId, space, slug, version = 'latest', onDeleted,
                 icon: OpenNewPageIcon,
                 onClick: () => window.open(docUrl, '_blank'),
               },
-              ...(canForward
+              // Twin of the toolbar Forward at :579 — same `role && canForward` gate so both
+              // affordances hide together when role is unresolved (getDoc 404 fail-soft), instead of
+              // leaving a dead menu row that doForward's role guard would swallow.
+              ...(role && canForward
                 ? [
                     {
                       key: 'forward',

@@ -760,6 +760,55 @@ describe('HtmlDocView — header parity (presence / comments / members / more)',
     expect(container.querySelector('.octo-doc-forward-btn')).toBeNull()
   })
 
+  it('hides the More-menu Forward entry when role is unresolved (twin of the toolbar gate; no dead menu row)', async () => {
+    // OCT-220 short-return: the toolbar Forward at :579 was gated on `role && canForward`, but its
+    // twin inside DocMoreMenu at :614 still only checked `canForward`. On the role=null fail-soft
+    // path (getDoc 404, or docs-backend rejects) the menu row rendered as a clickable no-op that
+    // doForward's `if (!canForward || !role) return` guard silently swallowed. Both Forward
+    // affordances must hide together — otherwise the twin entries diverge in behaviour.
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d1') {
+        return { data: {}, status: 404 }
+      }
+      return { data: {}, status: 200 }
+    }
+    serveDoc('<p>body</p>', { title: 'My Doc' })
+    const { container } = render(<HtmlDocView docId="d1" space="sp" slug="the-slug" version="v2" />)
+    await waitForFrame(container)
+    // Let the 404 land so role is definitively null (not merely still-loading).
+    await waitFor(() => expect(wk.apiClient.calls.some((c) => c.url === '/docs/d1')).toBe(true))
+    // Open the ≡ menu so any conditional menu items render into the DOM.
+    fireEvent.click(container.querySelector('.octo-doc-more-btn') as HTMLElement)
+    // The neutral "open in new page" row is always present — confirms the menu did open, so a
+    // missing Forward row means it was gated out, not that the menu itself failed to render.
+    expect(screen.getByText('docs.standalone.openInNewPage')).toBeTruthy()
+    // Forward must be absent from both surfaces: no toolbar button AND no menu row.
+    expect(screen.queryByTitle('docs.forward.entry')).toBeNull()
+    expect(container.querySelector('.octo-doc-forward-btn')).toBeNull()
+    expect(screen.queryByRole('menuitem', { name: /docs\.forward\.entry/ })).toBeNull()
+  })
+
+  it('renders BOTH Forward entries (toolbar + More menu) once role resolves — reader suffices, guarding against over-tightening', async () => {
+    // Positive symmetric case: when role is resolved AND canForward is true, both twin Forward
+    // affordances must render together. Prevents the fix from over-collapsing the gate and hiding
+    // the menu row in the very case where the toolbar button is showing.
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d1') {
+        return { data: { docId: 'd1', ownerId: 'u_owner', role: 'reader' }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+    serveDoc('<p>body</p>', { title: 'My Doc' })
+    const { container } = render(<HtmlDocView docId="d1" space="sp" slug="the-slug" version="v2" />)
+    await waitForFrame(container)
+    await waitFor(() => expect(wk.apiClient.calls.some((c) => c.url === '/docs/d1')).toBe(true))
+    // Toolbar Forward first — waits out role resolution.
+    await waitFor(() => expect(screen.queryByTitle('docs.forward.entry')).not.toBeNull())
+    // Open the ≡ menu and confirm the twin menu row is also present.
+    fireEvent.click(container.querySelector('.octo-doc-more-btn') as HTMLElement)
+    expect(screen.queryByRole('menuitem', { name: /docs\.forward\.entry/ })).toBeTruthy()
+  })
+
   it('renders the Forward button once role resolves (reader suffices; the guard is role != null)', async () => {
     // Guard against over-tightening: any resolved role must restore the button. reader is the
     // weakest positive case — sharing-only forward (canGrant=false) still needs the entry.
