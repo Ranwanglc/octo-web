@@ -1424,7 +1424,7 @@ export function DocsHome() {
           : `req-${Date.now()}-${Math.random().toString(16).slice(2)}`
       const origin = typeof window !== 'undefined' ? window.location.origin : ''
       const replyChannelId = getCurrentUid().trim()
-      if (!replyChannelId) return
+      if (!replyChannelId) return t('docs.list.htmlCreate.loginRequired')
       const draft: HtmlCreationDraft = {
         ...partial,
         requestId,

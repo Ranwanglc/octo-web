@@ -30,6 +30,7 @@
       "descLabel": "HTML 描述",
       "descPlaceholder": "描述你想生成的 HTML 内容与用途（例如：为发布会做一个落地页，含标题、亮点和报名按钮）。",
       "descTooLong": "描述过长，请控制在 8000 字以内。",
+      "loginRequired": "登录状态已失效，请重新登录后再提交。",
       "botLabel": "创建 Bot",
       "botLoading": "正在加载可用的 Bot…",
       "botError": "加载 Bot 失败",

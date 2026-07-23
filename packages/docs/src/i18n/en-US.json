@@ -30,6 +30,7 @@
       "descLabel": "HTML description",
       "descPlaceholder": "Describe the HTML you want (e.g. a launch landing page with a title, highlights and a sign-up button).",
       "descTooLong": "Description is too long — keep it under 8000 characters.",
+      "loginRequired": "Your login has expired. Please sign in again before submitting.",
       "botLabel": "Creation bot",
       "botLoading": "Loading available bots…",
       "botError": "Failed to load bots",

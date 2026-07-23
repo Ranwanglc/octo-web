@@ -2086,6 +2086,34 @@ describe('DocsHome — new HTML embedded bot DM (Task 6)', () => {
     expect(calls.some((c) => c.method === 'post' && c.url === '/docs')).toBe(false)
   })
 
+  it('keeps the modal open and shows an error when submit has no current uid', async () => {
+    const wk = createMockWKApp({ uid: '   ', token: 'octo-session-token' })
+    const replaceToRoot = vi.fn()
+    const showConversation = vi.fn()
+    ;(wk as { routeRight?: unknown }).routeRight = { replaceToRoot, popToRoot: vi.fn() }
+    ;(wk as { endpoints?: unknown }).endpoints = { showConversation }
+    setWKApp(wk)
+    const calls: Array<{ method: string; url: string; body?: unknown }> = []
+    wk.apiClient.responder = ownedBotsResponder(calls)
+
+    render(<DocsHome />)
+    fireEvent.click(screen.getByLabelText('docs.list.newMenu'))
+    fireEvent.click(screen.getByText('docs.list.newHtml'))
+    await waitFor(() => expect(screen.getByText('Publisher')).toBeTruthy())
+    const pushesBeforeSubmit = replaceToRoot.mock.calls.length
+
+    fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.descLabel'), {
+      target: { value: 'A launch page' },
+    })
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.submit'))
+
+    expect(screen.getByRole('dialog')).toBeTruthy()
+    expect(screen.getByText('docs.list.htmlCreate.loginRequired')).toBeTruthy()
+    expect(replaceToRoot).toHaveBeenCalledTimes(pushesBeforeSubmit)
+    expect(screen.queryByTestId('bot-chat')).toBeNull()
+    expect(showConversation).not.toHaveBeenCalled()
+  })
+
   it('re-entering docs via NavRail restores the SAME chat with autoSend=false (no re-send)', async () => {
     const wk = createMockWKApp()
     const replaceToRoot = vi.fn()

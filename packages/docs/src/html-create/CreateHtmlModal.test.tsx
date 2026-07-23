@@ -159,6 +159,22 @@ describe('CreateHtmlModal', () => {
     expect(uploads).toHaveLength(0)
   })
 
+  it('shows a submit error returned by the caller and keeps the form open', async () => {
+    const onClose = vi.fn()
+    const onSubmit = vi.fn(() => 'docs.list.htmlCreate.loginRequired')
+    render(<CreateHtmlModal open spaceId="s_1" onClose={onClose} onSubmit={onSubmit} />)
+    await waitFor(() => expect(screen.getByText('Publisher')).toBeTruthy())
+    fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.descLabel'), {
+      target: { value: 'My page' },
+    })
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.submit'))
+
+    expect(onSubmit).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole('dialog')).toBeTruthy()
+    expect(screen.getByText('docs.list.htmlCreate.loginRequired')).toBeTruthy()
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
   it('lets the user remove a staged file before submit', async () => {
     render(<CreateHtmlModal open spaceId="s_1" onClose={() => {}} onSubmit={() => {}} />)
     await waitFor(() => expect(screen.getByText('Publisher')).toBeTruthy())

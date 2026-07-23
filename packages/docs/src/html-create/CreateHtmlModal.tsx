@@ -28,7 +28,7 @@ export interface CreateHtmlModalProps {
   spaceId: string
   onClose(): void
   /** Receives the collected draft (requestId/replyChannelId/baseUrl filled by caller). */
-  onSubmit(draft: Omit<HtmlCreationDraft, 'requestId' | 'replyChannelId' | 'baseUrl'>): void
+  onSubmit(draft: Omit<HtmlCreationDraft, 'requestId' | 'replyChannelId' | 'baseUrl'>): string | void
 }
 
 type BotsState =
@@ -47,6 +47,7 @@ export function CreateHtmlModal({ open, spaceId, onClose, onSubmit }: CreateHtml
   const [selectedBot, setSelectedBot] = useState<string | null>(null)
   const [description, setDescription] = useState('')
   const [files, setFiles] = useState<File[]>([])
+  const [submitError, setSubmitError] = useState('')
   // Bumped to force a reload after "retry"; also the generation guard against a stale response
   // overwriting a newer request when open/spaceId changes mid-flight (plan Task 3 step 3).
   const [reloadKey, setReloadKey] = useState(0)
@@ -66,6 +67,7 @@ export function CreateHtmlModal({ open, spaceId, onClose, onSubmit }: CreateHtml
     setSelectedBot(null)
     setDescription('')
     setFiles([])
+    setSubmitError('')
     if (!spaceId) {
       setBots({ kind: 'ready', bots: [] })
       return
@@ -120,13 +122,14 @@ export function CreateHtmlModal({ open, spaceId, onClose, onSubmit }: CreateHtml
   const submit = () => {
     if (!canSubmit || !selectedBot) return
     const bot = ready ? bots.bots.find((b) => b.uid === selectedBot) : undefined
-    onSubmit({
+    const error = onSubmit({
       botUid: selectedBot,
       botName: bot?.name || selectedBot,
       description,
       files,
       spaceId,
     })
+    setSubmitError(error || '')
   }
 
   return (
@@ -274,6 +277,12 @@ export function CreateHtmlModal({ open, spaceId, onClose, onSubmit }: CreateHtml
               </ul>
             )}
           </div>
+
+          {submitError && (
+            <p className="octo-html-create-error" role="alert">
+              {submitError}
+            </p>
+          )}
 
           <footer className="octo-html-create-footer">
             <button type="button" className="octo-tb-btn" onClick={onClose}>
