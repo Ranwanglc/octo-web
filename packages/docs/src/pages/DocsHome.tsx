@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { getWKApp, getRouteRight, onSpaceChanged, onNavMenuActivated, t, fetchSpaceBotNames } from '../octoweb/index.ts'
+import { getWKApp, getRouteRight, getCurrentUid, onSpaceChanged, onNavMenuActivated, t, fetchSpaceBotNames } from '../octoweb/index.ts'
 import { EditorShell } from '../editor/EditorShell.tsx'
 import { SheetView } from '../sheet/SheetView.tsx'
 import { parseXlsxToMatrix, pendingSheetImports } from '../sheet/xlsxImport.ts'
@@ -1413,19 +1413,22 @@ export function DocsHome() {
     [routeRight, buildBotChat],
   )
 
-  // Modal submit → finalise the draft (requestId + front-end-derived base_url) and open the chat.
+  // Modal submit → finalise the draft (requestId + reply channel + front-end-derived base_url) and open the chat.
   // crypto.randomUUID() is the one-shot idempotency id; base_url comes ONLY from the app origin
   // (docsHtmlBaseUrl), never from user text/attachments (§5.6).
   const onSubmitHtml = useCallback(
-    (partial: Omit<HtmlCreationDraft, 'requestId' | 'baseUrl'>) => {
+    (partial: Omit<HtmlCreationDraft, 'requestId' | 'replyChannelId' | 'baseUrl'>) => {
       const requestId =
         typeof crypto !== 'undefined' && 'randomUUID' in crypto
           ? crypto.randomUUID()
           : `req-${Date.now()}-${Math.random().toString(16).slice(2)}`
       const origin = typeof window !== 'undefined' ? window.location.origin : ''
+      const replyChannelId = getCurrentUid().trim()
+      if (!replyChannelId) return
       const draft: HtmlCreationDraft = {
         ...partial,
         requestId,
+        replyChannelId,
         baseUrl: docsHtmlBaseUrl(origin),
       }
       setHtmlModalOpen(false)

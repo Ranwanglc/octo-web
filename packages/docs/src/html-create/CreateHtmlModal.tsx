@@ -27,8 +27,8 @@ export interface CreateHtmlModalProps {
   open: boolean
   spaceId: string
   onClose(): void
-  /** Receives the collected draft (requestId/baseUrl filled by the caller). NOT called on cancel. */
-  onSubmit(draft: Omit<HtmlCreationDraft, 'requestId' | 'baseUrl'>): void
+  /** Receives the collected draft (requestId/replyChannelId/baseUrl filled by caller). */
+  onSubmit(draft: Omit<HtmlCreationDraft, 'requestId' | 'replyChannelId' | 'baseUrl'>): void
 }
 
 type BotsState =

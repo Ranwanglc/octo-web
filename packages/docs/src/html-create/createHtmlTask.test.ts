@@ -33,6 +33,7 @@ describe('docsHtmlBaseUrl', () => {
 
 const baseDraft = (over: Partial<HtmlCreationDraft> = {}): HtmlCreationDraft => ({
   requestId: 'req-123',
+  replyChannelId: 'user_current',
   botUid: 'bot_1',
   botName: 'Publisher',
   description: 'Landing page for launch',
@@ -59,7 +60,8 @@ describe('buildHtmlCreationMessage', () => {
     const msg = buildHtmlCreationMessage(baseDraft())
     expect(msg).toContain('[Octo HTML 创建任务]')
     expect(msg).toContain('request_id: req-123')
-    expect(msg).toContain('channel_id: bot_1')
+    expect(msg).toContain('channel_id: user_current')
+    expect(msg).not.toContain('channel_id: bot_1')
     expect(msg).toContain('channel_type: 1')
     expect(msg).toContain('space_id: s_1')
     expect(msg).toContain('base_url: https://octo.example/docs-html/')
@@ -74,7 +76,23 @@ describe('buildHtmlCreationMessage', () => {
     expect(msg).toContain('octo-html skill')
     expect(msg).toContain('octo-cli html')
     expect(msg).toContain('octo-cli html publish-and-notify')
+    expect(msg).toContain('`--slug`')
+    expect(msg).toContain('`--html @<完整HTML文件>`')
+    expect(msg).toContain('`--title`')
+    expect(msg).toContain('`--mount-type space`')
+    expect(msg).toContain('`--request-id`')
+    expect(msg).toContain('`--channel-id`')
+    expect(msg).toContain('`--channel-type 1`')
     expect(msg).toContain('不要调用普通 publish')
+  })
+
+  it.each([
+    ['request_id', { requestId: '  ' }],
+    ['reply channel_id', { replyChannelId: '' }],
+    ['space_id', { spaceId: '\t' }],
+    ['base_url', { baseUrl: '' }],
+  ])('rejects an empty %s', (_field, over) => {
+    expect(() => buildHtmlCreationMessage(baseDraft(over))).toThrow(/must not be empty/)
   })
 
   it('emits the user description as a single-physical-line JSON string literal', () => {

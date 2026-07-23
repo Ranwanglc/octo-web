@@ -5,6 +5,7 @@ import { setWKApp } from '../octoweb/index.ts'
 import { createMockWKApp } from '../octoweb/mock.ts'
 import { resolveDocTarget, clearDocTarget, readDocFromHistory, DocsHome } from './DocsHome.tsx'
 import { captureDocTargetDeepLink } from '../config.ts'
+import type { HtmlPublishResult } from '../octoweb/index.ts'
 
 // Replace the heavy editor shell (Tiptap + Yjs + Hocuspocus) with a marker so the DocsHome
 // render tests exercise target-resolution / navigation without mounting the real editor.
@@ -71,7 +72,7 @@ vi.mock('../html/HtmlDocView.tsx', () => ({
 // the auto-sent task text, plus the onClose affordance (plan Task 6).
 vi.mock('../html-create/DocsBotConversation.tsx', () => ({
   DocsBotConversation: (props: {
-    draft: { botUid: string; requestId: string; spaceId: string; description: string }
+    draft: { botUid: string; replyChannelId: string; requestId: string; spaceId: string; description: string }
     autoSend?: boolean
     onClose?: () => void
     onResult?: (result: any) => void
@@ -84,12 +85,16 @@ vi.mock('../html-create/DocsBotConversation.tsx', () => ({
       <span data-testid="bot-chat-autosend">{String(props.autoSend)}</span>
       {props.onResult && (
         <button type="button" data-testid="bot-chat-result" onClick={() => props.onResult!({
-          doc_id: 'doc-html-1', slug: 'launch-page', request_id: props.draft.requestId,
+          schema: 'html.publish.result', version: 1, request_id: props.draft.requestId,
+          status: 'published', registered: true, doc_id: 'doc-html-1', slug: 'launch-page',
+          doc_version: 1, share_url: 'https://octo.example/d/launch-page/v/1',
         })}>result</button>
       )}
       {props.onOpenResult && (
         <button type="button" data-testid="bot-chat-open" onClick={() => props.onOpenResult!({
-          doc_id: 'doc-html-1', slug: 'launch-page', request_id: props.draft.requestId,
+          schema: 'html.publish.result', version: 1, request_id: props.draft.requestId,
+          status: 'published', registered: true, doc_id: 'doc-html-1', slug: 'launch-page',
+          doc_version: 1, share_url: 'https://octo.example/d/launch-page/v/1',
         })}>open</button>
       )}
       {props.onClose && (
@@ -2067,9 +2072,10 @@ describe('DocsHome — new HTML embedded bot DM (Task 6)', () => {
     // The bot chat element was pushed into the host right pane.
     await waitFor(() => {
       const last = replaceToRoot.mock.calls.at(-1)?.[0] as
-        | { props?: { draft?: { botUid?: string } } }
+        | { props?: { draft?: { botUid?: string; replyChannelId?: string } } }
         | undefined
       expect(last?.props?.draft?.botUid).toBe('bot_1')
+      expect(last?.props?.draft?.replyChannelId).toBe('u_self')
     })
     // Left DocsList is still mounted (production resident-list path).
     expect(screen.getByLabelText('docs.list.newMenu')).toBeTruthy()
@@ -2147,13 +2153,24 @@ describe('DocsHome — new HTML embedded bot DM (Task 6)', () => {
       (call) => call.method === 'get' && call.url.startsWith('/docs/recent') && !call.url.startsWith('/docs/recent/creators'),
     ).length
     const listGetsBefore = recentListGets()
-    act(() => chat!.props!.onResult!({ doc_id: 'doc-html-1', slug: 'launch-page' }))
+    const result: HtmlPublishResult = {
+      schema: 'html.publish.result',
+      version: 1,
+      request_id: 'req-docs-home',
+      status: 'published',
+      registered: true,
+      doc_id: 'doc-html-1',
+      slug: 'launch-page',
+      doc_version: 1,
+      share_url: 'https://octo.example/d/launch-page/v/1',
+    }
+    act(() => chat!.props!.onResult!(result))
     await waitFor(() => {
       expect(recentListGets()).toBe(listGetsBefore + 1)
     })
     expect(replaceToRoot.mock.calls.at(-1)?.[0]).toBe(chat)
 
-    act(() => chat!.props!.onOpenResult!({ doc_id: 'doc-html-1', slug: 'launch-page' }))
+    act(() => chat!.props!.onOpenResult!(result))
     await waitFor(() => {
       const pane = replaceToRoot.mock.calls.at(-1)?.[0] as { props?: { docId?: string; slug?: string } }
       expect(pane.props?.docId).toBe('doc-html-1')

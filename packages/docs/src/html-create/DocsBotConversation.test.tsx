@@ -39,6 +39,7 @@ import { DocsBotConversation } from './DocsBotConversation.tsx'
 
 const draft = (over: Partial<HtmlCreationDraft> = {}): HtmlCreationDraft => ({
   requestId: 'req-abc',
+  replyChannelId: 'u_self',
   botUid: 'bot_x',
   botName: 'Publisher',
   description: 'A launch page',
@@ -76,6 +77,8 @@ describe('DocsBotConversation', () => {
     const text = screen.getByTestId('conv-text').textContent || ''
     expect(text).toContain('[Octo HTML 创建任务]')
     expect(text).toContain('request_id: req-abc')
+    expect(text).toContain('channel_id: u_self')
+    expect(text).not.toContain('channel_id: bot_x')
     expect(text).toContain('base_url: https://octo.example/docs-html/')
     // No token anywhere in the auto-sent text.
     expect(text.toLowerCase()).not.toContain('authorization')
