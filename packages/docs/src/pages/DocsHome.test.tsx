@@ -74,12 +74,24 @@ vi.mock('../html-create/DocsBotConversation.tsx', () => ({
     draft: { botUid: string; requestId: string; spaceId: string; description: string }
     autoSend?: boolean
     onClose?: () => void
+    onResult?: (result: any) => void
+    onOpenResult?: (result: any) => void
   }) => (
     <div data-testid="bot-chat">
       <span data-testid="bot-chat-bot">{props.draft.botUid}</span>
       <span data-testid="bot-chat-request">{props.draft.requestId}</span>
       <span data-testid="bot-chat-space">{props.draft.spaceId}</span>
       <span data-testid="bot-chat-autosend">{String(props.autoSend)}</span>
+      {props.onResult && (
+        <button type="button" data-testid="bot-chat-result" onClick={() => props.onResult!({
+          doc_id: 'doc-html-1', slug: 'launch-page', request_id: props.draft.requestId,
+        })}>result</button>
+      )}
+      {props.onOpenResult && (
+        <button type="button" data-testid="bot-chat-open" onClick={() => props.onOpenResult!({
+          doc_id: 'doc-html-1', slug: 'launch-page', request_id: props.draft.requestId,
+        })}>open</button>
+      )}
       {props.onClose && (
         <button type="button" data-testid="bot-chat-close" onClick={props.onClose}>
           close
@@ -2106,6 +2118,46 @@ describe('DocsHome — new HTML embedded bot DM (Task 6)', () => {
         | undefined
       expect(last?.props?.draft?.requestId).toBe(requestId)
       expect(last?.props?.autoSend).toBe(false)
+    })
+  })
+
+  it('refreshes once on structured completion and opens HTML details only after click', async () => {
+    const wk = createMockWKApp()
+    const replaceToRoot = vi.fn()
+    ;(wk as { routeRight?: unknown }).routeRight = { replaceToRoot, popToRoot: vi.fn() }
+    setWKApp(wk)
+    const calls: Array<{ method: string; url: string; body?: unknown }> = []
+    wk.apiClient.responder = ownedBotsResponder(calls)
+
+    render(<DocsHome />)
+    fireEvent.click(screen.getByLabelText('docs.list.newMenu'))
+    fireEvent.click(screen.getByText('docs.list.newHtml'))
+    await waitFor(() => expect(screen.getByText('Publisher')).toBeTruthy())
+    fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.descLabel'), {
+      target: { value: 'Landing' },
+    })
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.submit'))
+
+    let chat: { props?: { onResult?: (result: unknown) => void; onOpenResult?: (result: unknown) => void } } | undefined
+    await waitFor(() => {
+      chat = replaceToRoot.mock.calls.at(-1)?.[0]
+      expect(chat?.props?.onResult).toBeTypeOf('function')
+    })
+    const recentListGets = () => calls.filter(
+      (call) => call.method === 'get' && call.url.startsWith('/docs/recent') && !call.url.startsWith('/docs/recent/creators'),
+    ).length
+    const listGetsBefore = recentListGets()
+    act(() => chat!.props!.onResult!({ doc_id: 'doc-html-1', slug: 'launch-page' }))
+    await waitFor(() => {
+      expect(recentListGets()).toBe(listGetsBefore + 1)
+    })
+    expect(replaceToRoot.mock.calls.at(-1)?.[0]).toBe(chat)
+
+    act(() => chat!.props!.onOpenResult!({ doc_id: 'doc-html-1', slug: 'launch-page' }))
+    await waitFor(() => {
+      const pane = replaceToRoot.mock.calls.at(-1)?.[0] as { props?: { docId?: string; slug?: string } }
+      expect(pane.props?.docId).toBe('doc-html-1')
+      expect(pane.props?.slug).toBe('launch-page')
     })
   })
 

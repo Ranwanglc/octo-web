@@ -44,6 +44,7 @@
       "close": "Close",
       "statePrepared": "Task prepared",
       "stateSent": "Task submitted to {{name}}",
+      "stateGenerated": "HTML generated — view details",
       "stateFailed": "Send failed — retry manually in the composer below",
       "draftConflict": "This conversation already has a draft or pending attachments; clear it first, then retry"
     }

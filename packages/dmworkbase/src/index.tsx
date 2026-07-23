@@ -145,4 +145,11 @@ export type { AgentCardData, FileGroup, FileItem, FileContent, FileContentRespon
 // Re-export the WuKongIM Channel primitives docs' embedded bot DM needs (plan Task 5) so the docs
 // package can construct `new Channel(botUid, ChannelTypePerson)` through the @octo/base boundary
 // without taking a direct wukongimjssdk dependency (only @octo/base imports the SDK).
-export { Channel, ChannelTypePerson } from 'wukongimjssdk'
+export { Channel, ChannelTypePerson, WKSDK } from 'wukongimjssdk'
+export type { Message } from 'wukongimjssdk'
+export {
+    HTML_PUBLISH_RESULT_SCHEMA,
+    HTML_PUBLISH_RESULT_VERSION,
+    decodeHtmlPublishResult,
+} from './Messages/InteractiveCard/InteractiveCardContent'
+export type { HtmlPublishResult } from './Messages/InteractiveCard/InteractiveCardContent'

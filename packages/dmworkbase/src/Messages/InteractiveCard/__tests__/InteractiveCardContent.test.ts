@@ -22,6 +22,7 @@ vi.mock("../../../i18n", () => ({
 }));
 
 import {
+  decodeHtmlPublishResult,
   InteractiveCardContent,
   cloneInteractiveCardContentForForward,
   isInteractiveCardForwardable,
@@ -233,5 +234,45 @@ describe("InteractiveCardContent.conversationDigest", () => {
     const c = decode({ card: {}, plain: "订单已发货" });
     expect("text" in c).toBe(false);
     expect((c as unknown as { text?: unknown }).text).toBeUndefined();
+  });
+});
+
+describe("HTML publish result codec", () => {
+  const valid = {
+    schema: "html.publish.result",
+    version: 1,
+    request_id: "req-1",
+    status: "published",
+    registered: true,
+    doc_id: "doc-1",
+    slug: "launch_page",
+    doc_version: 2,
+    share_url: "https://octo.example/d/launch_page/v/2",
+  };
+
+  it("decodes and re-encodes strict octo_result without loss", () => {
+    const content = decode({ card: {}, octo_result: valid });
+    expect(content.octoResult).toEqual(valid);
+    expect(content.encodeJSON().octo_result).toEqual(valid);
+  });
+
+  it.each([
+    { schema: "wrong" },
+    { version: 2 },
+    { status: "failed" },
+    { registered: false },
+    { request_id: "bad/id" },
+    { doc_id: "../bad" },
+    { slug: "bad/slug" },
+    { doc_version: 0 },
+    { share_url: "javascript:alert(1)" },
+  ])("rejects malformed result %#", (patch) => {
+    expect(decodeHtmlPublishResult({ ...valid, ...patch })).toBeUndefined();
+    expect(decode({ card: {}, octo_result: { ...valid, ...patch } }).octoResult).toBeUndefined();
+  });
+
+  it("does not preserve malformed octo_result on encode", () => {
+    const content = decode({ card: {}, octo_result: { ...valid, registered: false } });
+    expect(content.encodeJSON()).not.toHaveProperty("octo_result");
   });
 });

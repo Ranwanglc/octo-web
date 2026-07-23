@@ -7,6 +7,7 @@ import { BoardSession } from '../board/BoardSession.tsx'
 import { HtmlDocView } from '../html/HtmlDocView.tsx'
 import { CreateHtmlModal } from '../html-create/CreateHtmlModal.tsx'
 import { DocsBotConversation } from '../html-create/DocsBotConversation.tsx'
+import type { HtmlPublishResult } from '../octoweb/index.ts'
 import { docsHtmlBaseUrl, type HtmlCreationDraft } from '../html-create/createHtmlTask.ts'
 import { isBoardDoc, isBoardIdLocally, rememberBoard } from '../board/boardStore.ts'
 import { runMarkdownImport, runDocxImport, ImportContentCorruptError } from '../editor/importFlow.ts'
@@ -1291,6 +1292,7 @@ export function DocsHome() {
   const [htmlModalOpen, setHtmlModalOpen] = useState(false)
   const [htmlChatDraft, setHtmlChatDraft] = useState<HtmlCreationDraft | null>(null)
   const htmlChatDraftRef = useRef<HtmlCreationDraft | null>(null)
+  const openHtmlResultRef = useRef<(result: HtmlPublishResult) => void>(() => {})
   useEffect(() => {
     htmlChatDraftRef.current = htmlChatDraft
   }, [htmlChatDraft])
@@ -1342,26 +1344,8 @@ export function DocsHome() {
     [],
   )
 
-  // plan Task 6 §5.5: limited, non-perpetual list refresh after the task is sent. The IM ACK only
-  // means the task reached the bot — the HTML doc registers asynchronously later, so we bump the
-  // reload token at 5s / 15s / 30s (three fixed nudges, then STOP). No perpetual polling, and the
-  // front end never fabricates a stage from a timer (§5.8). Timers are cleared on close/unmount.
-  const htmlRefreshTimers = useRef<number[]>([])
-  const clearHtmlRefreshTimers = useCallback(() => {
-    for (const id of htmlRefreshTimers.current) window.clearTimeout(id)
-    htmlRefreshTimers.current = []
-  }, [])
-  const scheduleHtmlListRefresh = useCallback(() => {
-    clearHtmlRefreshTimers()
-    for (const delay of [5000, 15000, 30000]) {
-      const id = window.setTimeout(() => setListReloadToken((n) => n + 1), delay)
-      htmlRefreshTimers.current.push(id)
-    }
-  }, [clearHtmlRefreshTimers])
-  useEffect(() => clearHtmlRefreshTimers, [clearHtmlRefreshTimers])
-
   // Build the embedded bot-DM shell for the active html chat draft. Close returns to the docs
-  // empty state (does NOT delete the DM); onMessageSent triggers the bounded list refresh.
+  // empty state; a validated structured result refreshes the list exactly once.
   // `autoSend` is true only for the first open of a requestId; restores pass false (see
   // htmlComposeFiredRef) so a remounted Conversation never re-sends the same task.
   const buildBotChat = useCallback(
@@ -1375,18 +1359,18 @@ export function DocsHome() {
           // A confirmed send means this requestId has fired its one auto-send; any later restore
           // must be prefill-only.
           htmlComposeFiredRef.current.add(draft.requestId)
-          scheduleHtmlListRefresh()
         }}
+        onResult={() => setListReloadToken((n) => n + 1)}
+        onOpenResult={(result: HtmlPublishResult) => openHtmlResultRef.current(result)}
       />
     ),
-    [scheduleHtmlListRefresh],
+    [],
   )
 
   // closeHtmlChat is referenced by buildBotChat (pushed into the route pane) BEFORE it is defined;
   // route it through a ref so the pushed snapshot always calls the latest close logic.
   const closeHtmlChatRef = useRef<() => void>(() => {})
   const closeHtmlChat = useCallback(() => {
-    clearHtmlRefreshTimers()
     setHtmlChatDraft(null)
     htmlChatDraftRef.current = null
     if (routeRight) {
@@ -1396,7 +1380,7 @@ export function DocsHome() {
         // ignore — right pane unavailable
       }
     }
-  }, [routeRight, buildEmptyState, clearHtmlRefreshTimers])
+  }, [routeRight, buildEmptyState])
   useEffect(() => {
     closeHtmlChatRef.current = closeHtmlChat
   }, [closeHtmlChat])
@@ -1454,10 +1438,9 @@ export function DocsHome() {
     setSelectedDocId(null)
     setSelectedDocType(undefined)
     setSelectedOctoDocSlug(undefined)
-    // Also drop any active html chat + its refresh timers. backToList is the onSpaceChanged
+    // Also drop any active html chat. backToList is the onSpaceChanged
     // reconciler, so a Space switch must discard the old Space's draft/File[] and never send it
     // into the new Space (§5.7).
-    clearHtmlRefreshTimers()
     setHtmlChatDraft(null)
     htmlChatDraftRef.current = null
     setHtmlModalOpen(false)
@@ -1478,7 +1461,7 @@ export function DocsHome() {
         // ignore — right pane already cleared / unavailable
       }
     }
-  }, [routeRight, buildEmptyState, clearHtmlRefreshTimers])
+  }, [routeRight, buildEmptyState])
 
   // Subscribe to the host's Space-switch broadcast. On a switch the host mutates currentSpaceId
   // then emits `space-changed`; we re-read the id into state AND reconcile the open selection.
@@ -1640,10 +1623,8 @@ export function DocsHome() {
   // right pane. Split out from openDoc so the kind can be resolved asynchronously first.
   const commitOpen = useCallback(
     (docId: string, docType: 'board' | 'doc' | 'sheet' | 'html', octoDocSlug?: string) => {
-      // Opening a doc closes any active html chat (mutually exclusive right-pane modes, §8). Clear
-      // the draft + its refresh timers here; the doc shell is pushed below, so no empty-state flash.
+      // Opening a doc closes any active html chat; the doc shell is pushed below without a flash.
       if (htmlChatDraftRef.current) {
-        clearHtmlRefreshTimers()
         setHtmlChatDraft(null)
         htmlChatDraftRef.current = null
       }
@@ -1680,7 +1661,7 @@ export function DocsHome() {
       if (docType !== undefined) push(docType)
       else void getDoc(docId).then((m) => push(m.docType)).catch(() => push(undefined))
     },
-    [space, folder, routeRight, buildRightPane, clearHtmlRefreshTimers],
+    [space, folder, routeRight, buildRightPane],
   )
 
   const openDoc = useCallback(
@@ -1734,6 +1715,9 @@ export function DocsHome() {
     },
     [commitOpen],
   )
+  useEffect(() => {
+    openHtmlResultRef.current = (result) => openDoc(result.doc_id, 'html', result.slug)
+  }, [openDoc])
 
   // On mount, ALWAYS occupy the right pane so the host chat placeholder never shows through
   // (the contentRight race). If a doc is pre-selected with a KNOWN kind (deep-link / persisted

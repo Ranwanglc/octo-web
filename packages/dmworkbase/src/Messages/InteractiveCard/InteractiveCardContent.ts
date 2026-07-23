@@ -18,6 +18,72 @@ function asRecord(v: unknown): Record<string, unknown> {
     : {};
 }
 
+export const HTML_PUBLISH_RESULT_SCHEMA = "html.publish.result";
+export const HTML_PUBLISH_RESULT_VERSION = 1;
+
+export interface HtmlPublishResult {
+  schema: typeof HTML_PUBLISH_RESULT_SCHEMA;
+  version: typeof HTML_PUBLISH_RESULT_VERSION;
+  request_id: string;
+  status: "published";
+  registered: true;
+  doc_id: string;
+  slug: string;
+  doc_version: number;
+  share_url: string;
+}
+
+const htmlDocIDPattern = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,255}$/;
+const htmlSlugPattern = /^[A-Za-z0-9_-]{1,64}$/;
+
+function isHttpURL(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return (
+      (url.protocol === "https:" || url.protocol === "http:") &&
+      url.host !== "" &&
+      url.username === "" &&
+      url.password === ""
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function decodeHtmlPublishResult(value: unknown): HtmlPublishResult | undefined {
+  const raw = asRecord(value);
+  const requestID = asString(raw.request_id);
+  const docID = asString(raw.doc_id);
+  const slug = asString(raw.slug);
+  const shareURL = asString(raw.share_url);
+  if (
+    raw.schema !== HTML_PUBLISH_RESULT_SCHEMA ||
+    raw.version !== HTML_PUBLISH_RESULT_VERSION ||
+    raw.status !== "published" ||
+    raw.registered !== true ||
+    !htmlDocIDPattern.test(docID) ||
+    !htmlSlugPattern.test(slug) ||
+    !htmlDocIDPattern.test(requestID) ||
+    typeof raw.doc_version !== "number" ||
+    !Number.isSafeInteger(raw.doc_version) ||
+    raw.doc_version < 1 ||
+    !isHttpURL(shareURL)
+  ) {
+    return undefined;
+  }
+  return {
+    schema: HTML_PUBLISH_RESULT_SCHEMA,
+    version: HTML_PUBLISH_RESULT_VERSION,
+    request_id: requestID,
+    status: "published",
+    registered: true,
+    doc_id: docID,
+    slug,
+    doc_version: raw.doc_version,
+    share_url: shareURL,
+  };
+}
+
 /**
  * InteractiveCard(=17) 消息正文（仅接收渲染；波 1 web 不发送 type-17）。
  *
@@ -43,6 +109,7 @@ export class InteractiveCardContent extends MessageContent {
    * trust candidate，不开放 Submit。
    */
   forwardedFromUID = "";
+  octoResult?: HtmlPublishResult;
 
   decodeJSON(content: any) {
     // 签名受 SDK 约束为 any；下方一律按 unknown 逐字段守卫收窄。
@@ -55,6 +122,7 @@ export class InteractiveCardContent extends MessageContent {
     if (typeof raw?.card_seq === "number") this.cardSeq = raw.card_seq;
     if (typeof raw?.transient === "boolean") this.transient = raw.transient;
     this.forwardedFromUID = asString(raw?.forwarded_from_uid);
+    this.octoResult = decodeHtmlPublishResult(raw?.octo_result);
   }
 
   encodeJSON(): any {
@@ -74,6 +142,7 @@ export class InteractiveCardContent extends MessageContent {
       (out as Record<string, unknown>).forwarded_from_uid =
         this.forwardedFromUID;
     }
+    if (this.octoResult) out.octo_result = this.octoResult;
     return out;
   }
 
@@ -106,6 +175,7 @@ export function cloneInteractiveCardContentForForward(
   cloned.cardSeq = content.cardSeq;
   cloned.transient = content.transient;
   cloned.forwardedFromUID = forwardedFromUID;
+  cloned.octoResult = content.octoResult;
   return cloned;
 }
 

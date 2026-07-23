@@ -4356,10 +4356,21 @@ div:has(> .octo-link-bubble) {
   flex-direction: column;
 }
 .octo-docs-bot-chat-status {
+  width: 100%;
   padding: 8px 16px;
+  border: 0;
+  background: transparent;
+  text-align: left;
   font-size: 12px;
   line-height: 18px;
   color: var(--wk-brand-alpha-60);
+}
+.octo-docs-bot-chat-status:not(:disabled) {
+  color: var(--wk-color-accent);
+  cursor: pointer;
+}
+.octo-docs-bot-chat-status:not(:disabled):hover {
+  background: var(--wk-accent-alpha-04);
 }
 .octo-docs-bot-chat-status[data-state='failed'] {
   color: var(--wk-color-error);

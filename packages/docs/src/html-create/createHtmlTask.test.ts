@@ -59,6 +59,8 @@ describe('buildHtmlCreationMessage', () => {
     const msg = buildHtmlCreationMessage(baseDraft())
     expect(msg).toContain('[Octo HTML 创建任务]')
     expect(msg).toContain('request_id: req-123')
+    expect(msg).toContain('channel_id: bot_1')
+    expect(msg).toContain('channel_type: 1')
     expect(msg).toContain('space_id: s_1')
     expect(msg).toContain('base_url: https://octo.example/docs-html/')
     expect(msg).toContain('挂载：space')
@@ -71,6 +73,8 @@ describe('buildHtmlCreationMessage', () => {
     }
     expect(msg).toContain('octo-html skill')
     expect(msg).toContain('octo-cli html')
+    expect(msg).toContain('octo-cli html publish-and-notify')
+    expect(msg).toContain('不要调用普通 publish')
   })
 
   it('emits the user description as a single-physical-line JSON string literal', () => {

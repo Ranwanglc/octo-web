@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render, screen, cleanup, fireEvent, act } from '@testing-library/react'
-import { setWKApp } from '../octoweb/index.ts'
+import { setWKApp, WKSDK } from '../octoweb/index.ts'
 import { createMockWKApp } from '../octoweb/mock.ts'
 import type { HtmlCreationDraft } from './createHtmlTask.ts'
 
@@ -51,6 +51,7 @@ const draft = (over: Partial<HtmlCreationDraft> = {}): HtmlCreationDraft => ({
 describe('DocsBotConversation', () => {
   beforeEach(() => {
     lastConversationProps = null
+    ;(WKSDK as unknown as { resetMessageListeners(): void }).resetMessageListeners()
     setWKApp(createMockWKApp())
   })
   afterEach(() => {
@@ -110,5 +111,78 @@ describe('DocsBotConversation', () => {
     render(<DocsBotConversation draft={draft()} onClose={() => {}} onMessageSent={onMessageSent} />)
     lastConversationProps!.onMessageSent!()
     expect(onMessageSent).toHaveBeenCalledTimes(1)
+  })
+
+  const validResult = {
+    schema: 'html.publish.result',
+    version: 1,
+    request_id: 'req-abc',
+    status: 'published',
+    registered: true,
+    doc_id: 'doc-123',
+    slug: 'launch-page',
+    doc_version: 1,
+    share_url: 'https://octo.example/d/launch-page/v/1',
+  }
+
+  const emit = (over: Record<string, unknown> = {}) => {
+    ;(WKSDK as unknown as { emitMessage(message: unknown): void }).emitMessage({
+      contentType: 17,
+      channel: { channelID: 'bot_x', channelType: 1 },
+      fromUID: 'bot_x',
+      content: { octo_result: validResult },
+      ...over,
+    })
+  }
+
+  it('accepts one strict result from the current selected bot and opens only on click', () => {
+    const onResult = vi.fn()
+    const onOpenResult = vi.fn()
+    render(
+      <DocsBotConversation
+        draft={draft()}
+        onClose={() => {}}
+        onResult={onResult}
+        onOpenResult={onOpenResult}
+      />,
+    )
+    act(() => emit())
+    expect(onResult).toHaveBeenCalledTimes(1)
+    expect(onOpenResult).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.stateGenerated'))
+    expect(onOpenResult).toHaveBeenCalledWith(expect.objectContaining({ doc_id: 'doc-123', slug: 'launch-page' }))
+  })
+
+  it.each([
+    ['wrong message type', { contentType: 1 }],
+    ['wrong channel type', { channel: { channelID: 'bot_x', channelType: 2 } }],
+    ['wrong current channel', { channel: { channelID: 'bot_y', channelType: 1 } }],
+    ['wrong selected bot sender', { fromUID: 'bot_y' }],
+    ['wrong request', { content: { octo_result: { ...validResult, request_id: 'req-other' } } }],
+    ['wrong schema', { content: { octo_result: { ...validResult, schema: 'other' } } }],
+    ['wrong version', { content: { octo_result: { ...validResult, version: 2 } } }],
+    ['not registered', { content: { octo_result: { ...validResult, registered: false } } }],
+    ['invalid doc id', { content: { octo_result: { ...validResult, doc_id: '../bad' } } }],
+    ['invalid slug', { content: { octo_result: { ...validResult, slug: 'bad/slug' } } }],
+  ])('rejects %s', (_label, message) => {
+    const onResult = vi.fn()
+    render(<DocsBotConversation draft={draft()} onClose={() => {}} onResult={onResult} />)
+    act(() => emit(message))
+    expect(onResult).not.toHaveBeenCalled()
+  })
+
+  it('deduplicates repeated results and removes the WK listener after success/unmount', () => {
+    const onResult = vi.fn()
+    const view = render(<DocsBotConversation draft={draft()} onClose={() => {}} onResult={onResult} />)
+    const sdk = WKSDK as unknown as { messageListenerCount(): number }
+    expect(sdk.messageListenerCount()).toBe(1)
+    act(() => {
+      emit()
+      emit()
+    })
+    expect(onResult).toHaveBeenCalledTimes(1)
+    expect(sdk.messageListenerCount()).toBe(0)
+    view.unmount()
+    expect(sdk.messageListenerCount()).toBe(0)
   })
 })

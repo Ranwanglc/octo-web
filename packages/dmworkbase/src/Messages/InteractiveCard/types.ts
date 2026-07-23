@@ -57,4 +57,5 @@ export interface InteractiveCardPayload {
   card_seq?: number;
   /** P2 tolerant-only，波 1 不实现任何行为。 */
   transient?: boolean;
+  octo_result?: import("./InteractiveCardContent").HtmlPublishResult;
 }

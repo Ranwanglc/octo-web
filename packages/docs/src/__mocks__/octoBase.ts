@@ -33,6 +33,53 @@ export const WKApp = {
   loginInfo: { uid: 'u_stub', token: 'stub-token' },
 }
 
+const messageListeners = new Set<(message: unknown) => void>()
+export const WKSDK = {
+  shared: () => ({
+    chatManager: {
+      addMessageListener(listener: (message: unknown) => void) {
+        messageListeners.add(listener)
+      },
+      removeMessageListener(listener: (message: unknown) => void) {
+        messageListeners.delete(listener)
+      },
+    },
+  }),
+  emitMessage(message: unknown) {
+    for (const listener of [...messageListeners]) listener(message)
+  },
+  messageListenerCount() {
+    return messageListeners.size
+  },
+  resetMessageListeners() {
+    messageListeners.clear()
+  },
+}
+
+export const HTML_PUBLISH_RESULT_SCHEMA = 'html.publish.result'
+export const HTML_PUBLISH_RESULT_VERSION = 1
+export function decodeHtmlPublishResult(value: unknown) {
+  if (!value || typeof value !== 'object') return undefined
+  const raw = value as Record<string, unknown>
+  if (
+    raw.schema !== HTML_PUBLISH_RESULT_SCHEMA ||
+    raw.version !== HTML_PUBLISH_RESULT_VERSION ||
+    raw.status !== 'published' ||
+    raw.registered !== true ||
+    typeof raw.request_id !== 'string' ||
+    !/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,255}$/.test(raw.request_id) ||
+    typeof raw.doc_id !== 'string' ||
+    !/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,255}$/.test(raw.doc_id) ||
+    typeof raw.slug !== 'string' ||
+    !/^[A-Za-z0-9_-]{1,64}$/.test(raw.slug) ||
+    !Number.isSafeInteger(raw.doc_version) ||
+    (raw.doc_version as number) < 1 ||
+    typeof raw.share_url !== 'string' ||
+    !/^https?:\/\/[^\s@]+$/.test(raw.share_url)
+  ) return undefined
+  return raw
+}
+
 export const i18n = {
   registerNamespace() {},
   init() {},

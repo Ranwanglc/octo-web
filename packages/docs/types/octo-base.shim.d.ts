@@ -129,6 +129,33 @@ declare module '@octo/base' {
     isEqual(other: Channel): boolean
   }
 
+  export interface HtmlPublishResult {
+    schema: 'html.publish.result'
+    version: 1
+    request_id: string
+    status: 'published'
+    registered: true
+    doc_id: string
+    slug: string
+    doc_version: number
+    share_url: string
+  }
+  export interface Message {
+    channel: Channel
+    fromUID: string
+    contentType: number
+    content: { octoResult?: HtmlPublishResult }
+  }
+  export const WKSDK: {
+    shared(): {
+      chatManager: {
+        addMessageListener(listener: (message: Message) => void): void
+        removeMessageListener(listener: (message: Message) => void): void
+      }
+    }
+  }
+  export function decodeHtmlPublishResult(value: unknown): HtmlPublishResult | undefined
+
   // One-shot initial-compose contract (plan Task 4) surfaced on ConversationProps. The docs shell
   // builds an InitialCompose and reads state changes back.
   export interface InitialCompose {

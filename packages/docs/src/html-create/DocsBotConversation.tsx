@@ -8,7 +8,7 @@
 // The right-pane owner (DocsHome) keeps the left DocsList resident; closing here just returns the
 // pane to the docs empty state — it never deletes the DM.
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Conversation,
   Channel,
@@ -16,6 +16,10 @@ import {
   t,
   type InitialCompose,
   type InitialComposeState,
+  WKSDK,
+  decodeHtmlPublishResult,
+  type HtmlPublishResult,
+  type Message,
 } from '../octoweb/index.ts'
 import { buildHtmlCreationMessage, type HtmlCreationDraft } from './createHtmlTask.ts'
 
@@ -30,8 +34,10 @@ export interface DocsBotConversationProps {
   autoSend?: boolean
   /** Close the chat and return the right pane to the docs empty state (does NOT delete the DM). */
   onClose(): void
-  /** Fired after the initial task message is acknowledged as sent (drives list-refresh in DocsHome). */
+  /** Fired after the initial task message is acknowledged as sent. */
   onMessageSent?(): void
+  onResult?(result: HtmlPublishResult): void
+  onOpenResult?(result: HtmlPublishResult): void
 }
 
 /** Line-drawn close glyph (UI-SPEC: no unicode/emoji functional icons). */
@@ -48,9 +54,13 @@ export function DocsBotConversation({
   autoSend = true,
   onClose,
   onMessageSent,
+  onResult,
+  onOpenResult,
 }: DocsBotConversationProps) {
   const [composeState, setComposeState] = useState<InitialComposeState | null>(null)
   const [failReason, setFailReason] = useState<string | undefined>()
+  const [publishResult, setPublishResult] = useState<HtmlPublishResult | null>(null)
+  const consumedResults = useRef(new Set<string>())
 
   // The REAL user↔bot Person channel (§1.0). Memoised on botUid so a re-render doesn't rebuild it.
   const channel = useMemo(
@@ -72,14 +82,39 @@ export function DocsBotConversation({
     [draft, autoSend],
   )
 
+  useEffect(() => {
+    if (publishResult) return
+    const chatManager = WKSDK.shared().chatManager
+    const listener = (message: Message) => {
+      if (
+        message.contentType !== 17 ||
+        message.channel.channelType !== ChannelTypePerson ||
+        message.channel.channelID !== draft.botUid ||
+        message.fromUID !== draft.botUid
+      ) return
+      const result = message.content?.octoResult ?? decodeHtmlPublishResult(
+        (message.content as unknown as Record<string, unknown>)?.octo_result,
+      )
+      if (!result || result.request_id !== draft.requestId) return
+      const dedupeKey = `${result.request_id}:${result.doc_id}:${result.doc_version}`
+      if (consumedResults.current.has(dedupeKey)) return
+      consumedResults.current.add(dedupeKey)
+      setPublishResult(result)
+      onResult?.(result)
+    }
+    chatManager.addMessageListener(listener)
+    return () => chatManager.removeMessageListener(listener)
+  }, [draft.botUid, draft.requestId, onResult, publishResult])
+
   // First letter of the bot name as an avatar fallback (WKAvatar isn't publicly exported; §Task5
   // step 2 permits a name-initial fallback rather than a deep host import).
   const avatarInitial = (draft.botName || draft.botUid).trim().charAt(0).toUpperCase()
 
   // Status line reflects ONLY the front-end IM lifecycle (prepared/sent/failed). Real bot
   // generation/publish progress is expressed by the bot's own messages, never faked here (§5.8).
-  const statusText =
-    composeState === 'failed'
+  const statusText = publishResult
+    ? t('docs.list.htmlCreate.stateGenerated')
+    : composeState === 'failed'
       ? failReason || t('docs.list.htmlCreate.stateFailed')
       : composeState === 'sent'
         ? t('docs.list.htmlCreate.stateSent', { values: { name: draft.botName } })
@@ -108,13 +143,16 @@ export function DocsBotConversation({
       </header>
 
       {statusText && (
-        <p
+        <button
+          type="button"
           className="octo-docs-bot-chat-status"
           role="status"
-          data-state={composeState ?? undefined}
+          data-state={publishResult ? 'generated' : composeState ?? undefined}
+          disabled={!publishResult}
+          onClick={() => publishResult && onOpenResult?.(publishResult)}
         >
           {statusText}
-        </p>
+        </button>
       )}
 
       <div className="octo-docs-bot-chat-body">

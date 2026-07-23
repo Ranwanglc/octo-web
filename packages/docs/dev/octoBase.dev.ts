@@ -9,7 +9,20 @@
 // This file is NEVER part of the production build: apps/web builds docs against the real
 // `@octo/base`. It exists purely so `pnpm --filter @octo/docs dev:standalone` can run.
 
-export { WKApp, Menus, SpaceService, VoiceInputButton } from '../src/__mocks__/octoBase.ts'
+export {
+  WKApp,
+  Menus,
+  SpaceService,
+  VoiceInputButton,
+  Conversation,
+  Channel,
+  ChannelTypePerson,
+  buildDocLink,
+  WKSDK,
+  decodeHtmlPublishResult,
+  HTML_PUBLISH_RESULT_SCHEMA,
+  HTML_PUBLISH_RESULT_VERSION,
+} from '../src/__mocks__/octoBase.ts'
 export type { SpaceMember } from '../src/__mocks__/octoBase.ts'
 
 type Tree = Record<string, unknown>

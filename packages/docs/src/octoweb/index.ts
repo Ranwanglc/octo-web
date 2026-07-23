@@ -8,7 +8,14 @@
 
 import { WKApp, i18n, t, useI18n, Menus, SpaceService } from '@octo/base'
 import { VoiceInputButton } from '@octo/base'
-import { Conversation, Channel, ChannelTypePerson } from '@octo/base'
+import {
+  Conversation,
+  Channel,
+  ChannelTypePerson,
+  WKSDK,
+  decodeHtmlPublishResult,
+} from '@octo/base'
+import type { HtmlPublishResult, Message } from '@octo/base'
 import type { ReplaceMode, SelectionRange } from '@octo/base'
 import type {
   APIClient,
@@ -41,6 +48,9 @@ export function getWKApp(): WKAppShape {
   // the real APIClient / RouteManager signatures are wider than this seam's minimal subset.
   return WKApp as unknown as WKAppShape
 }
+
+export { WKSDK, decodeHtmlPublishResult }
+export type { HtmlPublishResult, Message }
 
 /**
  * The host's RIGHT (main) route pane manager. Production: the real static WKApp.routeRight
