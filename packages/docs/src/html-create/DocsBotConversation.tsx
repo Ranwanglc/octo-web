@@ -92,9 +92,9 @@ export function DocsBotConversation({
         message.channel.channelID !== draft.botUid ||
         message.fromUID !== draft.botUid
       ) return
-      const result = message.content?.octoResult ?? decodeHtmlPublishResult(
-        (message.content as unknown as Record<string, unknown>)?.octo_result,
-      )
+      const rawContent = message.content as unknown as Record<string, unknown>
+      const result = decodeHtmlPublishResult(message.content?.octoResult)
+        ?? decodeHtmlPublishResult(rawContent?.octo_result)
       if (!result || result.request_id !== draft.requestId) return
       const dedupeKey = `${result.request_id}:${result.doc_id}:${result.doc_version}`
       if (consumedResults.current.has(dedupeKey)) return

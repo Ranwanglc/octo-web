@@ -164,6 +164,7 @@ describe('DocsBotConversation', () => {
     ['not registered', { content: { octo_result: { ...validResult, registered: false } } }],
     ['invalid doc id', { content: { octo_result: { ...validResult, doc_id: '../bad' } } }],
     ['invalid slug', { content: { octo_result: { ...validResult, slug: 'bad/slug' } } }],
+    ['invalid pre-decoded result', { content: { octoResult: { ...validResult, registered: false } } }],
   ])('rejects %s', (_label, message) => {
     const onResult = vi.fn()
     render(<DocsBotConversation draft={draft()} onClose={() => {}} onResult={onResult} />)
@@ -182,6 +183,14 @@ describe('DocsBotConversation', () => {
     })
     expect(onResult).toHaveBeenCalledTimes(1)
     expect(sdk.messageListenerCount()).toBe(0)
+    view.unmount()
+    expect(sdk.messageListenerCount()).toBe(0)
+  })
+
+  it('removes the WK listener when unmounted before any result arrives', () => {
+    const view = render(<DocsBotConversation draft={draft()} onClose={() => {}} />)
+    const sdk = WKSDK as unknown as { messageListenerCount(): number }
+    expect(sdk.messageListenerCount()).toBe(1)
     view.unmount()
     expect(sdk.messageListenerCount()).toBe(0)
   })
