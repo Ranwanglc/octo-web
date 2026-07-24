@@ -23,6 +23,20 @@ function CloseIcon(): React.ReactElement {
   )
 }
 
+function PaperclipIcon(): React.ReactElement {
+  return (
+    <svg className="octo-html-create-add-files-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M5.25 8.75l4.4-4.4a2.12 2.12 0 013 3l-5.3 5.3a3.12 3.12 0 01-4.42-4.42l5.13-5.12"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
 export interface CreateHtmlModalProps {
   open: boolean
   spaceId: string
@@ -299,9 +313,10 @@ export function CreateHtmlModal({ open, spaceId, publishBaseUrl = '', onClose, o
             <span className="octo-html-create-label">{t('docs.list.htmlCreate.filesLabel')}</span>
             <button
               type="button"
-              className="octo-tb-btn"
+              className="octo-tb-btn octo-html-create-add-files"
               onClick={() => fileInputRef.current?.click()}
             >
+              <PaperclipIcon />
               {t('docs.list.htmlCreate.addFiles')}
             </button>
             <input
