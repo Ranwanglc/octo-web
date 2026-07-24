@@ -77,18 +77,30 @@ vi.mock('../html-create/DocsBotConversation.tsx', () => ({
     onClose?: () => void
     onResult?: (result: any) => void
     onOpenResult?: (result: any) => void
+    onAutoOpenResult?: (result: any) => void
+    initialResult?: any
+    autoOpenResult?: boolean
   }) => (
     <div data-testid="bot-chat">
       <span data-testid="bot-chat-bot">{props.draft.botUid}</span>
       <span data-testid="bot-chat-request">{props.draft.requestId}</span>
       <span data-testid="bot-chat-space">{props.draft.spaceId}</span>
       <span data-testid="bot-chat-autosend">{String(props.autoSend)}</span>
+      <span data-testid="bot-chat-completed">{String(Boolean(props.initialResult))}</span>
+      <span data-testid="bot-chat-auto-open">{String(props.autoOpenResult)}</span>
       {props.onResult && (
         <button type="button" data-testid="bot-chat-result" onClick={() => props.onResult!({
           schema: 'html.publish.result', version: 1, request_id: props.draft.requestId,
           status: 'published', registered: true, doc_id: 'doc-html-1', slug: 'launch-page',
           doc_version: 1, share_url: 'https://octo.example/d/launch-page/v/1',
         })}>result</button>
+      )}
+      {props.onAutoOpenResult && (
+        <button type="button" data-testid="bot-chat-auto-open" onClick={() => props.onAutoOpenResult!({
+          schema: 'html.publish.result', version: 1, request_id: props.draft.requestId,
+          status: 'published', registered: true, doc_id: 'doc-html-1', slug: 'launch-page',
+          doc_version: 1, share_url: 'https://octo.example/d/launch-page/v/1',
+        })}>auto-open</button>
       )}
       {props.onOpenResult && (
         <button type="button" data-testid="bot-chat-open" onClick={() => props.onOpenResult!({
@@ -2155,7 +2167,7 @@ describe('DocsHome — new HTML embedded bot DM (Task 6)', () => {
     })
   })
 
-  it('refreshes once on structured completion and opens HTML details only after click', async () => {
+  it('auto-opens once, then Back restores the completed chat without reopening', async () => {
     const wk = createMockWKApp()
     const replaceToRoot = vi.fn()
     ;(wk as { routeRight?: unknown }).routeRight = { replaceToRoot, popToRoot: vi.fn() }
@@ -2172,7 +2184,11 @@ describe('DocsHome — new HTML embedded bot DM (Task 6)', () => {
     })
     fireEvent.click(screen.getByText('docs.list.htmlCreate.submit'))
 
-    let chat: { props?: { onResult?: (result: unknown) => void; onOpenResult?: (result: unknown) => void } } | undefined
+    let chat: { props?: {
+      draft?: { requestId?: string }
+      onResult?: (result: unknown) => void
+      onAutoOpenResult?: (result: unknown) => void
+    } } | undefined
     await waitFor(() => {
       chat = replaceToRoot.mock.calls.at(-1)?.[0]
       expect(chat?.props?.onResult).toBeTypeOf('function')
@@ -2181,10 +2197,12 @@ describe('DocsHome — new HTML embedded bot DM (Task 6)', () => {
       (call) => call.method === 'get' && call.url.startsWith('/docs/recent') && !call.url.startsWith('/docs/recent/creators'),
     ).length
     const listGetsBefore = recentListGets()
+    const requestId = chat?.props?.draft?.requestId
+    expect(requestId).toBeTruthy()
     const result: HtmlPublishResult = {
       schema: 'html.publish.result',
       version: 1,
-      request_id: 'req-docs-home',
+      request_id: requestId!,
       status: 'published',
       registered: true,
       doc_id: 'doc-html-1',
@@ -2192,17 +2210,40 @@ describe('DocsHome — new HTML embedded bot DM (Task 6)', () => {
       doc_version: 1,
       share_url: 'https://octo.example/d/launch-page/v/1',
     }
-    act(() => chat!.props!.onResult!(result))
+    act(() => {
+      chat!.props!.onResult!(result)
+      chat!.props!.onAutoOpenResult!(result)
+    })
     await waitFor(() => {
       expect(recentListGets()).toBe(listGetsBefore + 1)
-    })
-    expect(replaceToRoot.mock.calls.at(-1)?.[0]).toBe(chat)
-
-    act(() => chat!.props!.onOpenResult!(result))
-    await waitFor(() => {
       const pane = replaceToRoot.mock.calls.at(-1)?.[0] as { props?: { docId?: string; slug?: string } }
       expect(pane.props?.docId).toBe('doc-html-1')
       expect(pane.props?.slug).toBe('launch-page')
+    })
+
+    act(() => window.dispatchEvent(new PopStateEvent('popstate', { state: null })))
+    let restored: { props?: {
+      initialResult?: HtmlPublishResult
+      autoOpenResult?: boolean
+      autoSend?: boolean
+      onOpenResult?: (result: HtmlPublishResult) => void
+      onAutoOpenResult?: (result: HtmlPublishResult) => void
+    } } | undefined
+    await waitFor(() => {
+      restored = replaceToRoot.mock.calls.at(-1)?.[0]
+      expect(restored?.props?.initialResult?.doc_id).toBe('doc-html-1')
+      expect(restored?.props?.autoOpenResult).toBe(false)
+      expect(restored?.props?.autoSend).toBe(false)
+    })
+
+    const pushesBeforeDuplicate = replaceToRoot.mock.calls.length
+    act(() => restored!.props!.onAutoOpenResult!(result))
+    expect(replaceToRoot).toHaveBeenCalledTimes(pushesBeforeDuplicate)
+
+    act(() => restored!.props!.onOpenResult!(result))
+    await waitFor(() => {
+      const pane = replaceToRoot.mock.calls.at(-1)?.[0] as { props?: { docId?: string } }
+      expect(pane.props?.docId).toBe('doc-html-1')
     })
   })
 

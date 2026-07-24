@@ -45,7 +45,7 @@ const draft = (over: Partial<HtmlCreationDraft> = {}): HtmlCreationDraft => ({
   description: 'A launch page',
   files: [],
   spaceId: 's_1',
-  baseUrl: 'https://octo.example/docs-html/',
+  publishBaseUrl: 'https://octo.example/docs-html/',
   ...over,
 })
 
@@ -79,7 +79,8 @@ describe('DocsBotConversation', () => {
     expect(text).toContain('request_id: req-abc')
     expect(text).toContain('channel_id: u_self')
     expect(text).not.toContain('channel_id: bot_x')
-    expect(text).toContain('base_url: https://octo.example/docs-html/')
+    expect(text).toContain('publish_base_url: https://octo.example/docs-html/')
+    expect(text).toContain('message_base_url: http://192.168.201.162:8190')
     // No token anywhere in the auto-sent text.
     expect(text.toLowerCase()).not.toContain('authorization')
   })
@@ -138,22 +139,27 @@ describe('DocsBotConversation', () => {
     })
   }
 
-  it('accepts one strict result from the current selected bot and opens only on click', () => {
+  it('accepts one strict result, auto-opens once, and retains the manual button', () => {
     const onResult = vi.fn()
+    const onAutoOpenResult = vi.fn()
     const onOpenResult = vi.fn()
     render(
       <DocsBotConversation
         draft={draft()}
         onClose={() => {}}
         onResult={onResult}
+        onAutoOpenResult={onAutoOpenResult}
         onOpenResult={onOpenResult}
       />,
     )
     act(() => emit())
     expect(onResult).toHaveBeenCalledTimes(1)
-    expect(onOpenResult).not.toHaveBeenCalled()
+    expect(onAutoOpenResult).toHaveBeenCalledTimes(1)
+    expect(onAutoOpenResult).toHaveBeenLastCalledWith(
+      expect.objectContaining({ doc_id: 'doc-123', slug: 'launch-page' }),
+    )
     fireEvent.click(screen.getByText('docs.list.htmlCreate.stateGenerated'))
-    expect(onOpenResult).toHaveBeenCalledWith(expect.objectContaining({ doc_id: 'doc-123', slug: 'launch-page' }))
+    expect(onOpenResult).toHaveBeenCalledTimes(1)
   })
 
   it.each([
@@ -170,21 +176,70 @@ describe('DocsBotConversation', () => {
     ['invalid pre-decoded result', { content: { octoResult: { ...validResult, registered: false } } }],
   ])('rejects %s', (_label, message) => {
     const onResult = vi.fn()
-    render(<DocsBotConversation draft={draft()} onClose={() => {}} onResult={onResult} />)
+    const onAutoOpenResult = vi.fn()
+    render(
+      <DocsBotConversation
+        draft={draft()}
+        onClose={() => {}}
+        onResult={onResult}
+        onAutoOpenResult={onAutoOpenResult}
+      />,
+    )
     act(() => emit(message))
     expect(onResult).not.toHaveBeenCalled()
+    expect(onAutoOpenResult).not.toHaveBeenCalled()
+  })
+
+  it('restores a completed result without reopening and keeps the manual button', () => {
+    const onResult = vi.fn()
+    const onOpenResult = vi.fn()
+    render(
+      <DocsBotConversation
+        draft={draft()}
+        initialResult={validResult}
+        autoOpenResult={false}
+        onClose={() => {}}
+        onResult={onResult}
+        onOpenResult={onOpenResult}
+      />,
+    )
+    expect(screen.getByText('docs.list.htmlCreate.stateGenerated')).toBeTruthy()
+    act(() => emit())
+    expect(onResult).not.toHaveBeenCalled()
+    expect(onOpenResult).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.stateGenerated'))
+    expect(onOpenResult).toHaveBeenCalledTimes(1)
   })
 
   it('deduplicates repeated results and removes the WK listener after success/unmount', () => {
     const onResult = vi.fn()
-    const view = render(<DocsBotConversation draft={draft()} onClose={() => {}} onResult={onResult} />)
+    const onAutoOpenResult = vi.fn()
+    const view = render(
+      <DocsBotConversation
+        draft={draft()}
+        onClose={() => {}}
+        onResult={onResult}
+        onAutoOpenResult={onAutoOpenResult}
+      />,
+    )
     const sdk = WKSDK as unknown as { messageListenerCount(): number }
     expect(sdk.messageListenerCount()).toBe(1)
     act(() => {
       emit()
       emit()
+      emit({
+        content: {
+          octo_result: {
+            ...validResult,
+            doc_id: 'doc-456',
+            doc_version: 2,
+            slug: 'different-page',
+          },
+        },
+      })
     })
     expect(onResult).toHaveBeenCalledTimes(1)
+    expect(onAutoOpenResult).toHaveBeenCalledTimes(1)
     expect(sdk.messageListenerCount()).toBe(0)
     view.unmount()
     expect(sdk.messageListenerCount()).toBe(0)

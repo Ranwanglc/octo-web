@@ -8,7 +8,10 @@ import { HtmlDocView } from '../html/HtmlDocView.tsx'
 import { CreateHtmlModal } from '../html-create/CreateHtmlModal.tsx'
 import { DocsBotConversation } from '../html-create/DocsBotConversation.tsx'
 import type { HtmlPublishResult } from '../octoweb/index.ts'
-import { docsHtmlBaseUrl, type HtmlCreationDraft } from '../html-create/createHtmlTask.ts'
+import {
+  docsHtmlPublishBaseUrl,
+  type HtmlCreationDraft,
+} from '../html-create/createHtmlTask.ts'
 import { isBoardDoc, isBoardIdLocally, rememberBoard } from '../board/boardStore.ts'
 import { runMarkdownImport, runDocxImport, ImportContentCorruptError } from '../editor/importFlow.ts'
 import '../editor/styles.css'
@@ -1286,13 +1289,17 @@ export function DocsHome() {
   }, [])
 
   // plan Task 6: the "new HTML" flow. `htmlModalOpen` drives the create dialog; `htmlChatDraft`
-  // holds the active embedded-bot-DM task (mutually exclusive with a selected doc — opening one
-  // closes the other). A ref mirrors the draft so the NavRail re-entry handler can re-mount the
+  // holds the embedded-bot-DM task. Normal doc opens clear it; an automatic result open retains it
+  // so browser Back can restore the completed chat. A ref mirrors the draft so re-entry can re-mount the
   // SAME chat (same requestId) without a stale closure and without re-sending (§5 risk 1).
   const [htmlModalOpen, setHtmlModalOpen] = useState(false)
   const [htmlChatDraft, setHtmlChatDraft] = useState<HtmlCreationDraft | null>(null)
   const htmlChatDraftRef = useRef<HtmlCreationDraft | null>(null)
+  const htmlPublishResultRef = useRef<HtmlPublishResult | null>(null)
+  const htmlResultAutoOpenedRef = useRef<Set<string>>(new Set())
+  const preserveHtmlChatOnNextOpenRef = useRef(false)
   const openHtmlResultRef = useRef<(result: HtmlPublishResult) => void>(() => {})
+  const reopenHtmlResultRef = useRef<(result: HtmlPublishResult) => void>(() => {})
   useEffect(() => {
     htmlChatDraftRef.current = htmlChatDraft
   }, [htmlChatDraft])
@@ -1360,8 +1367,16 @@ export function DocsHome() {
           // must be prefill-only.
           htmlComposeFiredRef.current.add(draft.requestId)
         }}
-        onResult={() => setListReloadToken((n) => n + 1)}
-        onOpenResult={(result: HtmlPublishResult) => openHtmlResultRef.current(result)}
+        initialResult={htmlPublishResultRef.current?.request_id === draft.requestId
+          ? htmlPublishResultRef.current
+          : null}
+        autoOpenResult={!htmlResultAutoOpenedRef.current.has(draft.requestId)}
+        onResult={(result: HtmlPublishResult) => {
+          htmlPublishResultRef.current = result
+          setListReloadToken((n) => n + 1)
+        }}
+        onAutoOpenResult={(result: HtmlPublishResult) => openHtmlResultRef.current(result)}
+        onOpenResult={(result: HtmlPublishResult) => reopenHtmlResultRef.current(result)}
       />
     ),
     [],
@@ -1373,6 +1388,7 @@ export function DocsHome() {
   const closeHtmlChat = useCallback(() => {
     setHtmlChatDraft(null)
     htmlChatDraftRef.current = null
+    htmlPublishResultRef.current = null
     if (routeRight) {
       try {
         routeRight.replaceToRoot(buildEmptyState() as unknown)
@@ -1386,7 +1402,7 @@ export function DocsHome() {
   }, [closeHtmlChat])
 
   // Open the embedded bot DM for a submitted draft: it becomes the sole right-pane occupant.
-  // Any open doc selection is cleared first so the two right-pane modes stay mutually exclusive
+  // Any open doc selection is cleared first so only one mode is visible at a time
   // (§8): no fake doc id, no `?doc=`, no persisted doc target.
   const openHtmlChat = useCallback(
     (draft: HtmlCreationDraft) => {
@@ -1399,6 +1415,7 @@ export function DocsHome() {
       mirrorListToUrl()
       setHtmlChatDraft(draft)
       htmlChatDraftRef.current = draft
+      htmlPublishResultRef.current = null
       // This is the FIRST open of this requestId → it is the one allowed auto-send. Record it so any
       // later nav-reentry / restore of the same requestId is forced to prefill-only (autoSend=false).
       htmlComposeFiredRef.current.add(draft.requestId)
@@ -1413,11 +1430,9 @@ export function DocsHome() {
     [routeRight, buildBotChat],
   )
 
-  // Modal submit → finalise the draft (requestId + reply channel + front-end-derived base_url) and open the chat.
-  // crypto.randomUUID() is the one-shot idempotency id; base_url comes ONLY from the app origin
-  // (docsHtmlBaseUrl), never from user text/attachments (§5.6).
+  // Finalise the draft with front-end-controlled service URLs, then open the bot chat.
   const onSubmitHtml = useCallback(
-    (partial: Omit<HtmlCreationDraft, 'requestId' | 'replyChannelId' | 'baseUrl'>) => {
+    (partial: Omit<HtmlCreationDraft, 'requestId' | 'replyChannelId' | 'publishBaseUrl'>) => {
       const requestId =
         typeof crypto !== 'undefined' && 'randomUUID' in crypto
           ? crypto.randomUUID()
@@ -1429,7 +1444,7 @@ export function DocsHome() {
         ...partial,
         requestId,
         replyChannelId,
-        baseUrl: docsHtmlBaseUrl(origin),
+        publishBaseUrl: docsHtmlPublishBaseUrl(origin),
       }
       setHtmlModalOpen(false)
       openHtmlChat(draft)
@@ -1446,6 +1461,7 @@ export function DocsHome() {
     // into the new Space (§5.7).
     setHtmlChatDraft(null)
     htmlChatDraftRef.current = null
+    htmlPublishResultRef.current = null
     setHtmlModalOpen(false)
     // Invalidate any in-flight unknown-kind open (openDoc → getDoc still pending). Without this,
     // a Space switch (this is also the onSpaceChanged reconciler) leaves latestOpenRef pointing at
@@ -1626,10 +1642,14 @@ export function DocsHome() {
   // right pane. Split out from openDoc so the kind can be resolved asynchronously first.
   const commitOpen = useCallback(
     (docId: string, docType: 'board' | 'doc' | 'sheet' | 'html', octoDocSlug?: string) => {
-      // Opening a doc closes any active html chat; the doc shell is pushed below without a flash.
-      if (htmlChatDraftRef.current) {
+      // Normal doc opens close the HTML chat. An automatic result open preserves its draft so
+      // browser Back can restore the completed DM, including the persisted result card/button.
+      const preserveHtmlChat = preserveHtmlChatOnNextOpenRef.current
+      preserveHtmlChatOnNextOpenRef.current = false
+      if (htmlChatDraftRef.current && !preserveHtmlChat) {
         setHtmlChatDraft(null)
         htmlChatDraftRef.current = null
+        htmlPublishResultRef.current = null
       }
       const htmlSlug = docType === 'html' ? octoDocSlug : undefined
       // Whether a doc was already open BEFORE this commit — read from the live ref (not the
@@ -1719,7 +1739,17 @@ export function DocsHome() {
     [commitOpen],
   )
   useEffect(() => {
-    openHtmlResultRef.current = (result) => openDoc(result.doc_id, 'html', result.slug)
+    openHtmlResultRef.current = (result) => {
+      if (htmlResultAutoOpenedRef.current.has(result.request_id)) return
+      htmlResultAutoOpenedRef.current.add(result.request_id)
+      htmlPublishResultRef.current = result
+      preserveHtmlChatOnNextOpenRef.current = true
+      openDoc(result.doc_id, 'html', result.slug)
+    }
+    reopenHtmlResultRef.current = (result) => {
+      preserveHtmlChatOnNextOpenRef.current = true
+      openDoc(result.doc_id, 'html', result.slug)
+    }
   }, [openDoc])
 
   // On mount, ALWAYS occupy the right pane so the host chat placeholder never shows through
@@ -1850,7 +1880,25 @@ export function DocsHome() {
         if (doc !== selectedDocIdRef.current) openDoc(doc)
       } else {
         clearDocTarget()
-        backToList()
+        const chatDraft = htmlChatDraftRef.current
+        if (chatDraft) {
+          setSelectedDocId(null)
+          setSelectedDocType(undefined)
+          setSelectedOctoDocSlug(undefined)
+          selectedDocIdRef.current = null
+          latestOpenRef.current = null
+          if (routeRight) {
+            try {
+              routeRight.replaceToRoot(
+                buildBotChatRef.current(chatDraft, false) as unknown,
+              )
+            } catch {
+              // ignore — right pane unavailable
+            }
+          }
+        } else {
+          backToList()
+        }
       }
     }
     window.addEventListener('popstate', onPopState)
@@ -1897,10 +1945,10 @@ export function DocsHome() {
         />
       </aside>
       <section className="octo-docs-split-right">
-        {htmlChatDraft ? (
-          buildBotChat(htmlChatDraft)
-        ) : selectedDocId ? (
+        {selectedDocId ? (
           buildRightPane(selectedDocId, selectedDocType, backToList, selectedOctoDocSlug)
+        ) : htmlChatDraft ? (
+          buildBotChat(htmlChatDraft)
         ) : (
           <div className="octo-docs-split-empty">
             <p>{t('docs.state.empty')}</p>

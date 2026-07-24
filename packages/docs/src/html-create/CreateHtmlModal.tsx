@@ -27,8 +27,10 @@ export interface CreateHtmlModalProps {
   open: boolean
   spaceId: string
   onClose(): void
-  /** Receives the collected draft (requestId/replyChannelId/baseUrl filled by caller). */
-  onSubmit(draft: Omit<HtmlCreationDraft, 'requestId' | 'replyChannelId' | 'baseUrl'>): string | void
+  /** Receives the collected draft; request/channel/service fields are filled by the caller. */
+  onSubmit(
+    draft: Omit<HtmlCreationDraft, 'requestId' | 'replyChannelId' | 'publishBaseUrl'>,
+  ): string | void
 }
 
 type BotsState =

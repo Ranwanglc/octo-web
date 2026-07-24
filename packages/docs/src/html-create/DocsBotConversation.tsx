@@ -38,6 +38,9 @@ export interface DocsBotConversationProps {
   onMessageSent?(): void
   onResult?(result: HtmlPublishResult): void
   onOpenResult?(result: HtmlPublishResult): void
+  onAutoOpenResult?(result: HtmlPublishResult): void
+  initialResult?: HtmlPublishResult | null
+  autoOpenResult?: boolean
 }
 
 /** Line-drawn close glyph (UI-SPEC: no unicode/emoji functional icons). */
@@ -56,11 +59,14 @@ export function DocsBotConversation({
   onMessageSent,
   onResult,
   onOpenResult,
+  onAutoOpenResult,
+  initialResult = null,
+  autoOpenResult = true,
 }: DocsBotConversationProps) {
   const [composeState, setComposeState] = useState<InitialComposeState | null>(null)
   const [failReason, setFailReason] = useState<string | undefined>()
-  const [publishResult, setPublishResult] = useState<HtmlPublishResult | null>(null)
-  const consumedResults = useRef(new Set<string>())
+  const [publishResult, setPublishResult] = useState<HtmlPublishResult | null>(initialResult)
+  const consumedRequests = useRef(new Set(initialResult ? [initialResult.request_id] : []))
 
   // The REAL user↔bot Person channel (§1.0). Memoised on botUid so a re-render doesn't rebuild it.
   const channel = useMemo(
@@ -96,15 +102,15 @@ export function DocsBotConversation({
       const result = decodeHtmlPublishResult(message.content?.octoResult)
         ?? decodeHtmlPublishResult(rawContent?.octo_result)
       if (!result || result.request_id !== draft.requestId) return
-      const dedupeKey = `${result.request_id}:${result.doc_id}:${result.doc_version}`
-      if (consumedResults.current.has(dedupeKey)) return
-      consumedResults.current.add(dedupeKey)
+      if (consumedRequests.current.has(result.request_id)) return
+      consumedRequests.current.add(result.request_id)
       setPublishResult(result)
       onResult?.(result)
+      if (autoOpenResult) onAutoOpenResult?.(result)
     }
     chatManager.addMessageListener(listener)
     return () => chatManager.removeMessageListener(listener)
-  }, [draft.botUid, draft.requestId, onResult, publishResult])
+  }, [autoOpenResult, draft.botUid, draft.requestId, onAutoOpenResult, onResult, publishResult])
 
   // First letter of the bot name as an avatar fallback (WKAvatar isn't publicly exported; §Task5
   // step 2 permits a name-initial fallback rather than a deep host import).
