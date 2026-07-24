@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
 import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/react'
 import { setWKApp } from '../octoweb/index.ts'
 import { createMockWKApp } from '../octoweb/mock.ts'
@@ -21,6 +22,14 @@ function mountBots(list: Array<{ uid: string; name: string; description?: string
 
 describe('CreateHtmlModal', () => {
   beforeEach(() => {
+    Object.defineProperty(HTMLDialogElement.prototype, 'showModal', {
+      configurable: true,
+      value: vi.fn(function (this: HTMLDialogElement) { this.setAttribute('open', '') }),
+    })
+    Object.defineProperty(HTMLDialogElement.prototype, 'close', {
+      configurable: true,
+      value: vi.fn(function (this: HTMLDialogElement) { this.removeAttribute('open') }),
+    })
     // Default: two owned bots.
     mountBots([
       { uid: 'bot1', name: 'Publisher', description: 'Builds HTML' },
@@ -49,6 +58,7 @@ describe('CreateHtmlModal', () => {
     const dialogEl = container.querySelector('dialog.octo-html-create-modal')
     expect(dialogEl).not.toBeNull()
     expect(dialogEl?.tagName).toBe('DIALOG')
+    expect(HTMLDialogElement.prototype.showModal).toHaveBeenCalledTimes(1)
     // ... whose implicit ARIA role is still dialog (queryable by role), with the a11y contract kept.
     const byRole = screen.getByRole('dialog')
     expect(byRole.tagName).toBe('DIALOG')
@@ -89,6 +99,29 @@ describe('CreateHtmlModal', () => {
     await waitFor(() => expect(screen.getByText('Recovered')).toBeTruthy())
   })
 
+  it('retry preserves the description and staged files', async () => {
+    const wk = mountBots('error')
+    render(<CreateHtmlModal open spaceId="s_1" onClose={() => {}} onSubmit={() => {}} />)
+    fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.descLabel'), { target: { value: 'Keep this' } })
+    fireEvent.change(document.querySelector('input[type="file"]')!, {
+      target: { files: [new File(['x'], 'keep.txt', { type: 'text/plain' })] },
+    })
+    await waitFor(() => expect(screen.getByText('docs.list.htmlCreate.botError')).toBeTruthy())
+    wk.apiClient.responder = () => ({ data: [{ uid: 'bot1', name: 'Recovered' }], status: 200 })
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.retry'))
+    await waitFor(() => expect(screen.getByText('Recovered')).toBeTruthy())
+    expect((screen.getByLabelText('docs.list.htmlCreate.descLabel') as HTMLTextAreaElement).value).toBe('Keep this')
+    expect(screen.getByText('keep.txt')).toBeTruthy()
+  })
+
+  it('uses native modal cancel handling for Escape', async () => {
+    const onClose = vi.fn()
+    render(<CreateHtmlModal open spaceId="s_1" onClose={onClose} onSubmit={() => {}} />)
+    await waitFor(() => expect(screen.getByText('Publisher')).toBeTruthy())
+    fireEvent(screen.getByRole('dialog'), new Event('cancel', { cancelable: true }))
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
   it('shows the empty state and disables submit when the user owns no bot', async () => {
     mountBots([])
     render(<CreateHtmlModal open spaceId="s_1" onClose={() => {}} onSubmit={() => {}} />)
@@ -125,6 +158,28 @@ describe('CreateHtmlModal', () => {
     })
     expect(screen.getByText('docs.list.htmlCreate.descTooLong')).toBeTruthy()
     expect((screen.getByText('docs.list.htmlCreate.generatePrompt') as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('validates the final encoded message against the shared transport limit', async () => {
+    render(<CreateHtmlModal open spaceId="s_1" publishBaseUrl="https://octo.example/docs-html/" onClose={() => {}} onSubmit={() => {}} />)
+    await waitFor(() => expect(screen.getByText('Publisher')).toBeTruthy())
+    fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.descLabel'), {
+      target: { value: '\\'.repeat(3000) },
+    })
+    expect(screen.getByRole('alert').textContent).toContain('docs.list.htmlCreate.messageTooLong')
+    expect((screen.getByText('docs.list.htmlCreate.generatePrompt') as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('has no component-local color tokens and follows shared light/dark semantic tokens', () => {
+    const css = readFileSync('src/editor/styles.css', 'utf8')
+    const start = css.indexOf('/* ── New-HTML')
+    const scope = css.slice(start)
+    expect(scope).not.toMatch(/\.octo-(?:html-create-overlay|docs-bot-chat)\s*\{[^}]*--wk-[\w-]+\s*:/s)
+    expect(scope).toContain('background: var(--wk-bg-surface)')
+    expect(scope).toContain('color: var(--wk-text-primary)')
+    const semantic = readFileSync('../dmworkbase/src/theme/semantic.css', 'utf8')
+    expect(semantic).toMatch(/:root[\s\S]*--wk-bg-surface:/)
+    expect(semantic).toMatch(/body\[theme-mode=["']?dark["']?\][\s\S]*--wk-bg-surface:/)
   })
 
   it('hands the selected bot + description + staged files to onSubmit and never uploads', async () => {
@@ -279,7 +334,7 @@ describe('CreateHtmlModal', () => {
     const onClose = vi.fn()
     render(<CreateHtmlModal open spaceId="s_1" onClose={onClose} onSubmit={() => {}} />)
     await waitFor(() => expect(screen.getByText('Publisher')).toBeTruthy())
-    fireEvent.keyDown(document, { key: 'Escape' })
+    fireEvent(screen.getByRole('dialog'), new Event('cancel', { cancelable: true }))
     expect(onClose).toHaveBeenCalledTimes(1)
     fireEvent.click(screen.getByText('docs.list.htmlCreate.cancel'))
     expect(onClose).toHaveBeenCalledTimes(2)

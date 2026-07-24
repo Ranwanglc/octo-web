@@ -90,34 +90,24 @@ export async function tryConsumeInitialCompose(
   // Begin the atomic load: mark consumed BEFORE any await so a re-render can't re-enter (§5, risk 1).
   consumed.add(compose.requestId)
 
-  // 1) task text.
-  host.restoreDraft(compose.text)
-
-  // 2) attachments. A validation failure aborts before send and keeps the text (§5.3).
-  if (compose.files.length > 0) {
-    const err = await host.addPendingAttachments(compose.files)
-    if (err) {
-      emit?.(compose.requestId, 'failed', err)
-      return { consumed: true, state: 'failed', reason: err }
-    }
-  }
-
-  // Prefill-only mode: never auto-send.
-  if (!compose.autoSend) {
-    emit?.(compose.requestId, 'prepared')
-    return { consumed: true, state: 'prepared' }
-  }
-
-  // 3) send through MessageInput. The existing send flow owns upload/ACK and draft retention; we
-  // read its real outcome to distinguish a genuine send from a rejected/preserved draft:
-  //   - true / void        → sent
-  //   - false              → send-rejected (draft kept) → 'failed'
-  //   - { editorConsumed }  → use editorConsumed; false → 'failed'
-  //   - throws             → 'failed'
   try {
+    host.restoreDraft(compose.text)
+
+    if (compose.files.length > 0) {
+      const err = await host.addPendingAttachments(compose.files)
+      if (err) {
+        emit?.(compose.requestId, 'failed', err)
+        return { consumed: true, state: 'failed', reason: err }
+      }
+    }
+
+    if (!compose.autoSend) {
+      emit?.(compose.requestId, 'prepared')
+      return { consumed: true, state: 'prepared' }
+    }
+
     const result = await host.send()
-    const sent = interpretSendResult(result)
-    if (!sent) {
+    if (!interpretSendResult(result)) {
       const reason = 'send-rejected'
       emit?.(compose.requestId, 'failed', reason)
       return { consumed: true, state: 'failed', reason }
@@ -125,7 +115,7 @@ export async function tryConsumeInitialCompose(
     emit?.(compose.requestId, 'sent')
     return { consumed: true, state: 'sent' }
   } catch (e) {
-    const reason = e instanceof Error ? e.message : 'send-failed'
+    const reason = e instanceof Error ? e.message : 'compose-failed'
     emit?.(compose.requestId, 'failed', reason)
     return { consumed: true, state: 'failed', reason }
   }
@@ -137,7 +127,7 @@ export async function tryConsumeInitialCompose(
  * void / true            → sent (legacy void-returning send path keeps working).
  * false                  → not sent (draft preserved = send rejected).
  * { editorConsumed }     → the editorConsumed flag.
- * anything else (null)   → not sent (defensive).
+ * null / undefined       → sent for compatibility with legacy void-returning hosts.
  */
 export function interpretSendResult(
   result: void | boolean | { editorConsumed: boolean } | undefined,

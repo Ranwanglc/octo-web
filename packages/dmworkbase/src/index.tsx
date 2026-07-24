@@ -37,6 +37,7 @@ export * from './im-runtime/currentTaskRuntime'
 export * from './Components/WKLayout'
 
 export * from './Components/Conversation/context'
+export { MAX_MESSAGE_LENGTH } from './Components/MessageInput/constants'
 export type { default as ConversationContext} from './Components/Conversation/context'
 export { Conversation } from './Components/Conversation'
 export type { ConversationProps } from './Components/Conversation'

@@ -8,7 +8,7 @@
 
 import { WKApp, i18n, t, useI18n, Menus, SpaceService } from '@octo/base'
 import { VoiceInputButton } from '@octo/base'
-import { Conversation, Channel, ChannelTypePerson } from '@octo/base'
+import { Conversation, Channel, ChannelTypePerson, MAX_MESSAGE_LENGTH } from '@octo/base'
 import type { ReplaceMode, SelectionRange } from '@octo/base'
 import type {
   APIClient,
@@ -465,7 +465,7 @@ export type { ReplaceMode, SelectionRange }
  * and renders `<Conversation initialCompose=... />` — all via @octo/base so docs never imports
  * wukongimjssdk directly and tests/typecheck resolve them through the single seam boundary.
  */
-export { Conversation, Channel, ChannelTypePerson }
+export { Conversation, Channel, ChannelTypePerson, MAX_MESSAGE_LENGTH }
 export type { InitialCompose, InitialComposeState, ConversationProps } from '@octo/base'
 
 export * from './types.ts'

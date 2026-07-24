@@ -121,6 +121,7 @@ declare module '@octo/base' {
   // from wukongimjssdk). The docs embedded-bot-DM shell constructs `new Channel(botUid,
   // ChannelTypePerson)` and reads getChannelKey() for the React key.
   export const ChannelTypePerson: number
+  export const MAX_MESSAGE_LENGTH: number
   export class Channel {
     constructor(channelID: string, channelType: number)
     channelID: string

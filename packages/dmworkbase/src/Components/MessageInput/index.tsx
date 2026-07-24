@@ -58,7 +58,7 @@ import {
   getImChannelInfo,
 } from "../../im-runtime/channelRuntime";
 
-const MAX_MESSAGE_LENGTH = 5000;
+import { MAX_MESSAGE_LENGTH } from "./constants";
 
 // placeholder 格式化所需的平台快捷键标识（模块级常量，避免重复计算）
 const ALT_KEY = /Mac|iPhone|iPad/i.test(navigator.userAgent) ? '⌥' : 'Alt';
@@ -798,14 +798,10 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
 
   // 移除顶部附件区的附件
   const removeTopAttachment = useCallback((id: string) => {
-    setTopAttachments((prev) => {
-      const item = prev.find((a) => a.id === id);
-      if (item?.previewUrl) {
-        URL.revokeObjectURL(item.previewUrl);
-      }
-      topAttachmentsRef.current = prev.filter((a) => a.id !== id);
-      return topAttachmentsRef.current;
-    });
+    const item = topAttachmentsRef.current.find((a) => a.id === id);
+    if (item?.previewUrl) URL.revokeObjectURL(item.previewUrl);
+    topAttachmentsRef.current = topAttachmentsRef.current.filter((a) => a.id !== id);
+    setTopAttachments(topAttachmentsRef.current);
   }, []);
 
   // 监听顶部附件区变化，更新多行模式状态
@@ -1050,7 +1046,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     } finally {
       sendingRef.current = false;
     }
-  }, [editor, expanded, topAttachments, props.onSend, props.onExpandChange, t]);
+  }, [editor, expanded, props.onSend, props.onExpandChange, t]);
 
   // 先接好 sendRef，再导出 context。Conversation 会在 onContext 回调里同步消费
   // initialCompose；两步必须处于同一 effect，避免首次无附件自动发送撞上空 sendRef。
@@ -1071,13 +1067,11 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
         send: () => invokeReadySend(sendRef.current),
         clear: () => {
           editor?.commands.clearContent(true);
-          setTopAttachments((prev) => {
-            prev.forEach((item) => {
-              if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
-            });
-            topAttachmentsRef.current = [];
-            return [];
+          topAttachmentsRef.current.forEach((item) => {
+            if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
           });
+          topAttachmentsRef.current = [];
+          setTopAttachments([]);
           attachmentFilesRef.current.clear();
         },
       });

@@ -80,6 +80,14 @@ describe('DocsBotConversation', () => {
     expect(text.toLowerCase()).not.toContain('authorization')
   })
 
+  it('omits initialCompose entirely after the request has fired', () => {
+    const f = new File(['x'], 'sent.txt', { type: 'text/plain' })
+    render(<DocsBotConversation draft={draft({ files: [f] })} autoSend={false} onClose={() => {}} />)
+    expect(lastConversationProps!.initialCompose).toBeUndefined()
+    expect(screen.getByTestId('conv-text').textContent).toBe('')
+    expect(screen.getByTestId('conv-files').textContent).toBe('')
+  })
+
   it('shows the bot name and the "create HTML with bot" context in the header', () => {
     render(<DocsBotConversation draft={draft()} onClose={() => {}} />)
     expect(screen.getByText('Publisher')).toBeTruthy()

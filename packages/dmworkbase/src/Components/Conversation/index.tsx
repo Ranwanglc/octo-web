@@ -3353,7 +3353,7 @@ export class Conversation
                               remoteDraftAtSend
                             );
                           }
-                          this.props.onMessageSent?.();
+                          if (mixedSent) this.props.onMessageSent?.();
                           return {
                             editorConsumed: mixedSent,
                             consumedTopIds,
@@ -3431,7 +3431,7 @@ export class Conversation
                                 remoteDraftAtSend
                               );
                             }
-                            this.props.onMessageSent?.();
+                            if (mixedSent) this.props.onMessageSent?.();
                             // 返回 snapshot-aware 结果 (octo-web#227 Jerry-Xin
                             // 第二轮)：
                             //   • editorConsumed=mixedSent：混排失败时保留编辑器
@@ -3511,7 +3511,7 @@ export class Conversation
                             remoteDraftAtSend
                           );
                         }
-                        this.props.onMessageSent?.();
+                        if (anyMessageSent) this.props.onMessageSent?.();
                         // 与 clearDraftAfterSend 同口径：只有确实发出消息时才让
                         // MessageInput 清空编辑器；全部失败/被预检拒绝时返回 false
                         // 保留草稿可重试。

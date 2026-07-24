@@ -22,10 +22,8 @@ import { buildHtmlCreationMessage, type HtmlCreationDraft } from './createHtmlTa
 export interface DocsBotConversationProps {
   draft: HtmlCreationDraft
   /**
-   * Whether this mount should auto-send the task exactly once. `true` only for the FIRST open of a
-   * given requestId; on nav-reentry / restore DocsHome passes `false` so a remounted Conversation
-   * (whose instance-level consumed-set was reset) only prefills the composer and never re-sends the
-   * same task (plan Task 6 step 4 / §5 risk 1). Defaults to true.
+   * Whether this mount should provide the one-shot initial compose. Re-entry after a confirmed send
+   * passes false, leaving the composer empty and attachments unstaged. Defaults to true.
    */
   autoSend?: boolean
   /** Close the chat and return the right pane to the docs empty state (does NOT delete the DM). */
@@ -59,16 +57,14 @@ export function DocsBotConversation({
   )
 
   // The one-shot compose: fixed task text + staged files, auto-sent once (keyed by requestId).
-  // Memoised on requestId + autoSend so a re-render passes the SAME object identity and the
-  // Conversation's instance-level consumed-set dedupes correctly (§5 risk 1). Rebuilding the
-  // message here is pure. On nav-reentry DocsHome passes autoSend=false → prefill only, no re-send.
-  const compose: InitialCompose = useMemo(
-    () => ({
+  // Memoised so re-renders keep one compose identity. Re-entry after a confirmed send omits it.
+  const compose: InitialCompose | undefined = useMemo(
+    () => autoSend ? ({
       requestId: draft.requestId,
       text: buildHtmlCreationMessage(draft),
       files: draft.files,
-      autoSend,
-    }),
+      autoSend: true,
+    }) : undefined,
     [draft, autoSend],
   )
 

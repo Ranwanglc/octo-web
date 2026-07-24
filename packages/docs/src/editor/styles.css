@@ -4017,44 +4017,8 @@ div:has(> .octo-link-bubble) {
   z-index: 50;
 }
 
-/* ── New-HTML (embedded bot DM) flow (plan Task 3 / Task 5) ──────────────────────────────────
-   UI-SPEC binding: brand primary #1C1C23 (never blue as primary); AI purple #7F3BF5 reserved for
-   AI/thread accents only; Alpha tokens for surfaces/borders (no parent opacity for colour steps);
-   4px grid spacing; 12px modal radius, 8px card radius, full-round buttons; semantic HTML.
-   Tokens are declared on the modal/chat roots (not globally) so they never bleed into docs. */
-.octo-html-create-overlay,
-.octo-docs-bot-chat {
-  --wk-brand-primary: #1c1c23;
-  --wk-brand-primary-hover: #2a2a33;
-  --wk-color-accent: #7f3bf5;
-  --wk-color-error: #f54a45;
-  --wk-surface: #fff;
-  --wk-on-accent: #fff;
-  --wk-brand-alpha-04: rgba(28, 28, 35, 0.04);
-  --wk-brand-alpha-06: rgba(28, 28, 35, 0.06);
-  --wk-brand-alpha-08: rgba(28, 28, 35, 0.08);
-  --wk-brand-alpha-10: rgba(28, 28, 35, 0.1);
-  --wk-brand-alpha-15: rgba(28, 28, 35, 0.15);
-  --wk-brand-alpha-20: rgba(28, 28, 35, 0.2);
-  --wk-brand-alpha-35: rgba(28, 28, 35, 0.35);
-  --wk-brand-alpha-40: rgba(28, 28, 35, 0.4);
-  --wk-brand-alpha-60: rgba(28, 28, 35, 0.6);
-  --wk-brand-alpha-90: rgba(28, 28, 35, 0.9);
-  --wk-accent-alpha-06: rgba(127, 59, 245, 0.06);
-  --wk-accent-alpha-08: rgba(127, 59, 245, 0.08);
-  --wk-accent-alpha-25: rgba(127, 59, 245, 0.25);
-  --wk-black-alpha-06: rgba(0, 0, 0, 0.06);
-  --wk-black-alpha-08: rgba(0, 0, 0, 0.08);
-  --wk-black-alpha-12: rgba(0, 0, 0, 0.12);
-  --wk-border-default: var(--wk-black-alpha-08);
-  --wk-control-secondary: var(--wk-brand-alpha-06);
-  --wk-control-secondary-hover: var(--wk-brand-alpha-08);
-  /* Modal scrim per UI-SPEC §4.10. */
-  --wk-scrim: rgba(17, 19, 24, 0.36);
-  --wk-modal-shadow: 0 0 0 1px var(--wk-black-alpha-06), 0 8px 24px var(--wk-black-alpha-12);
-  --wk-focus-ring: 0 0 0 3px var(--wk-brand-alpha-20);
-}
-
+/* ── New-HTML (embedded bot DM) flow ──
+   Components consume the shared semantic theme tokens; layout remains on the 4px grid. */
 .octo-html-create-overlay {
   position: fixed;
   inset: 0;
@@ -4063,8 +4027,10 @@ div:has(> .octo-link-bubble) {
   align-items: center;
   justify-content: center;
   padding: 16px;
-  /* Modal scrim per UI-SPEC §4.10 (rgba(17,19,24,.36)). */
-  background: var(--wk-scrim);
+  background: transparent;
+}
+.octo-html-create-modal::backdrop {
+  background: color-mix(in srgb, var(--wk-text-primary) 36%, transparent);
 }
 /* UI-SPEC §4.10: legal Modal width 640, radius 12px, min-height 232. */
 .octo-html-create-modal {
@@ -4073,12 +4039,12 @@ div:has(> .octo-link-bubble) {
   min-height: 232px;
   display: flex;
   flex-direction: column;
-  background: var(--wk-surface);
-  color: var(--wk-brand-alpha-90);
+  background: var(--wk-bg-surface);
+  color: var(--wk-text-primary);
   border: none;
   padding: 0;
   border-radius: 12px;
-  box-shadow: var(--wk-modal-shadow);
+  box-shadow: var(--wk-shadow-lg);
   box-sizing: border-box;
 }
 /* Header 56px, 16px padding, H3 16/24 semibold (UI-SPEC §4.10 / §2.2). */
@@ -4087,7 +4053,7 @@ div:has(> .octo-link-bubble) {
   display: flex;
   align-items: center;
   padding: 16px;
-  border-bottom: 1px solid var(--wk-black-alpha-08);
+  border-bottom: 1px solid var(--wk-border-default);
 }
 .octo-html-create-title {
   margin: 0;
@@ -4111,7 +4077,7 @@ div:has(> .octo-link-bubble) {
   font-size: 14px;
   line-height: 20px;
   font-weight: 600;
-  color: var(--wk-brand-alpha-90);
+  color: var(--wk-text-primary);
 }
 /* Composer-like textarea: 8px radius (NOT capsule), Alpha border, focus ring via Alpha. */
 .octo-html-create-textarea {
@@ -4123,18 +4089,18 @@ div:has(> .octo-link-bubble) {
   font: inherit;
   font-size: 14px;
   line-height: 21px;
-  color: var(--wk-brand-alpha-90);
-  background: var(--wk-surface);
-  border: 1px solid var(--wk-brand-alpha-10);
+  color: var(--wk-text-primary);
+  background: var(--wk-bg-surface);
+  border: 1px solid var(--wk-border-strong);
   border-radius: 8px;
 }
 .octo-html-create-textarea::placeholder {
-  color: var(--wk-brand-alpha-40);
+  color: var(--wk-text-tertiary);
 }
 .octo-html-create-textarea:focus-visible {
   outline: none;
-  border-color: var(--wk-brand-alpha-40);
-  box-shadow: var(--wk-focus-ring);
+  border-color: var(--wk-text-tertiary);
+  box-shadow: 0 0 0 3px var(--wk-brand-primary-ring);
 }
 .octo-html-create-preview {
   min-height: 320px;
@@ -4146,26 +4112,26 @@ div:has(> .octo-link-bubble) {
   align-self: flex-end;
   font-size: 12px;
   line-height: 18px;
-  color: var(--wk-brand-alpha-40);
+  color: var(--wk-text-tertiary);
 }
 .octo-html-create-hint {
   margin: 0;
   font-size: 14px;
   line-height: 21px;
-  color: var(--wk-brand-alpha-60);
+  color: var(--wk-text-secondary);
 }
 .octo-html-create-error {
   margin: 0;
   font-size: 12px;
   line-height: 18px;
-  color: var(--wk-color-error);
+  color: var(--wk-color-danger);
 }
 .octo-html-create-inline-error {
   display: flex;
   align-items: center;
   gap: 12px;
   font-size: 14px;
-  color: var(--wk-color-error);
+  color: var(--wk-color-danger);
 }
 /* Bot radio list: 8px card radius items, selected uses AI-purple alpha (a bot = AI accent). */
 .octo-html-create-bot-list {
@@ -4183,16 +4149,16 @@ div:has(> .octo-link-bubble) {
   align-items: flex-start;
   gap: 12px;
   padding: 12px;
-  border: 1px solid var(--wk-brand-alpha-08);
+  border: 1px solid var(--wk-border-default);
   border-radius: 8px;
   cursor: pointer;
 }
 .octo-html-create-bot-item:hover {
-  background: var(--wk-brand-alpha-04);
+  background: var(--wk-bg-hover);
 }
 .octo-html-create-bot-item:has(input:checked) {
-  background: var(--wk-accent-alpha-06);
-  border-color: var(--wk-accent-alpha-25);
+  background: var(--wk-bg-selected);
+  border-color: var(--wk-border-glow);
 }
 .octo-html-create-bot-text {
   display: flex;
@@ -4204,12 +4170,12 @@ div:has(> .octo-link-bubble) {
   font-size: 14px;
   line-height: 20px;
   font-weight: 600;
-  color: var(--wk-brand-alpha-90);
+  color: var(--wk-text-primary);
 }
 .octo-html-create-bot-desc {
   font-size: 12px;
   line-height: 18px;
-  color: var(--wk-brand-alpha-60);
+  color: var(--wk-text-secondary);
 }
 .octo-html-create-file-list {
   list-style: none;
@@ -4229,18 +4195,18 @@ div:has(> .octo-link-bubble) {
   padding: 0 12px;
   border: 1px solid var(--wk-border-default);
   border-radius: 9999px;
-  background: var(--wk-control-secondary);
-  color: var(--wk-brand-alpha-90);
+  background: var(--wk-bg-elevated);
+  color: var(--wk-text-primary);
   font-size: 14px;
   line-height: 20px;
   font-weight: 500;
 }
 .octo-html-create-add-files:hover {
-  background: var(--wk-control-secondary-hover);
+  background: var(--wk-bg-hover);
 }
 .octo-html-create-add-files:focus-visible {
   outline: none;
-  box-shadow: var(--wk-focus-ring);
+  box-shadow: 0 0 0 3px var(--wk-brand-primary-ring);
 }
 .octo-html-create-add-files-icon {
   flex: 0 0 auto;
@@ -4250,7 +4216,7 @@ div:has(> .octo-link-bubble) {
   align-items: center;
   gap: 8px;
   padding: 8px 12px;
-  border: 1px solid var(--wk-brand-alpha-08);
+  border: 1px solid var(--wk-border-default);
   border-radius: 8px;
   font-size: 14px;
 }
@@ -4260,11 +4226,11 @@ div:has(> .octo-link-bubble) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--wk-brand-alpha-90);
+  color: var(--wk-text-primary);
 }
 .octo-html-create-file-size {
   flex: 0 0 auto;
-  color: var(--wk-brand-alpha-40);
+  color: var(--wk-text-tertiary);
   font-size: 12px;
 }
 .octo-html-create-file-remove {
@@ -4278,12 +4244,12 @@ div:has(> .octo-link-bubble) {
   border: none;
   border-radius: 9999px;
   background: transparent;
-  color: var(--wk-brand-alpha-60);
+  color: var(--wk-text-secondary);
   cursor: pointer;
 }
 .octo-html-create-file-remove:hover {
-  background: var(--wk-brand-alpha-08);
-  color: var(--wk-brand-alpha-90);
+  background: var(--wk-border-default);
+  color: var(--wk-text-primary);
 }
 /* Footer actions use regular 32px buttons so every action reads as a button, not plain text. */
 .octo-html-create-footer {
@@ -4294,7 +4260,7 @@ div:has(> .octo-link-bubble) {
   align-items: stretch;
   gap: 8px;
   padding: 16px;
-  border-top: 1px solid var(--wk-black-alpha-08);
+  border-top: 1px solid var(--wk-border-default);
 }
 .octo-html-create-footer-actions {
   display: flex;
@@ -4304,7 +4270,7 @@ div:has(> .octo-link-bubble) {
 }
 .octo-html-create-prerequisite-hint {
   margin: 0;
-  color: var(--wk-brand-alpha-60);
+  color: var(--wk-text-secondary);
   font-size: 12px;
   line-height: 18px;
   text-align: right;
@@ -4317,22 +4283,22 @@ div:has(> .octo-link-bubble) {
   padding: 0 12px;
   border: 1px solid var(--wk-border-default);
   border-radius: 9999px;
-  background: var(--wk-control-secondary);
-  color: var(--wk-brand-alpha-90);
+  background: var(--wk-bg-elevated);
+  color: var(--wk-text-primary);
   font-size: 14px;
   line-height: 20px;
   font-weight: 500;
 }
 .octo-html-create-footer .octo-tb-btn:hover:not(:disabled) {
-  background: var(--wk-control-secondary-hover);
+  background: var(--wk-bg-hover);
 }
 .octo-html-create-footer .octo-tb-btn:focus-visible {
   outline: none;
-  box-shadow: var(--wk-focus-ring);
+  box-shadow: 0 0 0 3px var(--wk-brand-primary-ring);
 }
 /* Primary submit: opaque brand black, white text, full-round (UI-SPEC §4.1). */
 .octo-html-create-footer .octo-html-create-submit {
-  color: var(--wk-on-accent);
+  color: var(--wk-text-on-brand);
   background: var(--wk-brand-primary);
   border-color: var(--wk-brand-primary);
   padding: 0 16px;
@@ -4342,9 +4308,9 @@ div:has(> .octo-link-bubble) {
   border-color: var(--wk-brand-primary-hover);
 }
 .octo-html-create-submit:disabled {
-  background: var(--wk-brand-alpha-15);
+  background: var(--wk-bg-active);
   border-color: transparent;
-  color: var(--wk-brand-alpha-35);
+  color: var(--wk-text-tertiary);
   cursor: not-allowed;
 }
 
@@ -4354,7 +4320,7 @@ div:has(> .octo-link-bubble) {
   flex-direction: column;
   height: 100%;
   min-height: 0;
-  background: var(--wk-surface);
+  background: var(--wk-bg-surface);
 }
 .octo-docs-bot-chat-header {
   flex: 0 0 auto;
@@ -4363,7 +4329,7 @@ div:has(> .octo-link-bubble) {
   align-items: center;
   gap: 12px;
   padding: 0 16px;
-  border-bottom: 1px solid var(--wk-black-alpha-08);
+  border-bottom: 1px solid var(--wk-border-default);
 }
 .octo-docs-bot-chat-avatar {
   flex: 0 0 auto;
@@ -4375,7 +4341,7 @@ div:has(> .octo-link-bubble) {
   justify-content: center;
   font-size: 14px;
   font-weight: 600;
-  color: var(--wk-on-accent);
+  color: var(--wk-text-on-brand);
   background: var(--wk-color-accent);
 }
 .octo-docs-bot-chat-heading {
@@ -4389,7 +4355,7 @@ div:has(> .octo-link-bubble) {
   font-size: 14px;
   line-height: 20px;
   font-weight: 600;
-  color: var(--wk-brand-alpha-90);
+  color: var(--wk-text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -4410,12 +4376,12 @@ div:has(> .octo-link-bubble) {
   border: none;
   border-radius: 9999px;
   background: transparent;
-  color: var(--wk-brand-alpha-60);
+  color: var(--wk-text-secondary);
   cursor: pointer;
 }
 .octo-docs-bot-chat-close:hover {
-  background: var(--wk-brand-alpha-08);
-  color: var(--wk-brand-alpha-90);
+  background: var(--wk-border-default);
+  color: var(--wk-text-primary);
 }
 .octo-docs-bot-chat-body {
   flex: 1 1 auto;
@@ -4427,8 +4393,8 @@ div:has(> .octo-link-bubble) {
   padding: 8px 16px;
   font-size: 12px;
   line-height: 18px;
-  color: var(--wk-brand-alpha-60);
+  color: var(--wk-text-secondary);
 }
 .octo-docs-bot-chat-status[data-state='failed'] {
-  color: var(--wk-color-error);
+  color: var(--wk-color-danger);
 }

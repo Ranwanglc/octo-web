@@ -11,7 +11,7 @@
 // until a bot is chosen and a non-empty, within-cap description exists.
 
 import { useEffect, useId, useRef, useState } from 'react'
-import { fetchOwnedBots, t, type OwnedBotLite } from '../octoweb/index.ts'
+import { fetchOwnedBots, MAX_MESSAGE_LENGTH, t, type OwnedBotLite } from '../octoweb/index.ts'
 import { buildHtmlCreationMessage, HTML_DESCRIPTION_MAX, type HtmlCreationDraft } from './createHtmlTask.ts'
 
 /** Small line-drawn close glyph for the per-file remove control (UI-SPEC: no unicode/emoji icons). */
@@ -64,66 +64,72 @@ export function CreateHtmlModal({ open, spaceId, publishBaseUrl = '', onClose, o
   const [files, setFiles] = useState<File[]>([])
   const [phase, setPhase] = useState<'edit' | 'preview'>('edit')
   const [copyNotice, setCopyNotice] = useState<string | null>(null)
-  // Bumped to force a reload after "retry"; also the generation guard against a stale response
-  // overwriting a newer request when open/spaceId changes mid-flight (plan Task 3 step 3).
+  // Bumped to retry only the bot request; form state is preserved.
   const [reloadKey, setReloadKey] = useState(0)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const dialogRef = useRef<HTMLDialogElement>(null)
   const titleId = useId()
   const descId = useId()
   const descErrId = useId()
 
-  // Reset the form every time the dialog (re)opens or the Space changes — a stale draft from a
-  // previous Space must never carry over (plan §5.7). Guard responses with a generation counter so
-  // switching Space while a fetch is in flight can't land the old Space's bots.
+  // Opening or changing Space resets the draft; a bot-load retry preserves user input and files.
   useEffect(() => {
     if (!open) return
-    let generation = reloadKey
-    let active = true
-    setBots({ kind: 'loading' })
     setSelectedBot(null)
     setDescription('')
     setFiles([])
     setPhase('edit')
     setCopyNotice(null)
+  }, [open, spaceId])
+
+  useEffect(() => {
+    if (!open) return
+    let active = true
+    setBots({ kind: 'loading' })
+    setSelectedBot(null)
     if (!spaceId) {
       setBots({ kind: 'ready', bots: [] })
       return
     }
     void fetchOwnedBots(spaceId)
       .then((list) => {
-        if (!active || generation !== reloadKey) return
+        if (!active) return
         setBots({ kind: 'ready', bots: list })
-        // Preselect the first bot so a single-bot user can submit immediately.
         setSelectedBot(list.length > 0 ? list[0].uid : null)
       })
       .catch(() => {
-        if (!active || generation !== reloadKey) return
-        setBots({ kind: 'error' })
+        if (active) setBots({ kind: 'error' })
       })
-    return () => {
-      active = false
-      // Advance the guard so a resolve after cleanup is ignored (generation !== reloadKey).
-      generation = -1
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => { active = false }
   }, [open, spaceId, reloadKey])
 
   useEffect(() => {
-    if (!open) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+    const dialog = dialogRef.current
+    if (!open || !dialog) return
+    if (!dialog.open) {
+      if (typeof dialog.showModal === 'function') dialog.showModal()
+      else dialog.setAttribute('open', '')
     }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [open, onClose])
+    return () => {
+      if (!dialog.open) return
+      if (typeof dialog.close === 'function') dialog.close()
+      else dialog.removeAttribute('open')
+    }
+  }, [open])
+
+
 
   if (!open) return null
 
   const trimmed = description.trim()
   const tooLong = description.length > HTML_DESCRIPTION_MAX
+  const candidateMessage = buildHtmlCreationMessage({
+    requestId: '', botUid: selectedBot ?? '', botName: '', description, files: [], spaceId, baseUrl: publishBaseUrl,
+  })
+  const messageTooLong = trimmed.length > 0 && candidateMessage.length > MAX_MESSAGE_LENGTH
   const ready = bots.kind === 'ready'
   const hasBots = ready && bots.bots.length > 0
-  const canSubmit = hasBots && !!selectedBot && trimmed.length > 0 && !tooLong
+  const canSubmit = hasBots && !!selectedBot && trimmed.length > 0 && !tooLong && !messageTooLong
 
   const onPickFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
     const picked = e.target.files ? Array.from(e.target.files) : []
@@ -182,19 +188,12 @@ export function CreateHtmlModal({ open, spaceId, publishBaseUrl = '', onClose, o
       onMouseDown={onClose}
       data-screen-label="docs-create-html"
     >
-      {/*
-        Native <dialog> element for real modal semantics (UI-SPEC: use semantic elements, not a div
-        impersonating a dialog via role). We render it with the `open` attribute rather than calling
-        showModal() because (a) the backdrop + centering is owned by .octo-html-create-overlay and
-        (b) showModal()'s top-layer/::backdrop isn't implemented in jsdom. An open <dialog> already
-        exposes the implicit ARIA dialog role, so role=dialog stays queryable. aria-modal +
-        aria-labelledby preserve the assistive-tech contract.
-      */}
       <dialog
+        ref={dialogRef}
         className="octo-html-create-modal"
-        open
         aria-modal="true"
         aria-labelledby={titleId}
+        onCancel={(e) => { e.preventDefault(); onClose() }}
         onMouseDown={(e) => e.stopPropagation()}
       >
         <header className="octo-html-create-header">
@@ -261,16 +260,18 @@ export function CreateHtmlModal({ open, spaceId, publishBaseUrl = '', onClose, o
               maxLength={HTML_DESCRIPTION_MAX + 1}
               rows={5}
               placeholder={t('docs.list.htmlCreate.descPlaceholder')}
-              aria-describedby={tooLong ? descErrId : undefined}
-              aria-invalid={tooLong || undefined}
+              aria-describedby={tooLong || messageTooLong ? descErrId : undefined}
+              aria-invalid={tooLong || messageTooLong || undefined}
               onChange={(e) => setDescription(e.target.value)}
             />
             <div className="octo-html-create-counter">
               {description.length}/{HTML_DESCRIPTION_MAX}
             </div>
-            {tooLong && (
+            {(tooLong || messageTooLong) && (
               <p id={descErrId} className="octo-html-create-error" role="alert">
-                {t('docs.list.htmlCreate.descTooLong')}
+                {t(tooLong ? 'docs.list.htmlCreate.descTooLong' : 'docs.list.htmlCreate.messageTooLong', {
+                  values: { max: MAX_MESSAGE_LENGTH },
+                })}
               </p>
             )}
           </div>

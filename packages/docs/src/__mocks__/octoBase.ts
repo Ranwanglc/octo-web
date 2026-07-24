@@ -131,3 +131,5 @@ export class Channel {
 export function Conversation() {
   return null
 }
+
+export const MAX_MESSAGE_LENGTH = 5000

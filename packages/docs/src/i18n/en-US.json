@@ -54,7 +54,8 @@
       "statePrepared": "Task prepared",
       "stateSent": "Task submitted to {{name}}",
       "stateFailed": "Send failed — retry manually in the composer below",
-      "draftConflict": "This conversation already has a draft or pending attachments; clear it first, then retry"
+      "draftConflict": "This conversation already has a draft or pending attachments; clear it first, then retry",
+      "messageTooLong": "The final message exceeds the {{max}} character send limit. Shorten the description."
     }
   },
   "board": {

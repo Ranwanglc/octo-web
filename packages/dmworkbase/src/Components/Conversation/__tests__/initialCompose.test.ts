@@ -103,6 +103,16 @@ describe('tryConsumeInitialCompose', () => {
     expect(result.state).toBe('sent')
   })
 
+  it('catches attachment staging rejection and reports failed', async () => {
+    const host = makeHost()
+    host.addPendingAttachments = vi.fn().mockRejectedValue(new Error('staging crashed'))
+    const emit = vi.fn()
+    const res = await tryConsumeInitialCompose(compose({ files: [file()] }), host, new Set(), emit)
+    expect(host.send).not.toHaveBeenCalled()
+    expect(res).toMatchObject({ state: 'failed', reason: 'staging crashed' })
+    expect(emit).toHaveBeenCalledWith('req-1', 'failed', 'staging crashed')
+  })
+
   it('aborts before send and reports failed when attachment validation fails, keeping the text', async () => {
     const host = makeHost({ attachErr: 'file too large' })
     const res = await tryConsumeInitialCompose(compose({ files: [file()] }), host, new Set())

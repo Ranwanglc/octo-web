@@ -54,7 +54,8 @@
       "statePrepared": "任务已准备",
       "stateSent": "任务已提交给 {{name}}",
       "stateFailed": "发送失败，请在下方输入框手动重试",
-      "draftConflict": "当前会话已有草稿或待发送附件，请先处理后再试"
+      "draftConflict": "当前会话已有草稿或待发送附件，请先处理后再试",
+      "messageTooLong": "最终消息超过 {{max}} 字发送上限，请缩短描述。"
     }
   },
   "board": {

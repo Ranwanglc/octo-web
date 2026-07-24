@@ -1362,8 +1362,7 @@ export function DocsHome() {
 
   // Build the embedded bot-DM shell for the active html chat draft. Close returns to the docs
   // empty state (does NOT delete the DM); onMessageSent triggers the bounded list refresh.
-  // `autoSend` is true only for the first open of a requestId; restores pass false (see
-  // htmlComposeFiredRef) so a remounted Conversation never re-sends the same task.
+  // Once a request has sent, restores omit initialCompose so neither text nor files are staged again.
   const buildBotChat = useCallback(
     (draft: HtmlCreationDraft, autoSend = true) => (
       <DocsBotConversation
@@ -1818,10 +1817,7 @@ export function DocsHome() {
             ) as unknown,
           )
         } else if (chatDraft) {
-          // Restore the SAME chat (same draft/requestId) — never rebuild the requestId. If this
-          // requestId already fired its one auto-send, force autoSend=false so the remounted (new
-          // instance) Conversation only prefills and does NOT re-send (reviewer P1 double-send). The
-          // Conversation's instance-level consumed-set is the SECOND line of defence.
+          // Restore the same chat and requestId. A confirmed request omits initialCompose entirely.
           const alreadyFired = htmlComposeFiredRef.current.has(chatDraft.requestId)
           routeRight.replaceToRoot(
             buildBotChatRef.current(chatDraft, !alreadyFired) as unknown,
