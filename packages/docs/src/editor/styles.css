@@ -4133,6 +4133,12 @@ div:has(> .octo-link-bubble) {
   border-color: var(--wk-brand-alpha-40);
   box-shadow: var(--wk-focus-ring);
 }
+.octo-html-create-preview {
+  min-height: 320px;
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre-wrap;
+}
 .octo-html-create-counter {
   align-self: flex-end;
   font-size: 12px;

@@ -40,7 +40,12 @@ import {
   videoPlayIcon,
 } from "./AttachmentNode";
 import { t as translate, useI18n } from "../../i18n";
-import { runSendWithCleanup, SendResultDetail } from "./sendFlow";
+import {
+  announceContextAfterSendReady,
+  invokeReadySend,
+  runSendWithCleanup,
+  SendResultDetail,
+} from "./sendFlow";
 import { extractOctoRichTextClipboardPayloadFromHtml } from "../../Utils/richTextClipboard";
 import {
   imageBlockToPasteFile,
@@ -242,7 +247,7 @@ interface MessageInputProps {
   onInsertText?: (fnc: OnInsertFnc) => void;
   onAddMention?: (fnc: OnAddMentionFnc) => void;
   onAddAttachment?: (
-    fnc: (files: File[], source?: "paste" | "upload") => void
+    fnc: (files: File[], source?: "paste" | "upload") => void | Promise<void>
   ) => void;
   onAddPendingAttachments?: (
     files: File[],
@@ -432,6 +437,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
   const attachmentFilesRef = useRef<Map<string, File>>(new Map());
   // 顶部附件区的附件列表（非图片文件 + 上传的图片）
   const [topAttachments, setTopAttachments] = useState<TopAttachmentItem[]>([]);
+  const topAttachmentsRef = useRef<TopAttachmentItem[]>([]);
 
   // 动态生成 placeholder（channelInfo 异步加载后通过 listener 自动更新）
   const [placeholder, setPlaceholder] = useState(() => {
@@ -738,7 +744,8 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
             previewUrl,
           };
 
-          setTopAttachments((prev) => [...prev, item]);
+          topAttachmentsRef.current = [...topAttachmentsRef.current, item];
+          setTopAttachments(topAttachmentsRef.current);
         }
       }
 
@@ -796,7 +803,8 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
       if (item?.previewUrl) {
         URL.revokeObjectURL(item.previewUrl);
       }
-      return prev.filter((a) => a.id !== id);
+      topAttachmentsRef.current = prev.filter((a) => a.id !== id);
+      return topAttachmentsRef.current;
     });
   }, []);
 
@@ -865,48 +873,11 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
       : [];
 
     // 顶部附件区的附件
-    const topFiles = topAttachments.map((a) => a.file);
+    const topFiles = topAttachmentsRef.current.map((a) => a.file);
 
     return [...editorFiles, ...topFiles];
-  }, [editor, topAttachments]);
+  }, [editor]);
 
-  // 导出 context 方法
-  useEffect(() => {
-    if (props.onInsertText) {
-      props.onInsertText(insertText);
-    }
-    if (props.onContext) {
-      props.onContext({
-        insertText,
-        insertContent: (content) => {
-          editor?.chain().focus("end").insertContent(content).run();
-        },
-        restoreDraft,
-        addMention,
-        addAttachment,
-        getAttachmentFiles,
-        text: () => (editor ? extractMentionsFromEditor(editor) : undefined),
-        focus: () => editor?.commands.focus(),
-        // 把真实发送结果（editorConsumed boolean）一路传到 context.send，
-        // 供编排器区分 sent / failed；未 ready 时返回 undefined。
-        send: () => sendRef.current?.(),
-        clear: () => {
-          editor?.commands.clearContent(true);
-          setTopAttachments((prev) => {
-            prev.forEach((item) => { if (item.previewUrl) URL.revokeObjectURL(item.previewUrl); });
-            return [];
-          });
-          attachmentFilesRef.current.clear();
-        },
-      });
-    }
-  }, [
-    editor,
-    props.onInsertText,
-    props.onContext,
-    addAttachment,
-    getAttachmentFiles,
-  ]);
 
   // 导出 addMention 方法
   useEffect(() => {
@@ -981,7 +952,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
       .filter((a): a is AttachmentFile => a !== null);
 
     // 顶部附件区文件（通过上传按钮添加）
-    const topAttachmentFiles: AttachmentFile[] = topAttachments.map((a) => ({
+    const topAttachmentFiles: AttachmentFile[] = topAttachmentsRef.current.map((a) => ({
       id: a.id,
       file: a.file,
     }));
@@ -1020,7 +991,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     // 编排逻辑在纯函数 runSendWithCleanup，便于单测覆盖各竞态场景。
     const editorSnapshot = JSON.stringify(editor.getJSON());
     const consumedAttachmentAttrs = attachmentAttrs;
-    const topItemsAtSend = topAttachments;
+    const topItemsAtSend = topAttachmentsRef.current;
     const allTopIds = topItemsAtSend.map((item) => item.id);
     sendingRef.current = true;
     try {
@@ -1062,9 +1033,10 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
                 URL.revokeObjectURL(item.previewUrl);
               }
             });
-            setTopAttachments((prev: TopAttachmentItem[]) =>
-              prev.filter((a: TopAttachmentItem) => !idSet.has(a.id))
+            topAttachmentsRef.current = topAttachmentsRef.current.filter(
+              (a: TopAttachmentItem) => !idSet.has(a.id)
             );
+            setTopAttachments(topAttachmentsRef.current);
           },
           collapseExpanded: () => {
             if (expanded) {
@@ -1080,10 +1052,47 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     }
   }, [editor, expanded, topAttachments, props.onSend, props.onExpandChange, t]);
 
-  // 更新 sendRef
+  // 先接好 sendRef，再导出 context。Conversation 会在 onContext 回调里同步消费
+  // initialCompose；两步必须处于同一 effect，避免首次无附件自动发送撞上空 sendRef。
   useEffect(() => {
-    sendRef.current = send;
-  }, [send]);
+    announceContextAfterSendReady(sendRef, send, () => {
+      props.onInsertText?.(insertText);
+      props.onContext?.({
+        insertText,
+        insertContent: (content) => {
+          editor?.chain().focus("end").insertContent(content).run();
+        },
+        restoreDraft,
+        addMention,
+        addAttachment,
+        getAttachmentFiles,
+        text: () => (editor ? extractMentionsFromEditor(editor) : undefined),
+        focus: () => editor?.commands.focus(),
+        send: () => invokeReadySend(sendRef.current),
+        clear: () => {
+          editor?.commands.clearContent(true);
+          setTopAttachments((prev) => {
+            prev.forEach((item) => {
+              if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+            });
+            topAttachmentsRef.current = [];
+            return [];
+          });
+          attachmentFilesRef.current.clear();
+        },
+      });
+    });
+  }, [
+    send,
+    editor,
+    props.onInsertText,
+    props.onContext,
+    insertText,
+    restoreDraft,
+    addMention,
+    addAttachment,
+    getAttachmentFiles,
+  ]);
 
   const getFilteredSlashCommands = useCallback((): BotCommand[] => {
     const { botCommands } = props;

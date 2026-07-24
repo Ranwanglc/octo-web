@@ -93,14 +93,14 @@ describe('CreateHtmlModal', () => {
     mountBots([])
     render(<CreateHtmlModal open spaceId="s_1" onClose={() => {}} onSubmit={() => {}} />)
     await waitFor(() => expect(screen.getByText('docs.list.htmlCreate.botEmpty')).toBeTruthy())
-    const submit = screen.getByText('docs.list.htmlCreate.submit') as HTMLButtonElement
+    const submit = screen.getByText('docs.list.htmlCreate.generatePrompt') as HTMLButtonElement
     expect(submit.disabled).toBe(true)
   })
 
   it('disables submit until a description is entered (bot is preselected)', async () => {
     render(<CreateHtmlModal open spaceId="s_1" onClose={() => {}} onSubmit={() => {}} />)
     await waitFor(() => expect(screen.getByText('Publisher')).toBeTruthy())
-    const submit = screen.getByText('docs.list.htmlCreate.submit') as HTMLButtonElement
+    const submit = screen.getByText('docs.list.htmlCreate.generatePrompt') as HTMLButtonElement
     expect(submit.disabled).toBe(true)
     fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.descLabel'), {
       target: { value: 'A landing page' },
@@ -114,7 +114,7 @@ describe('CreateHtmlModal', () => {
     fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.descLabel'), {
       target: { value: '   \n  ' },
     })
-    expect((screen.getByText('docs.list.htmlCreate.submit') as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByText('docs.list.htmlCreate.generatePrompt') as HTMLButtonElement).disabled).toBe(true)
   })
 
   it('blocks submit and flags an error when the description exceeds 8000 chars', async () => {
@@ -124,7 +124,7 @@ describe('CreateHtmlModal', () => {
       target: { value: 'x'.repeat(8001) },
     })
     expect(screen.getByText('docs.list.htmlCreate.descTooLong')).toBeTruthy()
-    expect((screen.getByText('docs.list.htmlCreate.submit') as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByText('docs.list.htmlCreate.generatePrompt') as HTMLButtonElement).disabled).toBe(true)
   })
 
   it('hands the selected bot + description + staged files to onSubmit and never uploads', async () => {
@@ -145,7 +145,12 @@ describe('CreateHtmlModal', () => {
     const f2 = new File(['b'], 'b.pdf', { type: 'application/pdf' })
     const input = document.querySelector('input[type="file"]') as HTMLInputElement
     fireEvent.change(input, { target: { files: [f1, f2] } })
-    fireEvent.click(screen.getByText('docs.list.htmlCreate.submit'))
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.generatePrompt'))
+    expect((screen.getByLabelText('docs.list.htmlCreate.promptLabel') as HTMLTextAreaElement).readOnly).toBe(true)
+    expect(screen.getByText('docs.list.htmlCreate.backToEdit')).toBeTruthy()
+    expect(screen.getByText('docs.list.htmlCreate.copyPrompt')).toBeTruthy()
+    expect(screen.getByText('docs.list.htmlCreate.forwardToBot')).toBeTruthy()
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.forwardToBot'))
 
     expect(onSubmit).toHaveBeenCalledTimes(1)
     const draft = onSubmit.mock.calls[0][0]
@@ -157,6 +162,50 @@ describe('CreateHtmlModal', () => {
     // No upload API touched — only the owned_bots GET.
     const uploads = wk.apiClient.calls.filter((c) => c.method !== 'get')
     expect(uploads).toHaveLength(0)
+  })
+
+  it('returns from preview without losing the description or attachments', async () => {
+    render(<CreateHtmlModal open spaceId="s_1" onClose={() => {}} onSubmit={() => {}} />)
+    await waitFor(() => expect(screen.getByText('Publisher')).toBeTruthy())
+    fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.descLabel'), { target: { value: 'Keep me' } })
+    fireEvent.change(document.querySelector('input[type="file"]')!, {
+      target: { files: [new File(['x'], 'keep.txt', { type: 'text/plain' })] },
+    })
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.generatePrompt'))
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.backToEdit'))
+    expect((screen.getByLabelText('docs.list.htmlCreate.descLabel') as HTMLTextAreaElement).value).toBe('Keep me')
+    expect(screen.getByText('keep.txt')).toBeTruthy()
+  })
+
+  it('copies only prompt text and reports that attachments are not copied', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    render(<CreateHtmlModal open spaceId="s_1" onClose={() => {}} onSubmit={() => {}} />)
+    await waitFor(() => expect(screen.getByText('Publisher')).toBeTruthy())
+    fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.descLabel'), { target: { value: 'Copy me' } })
+    fireEvent.change(document.querySelector('input[type="file"]')!, {
+      target: { files: [new File(['x'], 'ref.txt', { type: 'text/plain' })] },
+    })
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.generatePrompt'))
+    const prompt = (screen.getByLabelText('docs.list.htmlCreate.promptLabel') as HTMLTextAreaElement).value
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.copyPrompt'))
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(prompt))
+    expect(screen.getByText('docs.list.htmlCreate.copySuccessWithFiles')).toBeTruthy()
+  })
+
+  it('shows a localized failure when prompt copying fails', async () => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: vi.fn().mockRejectedValue(new Error('denied')) },
+    })
+    render(<CreateHtmlModal open spaceId="s_1" onClose={() => {}} onSubmit={() => {}} />)
+    await waitFor(() => expect(screen.getByText('Publisher')).toBeTruthy())
+    fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.descLabel'), {
+      target: { value: 'Copy me' },
+    })
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.generatePrompt'))
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.copyPrompt'))
+    await waitFor(() => expect(screen.getByText('docs.list.htmlCreate.copyFailed')).toBeTruthy())
   })
 
   it('lets the user remove a staged file before submit', async () => {
