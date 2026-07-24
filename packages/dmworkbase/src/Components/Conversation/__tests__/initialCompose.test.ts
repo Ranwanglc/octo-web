@@ -76,6 +76,33 @@ describe('tryConsumeInitialCompose', () => {
     expect(states).toEqual(['sent'])
   })
 
+  it('waits for asynchronous attachment staging before sending', async () => {
+    let finishStaging!: () => void
+    const staging = new Promise<void>((resolve) => { finishStaging = resolve })
+    const host = makeHost()
+    host.addPendingAttachments = vi.fn(async () => {
+      host.order.push('addPendingAttachments:start')
+      await staging
+      host.order.push('addPendingAttachments:ready')
+      return null
+    })
+
+    const consuming = tryConsumeInitialCompose(compose({ files: [file()] }), host, new Set())
+    await Promise.resolve()
+    expect(host.send).not.toHaveBeenCalled()
+    expect(host.order).toEqual(['restoreDraft', 'addPendingAttachments:start'])
+
+    finishStaging()
+    const result = await consuming
+    expect(host.order).toEqual([
+      'restoreDraft',
+      'addPendingAttachments:start',
+      'addPendingAttachments:ready',
+      'send',
+    ])
+    expect(result.state).toBe('sent')
+  })
+
   it('aborts before send and reports failed when attachment validation fails, keeping the text', async () => {
     const host = makeHost({ attachErr: 'file too large' })
     const res = await tryConsumeInitialCompose(compose({ files: [file()] }), host, new Set())

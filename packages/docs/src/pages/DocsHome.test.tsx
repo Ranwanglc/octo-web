@@ -2050,7 +2050,8 @@ describe('DocsHome — new HTML embedded bot DM (Task 6)', () => {
     fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.descLabel'), {
       target: { value: 'A launch page' },
     })
-    fireEvent.click(screen.getByText('docs.list.htmlCreate.submit'))
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.generatePrompt'))
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.forwardToBot'))
 
     // The bot chat element was pushed into the host right pane.
     await waitFor(() => {
@@ -2083,7 +2084,8 @@ describe('DocsHome — new HTML embedded bot DM (Task 6)', () => {
     fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.descLabel'), {
       target: { value: 'Landing' },
     })
-    fireEvent.click(screen.getByText('docs.list.htmlCreate.submit'))
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.generatePrompt'))
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.forwardToBot'))
 
     let requestId: string | undefined
     await waitFor(() => {
@@ -2125,7 +2127,8 @@ describe('DocsHome — new HTML embedded bot DM (Task 6)', () => {
     fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.descLabel'), {
       target: { value: 'Landing' },
     })
-    fireEvent.click(screen.getByText('docs.list.htmlCreate.submit'))
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.generatePrompt'))
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.forwardToBot'))
     await waitFor(() => {
       const last = replaceToRoot.mock.calls.at(-1)?.[0] as
         | { props?: { draft?: { botUid?: string } } }

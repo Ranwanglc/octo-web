@@ -492,7 +492,7 @@ export class Conversation
   private _addAttachmentFn?: (
     files: File[],
     source?: "paste" | "upload"
-  ) => void;
+  ) => void | Promise<void>;
   // plan Task 4: instance-level one-shot guard so a re-render / remount / prop re-pass of the
   // SAME requestId never re-loads or re-sends the initial compose (§5 risk 1).
   private _consumedComposeIds: Set<string> = new Set();
@@ -1285,10 +1285,10 @@ export class Conversation
     return this._messageInputContext?.getAttachmentFiles() || [];
   }
 
-  addPendingAttachments(
+  async addPendingAttachments(
     files: File[],
     source: "paste" | "upload" = "upload"
-  ): string | null {
+  ): Promise<string | null> {
     const BLOCKED_EXTENSIONS = [
       "exe",
       "bat",
@@ -1342,7 +1342,7 @@ export class Conversation
 
     // 调用编辑器的 addAttachment 方法插入附件节点
     if (this._addAttachmentFn) {
-      this._addAttachmentFn(incoming, source);
+      await this._addAttachmentFn(incoming, source);
     }
     return null;
   }
@@ -2597,7 +2597,7 @@ export class Conversation
     if (this._dragDepth === 0) this.dragEnd();
   }
 
-  private handleConversationDrop(event: React.DragEvent): void {
+  private async handleConversationDrop(event: React.DragEvent): Promise<void> {
     // 无论拖入的是什么，drop 都强制复位计数与遮罩，杜绝遮罩残留。
     this._dragDepth = 0;
     this.dragEnd();
@@ -2605,7 +2605,7 @@ export class Conversation
     event.preventDefault();
 
     const items = Array.from(event.dataTransfer.items);
-    const files = Array.from(event.dataTransfer.files);
+    const files: File[] = Array.from(event.dataTransfer.files);
     if (files.length === 0) return; // types 声称有文件但实际取不到，安全兜底
     const hasDirectory = items.length
       ? items.some((it) => {
@@ -2617,7 +2617,7 @@ export class Conversation
       Toast.error(t("base.conversation.upload.folderUnsupported"));
       return;
     }
-    const err = this.addPendingAttachments(files);
+    const err = await this.addPendingAttachments(files);
     if (err) Toast.error(err);
   }
 
@@ -2950,13 +2950,13 @@ export class Conversation
                         addFn: (
                           files: File[],
                           source?: "paste" | "upload"
-                        ) => void
+                        ) => void | Promise<void>
                       ) => {
                         // 存储 addAttachment 方法，供外部调用
                         this._addAttachmentFn = addFn;
                       }}
-                      onAddPendingAttachments={(files, source) => {
-                        const err = this.addPendingAttachments(files, source);
+                      onAddPendingAttachments={async (files, source) => {
+                        const err = await this.addPendingAttachments(files, source);
                         if (err) {
                           Toast.error(err);
                           return false;

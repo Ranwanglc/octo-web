@@ -37,8 +37,8 @@ export interface ComposeHost {
   pendingAttachmentCount(): number
   /** Replace the composer content with the task text (MessageInput.restoreDraft). */
   restoreDraft(text: string): void
-  /** Stage attachments; returns an error string on validation failure, null on success. */
-  addPendingAttachments(files: File[]): string | null
+  /** Stage attachments; resolves only after they are visible to send. */
+  addPendingAttachments(files: File[]): string | null | Promise<string | null>
   /**
    * Trigger send through MessageInput (never a direct sendMessage). May be async.
    *
@@ -95,7 +95,7 @@ export async function tryConsumeInitialCompose(
 
   // 2) attachments. A validation failure aborts before send and keeps the text (§5.3).
   if (compose.files.length > 0) {
-    const err = host.addPendingAttachments(compose.files)
+    const err = await host.addPendingAttachments(compose.files)
     if (err) {
       emit?.(compose.requestId, 'failed', err)
       return { consumed: true, state: 'failed', reason: err }

@@ -80,7 +80,9 @@ export function DocsBotConversation({
   // generation/publish progress is expressed by the bot's own messages, never faked here (§5.8).
   const statusText =
     composeState === 'failed'
-      ? failReason || t('docs.list.htmlCreate.stateFailed')
+      ? failReason === 'draft-conflict'
+        ? t('docs.list.htmlCreate.draftConflict')
+        : t('docs.list.htmlCreate.stateFailed')
       : composeState === 'sent'
         ? t('docs.list.htmlCreate.stateSent', { values: { name: draft.botName } })
         : composeState === 'prepared'

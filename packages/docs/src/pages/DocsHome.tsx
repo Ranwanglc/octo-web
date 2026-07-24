@@ -1888,6 +1888,7 @@ export function DocsHome() {
         <CreateHtmlModal
           open={htmlModalOpen}
           spaceId={space}
+          publishBaseUrl={docsHtmlBaseUrl(typeof window !== 'undefined' ? window.location.origin : '')}
           onClose={() => setHtmlModalOpen(false)}
           onSubmit={onSubmitHtml}
         />
@@ -1923,6 +1924,7 @@ export function DocsHome() {
       <CreateHtmlModal
         open={htmlModalOpen}
         spaceId={space}
+        publishBaseUrl={docsHtmlBaseUrl(typeof window !== 'undefined' ? window.location.origin : '')}
         onClose={() => setHtmlModalOpen(false)}
         onSubmit={onSubmitHtml}
       />

@@ -74,8 +74,8 @@ describe('DocsBotConversation', () => {
     expect(screen.getByTestId('conv-files').textContent).toBe('1')
     const text = screen.getByTestId('conv-text').textContent || ''
     expect(text).toContain('[Octo HTML 创建任务]')
-    expect(text).toContain('request_id: req-abc')
-    expect(text).toContain('base_url: https://octo.example/docs-html/')
+    expect(text).not.toContain('request_id:')
+    expect(text).toContain('publish_base_url: https://octo.example/docs-html/')
     // No token anywhere in the auto-sent text.
     expect(text.toLowerCase()).not.toContain('authorization')
   })
@@ -96,6 +96,13 @@ describe('DocsBotConversation', () => {
     // The status region flips to the failed styling hook.
     const status = document.querySelector('.octo-docs-bot-chat-status')
     expect(status?.getAttribute('data-state')).toBe('failed')
+  })
+
+  it('maps the draft-conflict internal reason to localized user copy', () => {
+    render(<DocsBotConversation draft={draft()} onClose={() => {}} />)
+    act(() => lastConversationProps!.onInitialComposeStateChange!('req-abc', 'failed', 'draft-conflict'))
+    expect(screen.getByRole('status').textContent).toBe('docs.list.htmlCreate.draftConflict')
+    expect(screen.getByRole('status').textContent).not.toContain('draft-conflict')
   })
 
   it('close button returns to docs (calls onClose) without deleting the DM', () => {

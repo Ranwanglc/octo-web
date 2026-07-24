@@ -12,7 +12,7 @@
 
 import { useEffect, useId, useRef, useState } from 'react'
 import { fetchOwnedBots, t, type OwnedBotLite } from '../octoweb/index.ts'
-import { HTML_DESCRIPTION_MAX, type HtmlCreationDraft } from './createHtmlTask.ts'
+import { buildHtmlCreationMessage, HTML_DESCRIPTION_MAX, type HtmlCreationDraft } from './createHtmlTask.ts'
 
 /** Small line-drawn close glyph for the per-file remove control (UI-SPEC: no unicode/emoji icons). */
 function CloseIcon(): React.ReactElement {
@@ -26,6 +26,7 @@ function CloseIcon(): React.ReactElement {
 export interface CreateHtmlModalProps {
   open: boolean
   spaceId: string
+  publishBaseUrl?: string
   onClose(): void
   /** Receives the collected draft (requestId/baseUrl filled by the caller). NOT called on cancel. */
   onSubmit(draft: Omit<HtmlCreationDraft, 'requestId' | 'baseUrl'>): void
@@ -42,11 +43,13 @@ function humanSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-export function CreateHtmlModal({ open, spaceId, onClose, onSubmit }: CreateHtmlModalProps) {
+export function CreateHtmlModal({ open, spaceId, publishBaseUrl = '', onClose, onSubmit }: CreateHtmlModalProps) {
   const [bots, setBots] = useState<BotsState>({ kind: 'loading' })
   const [selectedBot, setSelectedBot] = useState<string | null>(null)
   const [description, setDescription] = useState('')
   const [files, setFiles] = useState<File[]>([])
+  const [phase, setPhase] = useState<'edit' | 'preview'>('edit')
+  const [copyNotice, setCopyNotice] = useState<string | null>(null)
   // Bumped to force a reload after "retry"; also the generation guard against a stale response
   // overwriting a newer request when open/spaceId changes mid-flight (plan Task 3 step 3).
   const [reloadKey, setReloadKey] = useState(0)
@@ -66,6 +69,8 @@ export function CreateHtmlModal({ open, spaceId, onClose, onSubmit }: CreateHtml
     setSelectedBot(null)
     setDescription('')
     setFiles([])
+    setPhase('edit')
+    setCopyNotice(null)
     if (!spaceId) {
       setBots({ kind: 'ready', bots: [] })
       return
@@ -117,16 +122,31 @@ export function CreateHtmlModal({ open, spaceId, onClose, onSubmit }: CreateHtml
     setFiles((prev) => prev.filter((_, i) => i !== index))
   }
 
-  const submit = () => {
+  const currentDraft = () => {
     if (!canSubmit || !selectedBot) return
     const bot = ready ? bots.bots.find((b) => b.uid === selectedBot) : undefined
-    onSubmit({
+    return {
       botUid: selectedBot,
       botName: bot?.name || selectedBot,
       description,
       files,
       spaceId,
-    })
+    }
+  }
+
+  const previewDraft = currentDraft()
+  const prompt = previewDraft
+    ? buildHtmlCreationMessage({ ...previewDraft, requestId: '', baseUrl: publishBaseUrl })
+    : ''
+
+  const copyPrompt = async () => {
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('clipboard unavailable')
+      await navigator.clipboard.writeText(prompt)
+      setCopyNotice(t(files.length ? 'docs.list.htmlCreate.copySuccessWithFiles' : 'docs.list.htmlCreate.copySuccess'))
+    } catch {
+      setCopyNotice(t('docs.list.htmlCreate.copyFailed'))
+    }
   }
 
   return (
@@ -161,9 +181,45 @@ export function CreateHtmlModal({ open, spaceId, onClose, onSubmit }: CreateHtml
           className="octo-html-create-body"
           onSubmit={(e) => {
             e.preventDefault()
-            submit()
+            if (phase === 'edit' && canSubmit) setPhase('preview')
           }}
         >
+          {phase === 'preview' ? (
+            <>
+              <div className="octo-html-create-field">
+                <label className="octo-html-create-label" htmlFor={descId}>
+                  {t('docs.list.htmlCreate.promptLabel')}
+                </label>
+                <textarea
+                  id={descId}
+                  className="octo-html-create-textarea octo-html-create-preview"
+                  value={prompt}
+                  readOnly
+                  rows={16}
+                />
+                {files.length > 0 && (
+                  <p className="octo-html-create-hint">{t('docs.list.htmlCreate.previewFilesHint')}</p>
+                )}
+                {copyNotice && <p className="octo-html-create-hint" role="status">{copyNotice}</p>}
+              </div>
+              <footer className="octo-html-create-footer">
+                <button type="button" className="octo-tb-btn" onClick={() => { setCopyNotice(null); setPhase('edit') }}>
+                  {t('docs.list.htmlCreate.backToEdit')}
+                </button>
+                <button type="button" className="octo-tb-btn" onClick={() => void copyPrompt()}>
+                  {t('docs.list.htmlCreate.copyPrompt')}
+                </button>
+                <button
+                  type="button"
+                  className="octo-tb-btn octo-html-create-submit"
+                  onClick={() => { const draft = currentDraft(); if (draft) onSubmit(draft) }}
+                >
+                  {t('docs.list.htmlCreate.forwardToBot')}
+                </button>
+              </footer>
+            </>
+          ) : (
+            <>
           {/* Description */}
           <div className="octo-html-create-field">
             <label className="octo-html-create-label" htmlFor={descId}>
@@ -284,9 +340,11 @@ export function CreateHtmlModal({ open, spaceId, onClose, onSubmit }: CreateHtml
               className="octo-tb-btn octo-html-create-submit"
               disabled={!canSubmit}
             >
-              {t('docs.list.htmlCreate.submit')}
+              {t('docs.list.htmlCreate.generatePrompt')}
             </button>
           </footer>
+            </>
+          )}
         </form>
       </dialog>
     </div>
