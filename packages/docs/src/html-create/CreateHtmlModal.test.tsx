@@ -223,6 +223,26 @@ describe('CreateHtmlModal', () => {
     expect(screen.getByText('keep.png')).toBeTruthy()
   })
 
+  it('renders add files as an icon button with visible text', async () => {
+    render(<CreateHtmlModal open spaceId="s_1" onClose={() => {}} onSubmit={() => {}} />)
+    await waitFor(() => expect(screen.getByText('Publisher')).toBeTruthy())
+    const button = screen.getByRole('button', { name: 'docs.list.htmlCreate.addFiles' })
+    expect(button.classList.contains('octo-html-create-add-files')).toBe(true)
+    expect(button.querySelector('svg[aria-hidden="true"]')).not.toBeNull()
+  })
+
+  it('keeps edit and preview actions inside the styled footer action group', async () => {
+    render(<CreateHtmlModal open spaceId="s_1" onClose={() => {}} onSubmit={() => {}} />)
+    await waitFor(() => expect(screen.getByText('Publisher')).toBeTruthy())
+    expect(screen.getByText('docs.list.htmlCreate.cancel').closest('.octo-html-create-footer')).not.toBeNull()
+    expect(screen.getByText('docs.list.htmlCreate.generatePrompt').closest('.octo-html-create-footer')).not.toBeNull()
+    fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.descLabel'), { target: { value: 'Preview me' } })
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.generatePrompt'))
+    for (const key of ['backToEdit', 'copyPrompt', 'forwardToBot']) {
+      expect(screen.getByText(`docs.list.htmlCreate.${key}`).closest('.octo-html-create-footer')).not.toBeNull()
+    }
+  })
+
   it('reloads bots when the space changes (no stale bot carried over)', async () => {
     const wk = createMockWKApp()
     wk.apiClient.responder = (_m, url) => {
