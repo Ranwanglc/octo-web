@@ -35,6 +35,8 @@ export interface ComposeHost {
   currentDraftText(): string
   /** Number of files already staged for send (a non-zero value blocks the auto-load). */
   pendingAttachmentCount(): number
+  /** False once this compose has been abandoned (unmount, channel/Space switch, or prop removal). */
+  isLive?(): boolean
   /** Replace the composer content with the task text (MessageInput.restoreDraft). */
   restoreDraft(text: string): void
   /** Stage attachments; resolves only after they are visible to send. */
@@ -99,6 +101,12 @@ export async function tryConsumeInitialCompose(
         emit?.(compose.requestId, 'failed', err)
         return { consumed: true, state: 'failed', reason: err }
       }
+    }
+
+    // Attachment staging may outlive the Conversation that started it. Never let that stale
+    // continuation send into a newly selected channel/Space.
+    if (host.isLive && !host.isLive()) {
+      return { consumed: true, reason: 'compose-cancelled' }
     }
 
     if (!compose.autoSend) {

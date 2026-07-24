@@ -19,6 +19,7 @@ function makeHost(
   const host: ComposeHost & { order: string[] } = {
     order,
     isReady: over.isReady ?? (() => true),
+    isLive: over.isLive,
     currentDraftText: over.currentDraftText ?? (() => ''),
     pendingAttachmentCount: over.pendingAttachmentCount ?? (() => 0),
     restoreDraft: vi.fn((_t: string) => {
@@ -102,6 +103,27 @@ describe('tryConsumeInitialCompose', () => {
     ])
     expect(result.state).toBe('sent')
   })
+
+  it.each(['unmount', 'channel switch', 'Space switch'])(
+    'does not send after async staging when abandoned by %s',
+    async () => {
+    let finishStaging!: () => void
+    const staging = new Promise<void>((resolve) => { finishStaging = resolve })
+    let live = true
+    const host = makeHost({ isLive: () => live })
+    host.addPendingAttachments = vi.fn(async () => {
+      await staging
+      return null
+    })
+
+    const consuming = tryConsumeInitialCompose(compose({ files: [file()] }), host, new Set())
+    live = false
+    finishStaging()
+
+      await expect(consuming).resolves.toMatchObject({ consumed: true, reason: 'compose-cancelled' })
+      expect(host.send).not.toHaveBeenCalled()
+    },
+  )
 
   it('catches attachment staging rejection and reports failed', async () => {
     const host = makeHost()

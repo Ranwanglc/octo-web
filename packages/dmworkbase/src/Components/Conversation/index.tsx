@@ -123,6 +123,7 @@ import type { WebhookIssuePreviewTarget } from "../../bridge/message/webhookPrev
 import { I18nContext, t } from "../../i18n";
 import {
   buildRichTextMixedCandidate,
+  finishRichTextMixedSend,
   isImageFileForRichTextMixed,
 } from "./richTextMixedSend";
 import {
@@ -496,6 +497,8 @@ export class Conversation
   // plan Task 4: instance-level one-shot guard so a re-render / remount / prop re-pass of the
   // SAME requestId never re-loads or re-sends the initial compose (§5 risk 1).
   private _consumedComposeIds: Set<string> = new Set();
+  private _initialComposeGeneration = 0;
+  private _initialComposeMounted = false;
   private onOpenThreadPanel?: (
     threadChannelId: string,
     threadName: string
@@ -1371,8 +1374,16 @@ export class Conversation
     // 未就绪（onContext 尚未回调）时不消费，等待下一次 ready-retry。
     if (!this._messageInputContext) return;
 
+    const generation = this._initialComposeGeneration;
+    const channelKey = `${this.props.channel.channelID}:${this.props.channel.channelType}`;
+    const isLive = () =>
+      this._initialComposeMounted &&
+      generation === this._initialComposeGeneration &&
+      this.props.initialCompose?.requestId === compose.requestId &&
+      `${this.props.channel.channelID}:${this.props.channel.channelType}` === channelKey;
     const host: ComposeHost = {
       isReady: () => !!this._messageInputContext,
+      isLive,
       currentDraftText: () => this._messageInputContext?.text() ?? "",
       pendingAttachmentCount: () => this.getPendingAttachments().length,
       restoreDraft: (text: string) => this._messageInputContext?.restoreDraft(text),
@@ -1460,6 +1471,7 @@ export class Conversation
   }
 
   componentDidMount() {
+    this._initialComposeMounted = true;
     const { channel, onContext } = this.props;
     if (onContext) {
       onContext(this);
@@ -1564,12 +1576,20 @@ export class Conversation
     // 所以相同 requestId 的重渲染不会重发。
     const prev = prevProps.initialCompose?.requestId;
     const next = this.props.initialCompose?.requestId;
+    const channelChanged =
+      prevProps.channel.channelID !== this.props.channel.channelID ||
+      prevProps.channel.channelType !== this.props.channel.channelType;
+    if (channelChanged || prev !== next) {
+      this._initialComposeGeneration += 1;
+    }
     if (next && next !== prev) {
       this.tryConsumeInitialCompose();
     }
   }
 
   componentWillUnmount() {
+    this._initialComposeMounted = false;
+    this._initialComposeGeneration += 1;
     if (this._matterSendMessageHandler) {
       WKApp.mittBus.off(
         "wk:matter-created-from-input",
@@ -3353,11 +3373,12 @@ export class Conversation
                               remoteDraftAtSend
                             );
                           }
-                          if (mixedSent) this.props.onMessageSent?.();
-                          return {
-                            editorConsumed: mixedSent,
+                          return finishRichTextMixedSend(
+                            anyMessageSent,
+                            mixedSent,
                             consumedTopIds,
-                          };
+                            this.props.onMessageSent
+                          );
                         }
 
                         for (const { id, file } of topFilesToSend) {
@@ -3431,7 +3452,6 @@ export class Conversation
                                 remoteDraftAtSend
                               );
                             }
-                            if (mixedSent) this.props.onMessageSent?.();
                             // 返回 snapshot-aware 结果 (octo-web#227 Jerry-Xin
                             // 第二轮)：
                             //   • editorConsumed=mixedSent：混排失败时保留编辑器
@@ -3439,10 +3459,12 @@ export class Conversation
                             //   • consumedTopIds：本次已发出的顶部附件 id。即使
                             //     混排失败，这些文件也已发出，让 MessageInput 只
                             //     清掉它们、不随编辑器草稿一起保留，避免重试重复。
-                            return {
-                              editorConsumed: mixedSent,
+                            return finishRichTextMixedSend(
+                              anyMessageSent,
+                              mixedSent,
                               consumedTopIds,
-                            };
+                              this.props.onMessageSent
+                            );
                           }
                           let isFirstTextBlock = true;
                           for (const block of editorBlocks) {

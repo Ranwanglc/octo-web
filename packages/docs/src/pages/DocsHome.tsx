@@ -1414,9 +1414,6 @@ export function DocsHome() {
       mirrorListToUrl()
       setHtmlChatDraft(draft)
       htmlChatDraftRef.current = draft
-      // This is the FIRST open of this requestId → it is the one allowed auto-send. Record it so any
-      // later nav-reentry / restore of the same requestId is forced to prefill-only (autoSend=false).
-      htmlComposeFiredRef.current.add(draft.requestId)
       if (routeRight) {
         try {
           routeRight.replaceToRoot(buildBotChat(draft) as unknown)

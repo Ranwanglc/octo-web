@@ -74,6 +74,7 @@ vi.mock('../html-create/DocsBotConversation.tsx', () => ({
     draft: { botUid: string; requestId: string; spaceId: string; description: string }
     autoSend?: boolean
     onClose?: () => void
+    onMessageSent?: () => void
   }) => (
     <div data-testid="bot-chat">
       <span data-testid="bot-chat-bot">{props.draft.botUid}</span>
@@ -83,6 +84,11 @@ vi.mock('../html-create/DocsBotConversation.tsx', () => ({
       {props.onClose && (
         <button type="button" data-testid="bot-chat-close" onClick={props.onClose}>
           close
+        </button>
+      )}
+      {props.onMessageSent && (
+        <button type="button" data-testid="bot-chat-sent" onClick={props.onMessageSent}>
+          sent
         </button>
       )}
     </div>
@@ -2069,7 +2075,7 @@ describe('DocsHome — new HTML embedded bot DM (Task 6)', () => {
     expect(calls.some((c) => c.method === 'post' && c.url === '/docs')).toBe(false)
   })
 
-  it('re-entering docs via NavRail restores the SAME chat with autoSend=false (no re-send)', async () => {
+  it('re-entering after an unconfirmed send retains the SAME auto-send compose', async () => {
     const wk = createMockWKApp()
     const replaceToRoot = vi.fn()
     ;(wk as { routeRight?: unknown }).routeRight = { replaceToRoot, popToRoot: vi.fn() }
@@ -2098,16 +2104,39 @@ describe('DocsHome — new HTML embedded bot DM (Task 6)', () => {
       expect(last?.props?.autoSend).toBe(true)
     })
 
-    // Re-activate the docs NavRail entry; the SAME requestId chat must be re-pushed (no new id) but
-    // this time with autoSend=false so the remounted Conversation (fresh instance-level dedupe set)
-    // does NOT auto-send a second time (reviewer P1 double-send).
+    // No onMessageSent confirmation happened, so remounting must retain the compose for retry.
     act(() => wk.mockMittBus.emitNavMenuActivated('docs'))
     await waitFor(() => {
       const last = replaceToRoot.mock.calls.at(-1)?.[0] as
         | { props?: { draft?: { requestId?: string }; autoSend?: boolean } }
         | undefined
       expect(last?.props?.draft?.requestId).toBe(requestId)
-      expect(last?.props?.autoSend).toBe(false)
+      expect(last?.props?.autoSend).toBe(true)
+    })
+  })
+
+  it('re-entering after a confirmed send omits the initial auto-send compose', async () => {
+    const wk = createMockWKApp()
+    const replaceToRoot = vi.fn()
+    ;(wk as { routeRight?: unknown }).routeRight = { replaceToRoot, popToRoot: vi.fn() }
+    setWKApp(wk)
+    const calls: Array<{ method: string; url: string; body?: unknown }> = []
+    wk.apiClient.responder = ownedBotsResponder(calls)
+
+    render(<DocsHome />)
+    fireEvent.click(screen.getByLabelText('docs.list.newMenu'))
+    fireEvent.click(screen.getByText('docs.list.newHtml'))
+    await waitFor(() => expect(screen.getByText('Publisher')).toBeTruthy())
+    fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.descLabel'), { target: { value: 'Landing' } })
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.generatePrompt'))
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.forwardToBot'))
+
+    const first = replaceToRoot.mock.calls.at(-1)?.[0] as { props?: { onMessageSent?: () => void } }
+    act(() => first.props?.onMessageSent?.())
+    act(() => wk.mockMittBus.emitNavMenuActivated('docs'))
+    await waitFor(() => {
+      const last = replaceToRoot.mock.calls.at(-1)?.[0] as { props?: { autoSend?: boolean } }
+      expect(last.props?.autoSend).toBe(false)
     })
   })
 

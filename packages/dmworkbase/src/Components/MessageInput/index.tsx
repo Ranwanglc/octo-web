@@ -831,7 +831,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
   // 组件卸载时清理顶部附件区的预览 URL，避免内存泄漏
   useEffect(() => {
     return () => {
-      topAttachments.forEach((item) => {
+      topAttachmentsRef.current.forEach((item) => {
         if (item.previewUrl) {
           URL.revokeObjectURL(item.previewUrl);
         }
